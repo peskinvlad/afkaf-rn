@@ -66,6 +66,7 @@ export function RootNavigator() {
         <Stack.Screen name="RegisterPrompt"  component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
         <Stack.Screen name="Walks" component={PlaceholderScreen} />
         <Stack.Screen name="Alerts" component={PlaceholderScreen} />
+        <Stack.Screen name="About" component={PlaceholderScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="PrivacyRadius" component={PrivacyRadiusScreen} />

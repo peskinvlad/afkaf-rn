@@ -57,24 +57,26 @@ function PillGroup<T extends string>({
   value,
   getLabel,
   onSelect,
+  stretch,
 }: {
   options: T[];
   value: T;
   getLabel: (v: T) => string;
   onSelect: (v: T) => void;
+  stretch?: boolean;
 }) {
   return (
-    <View style={styles.pillRow}>
+    <View style={[styles.pillRow, stretch && styles.pillRowStretch]}>
       {options.map((opt) => {
         const active = opt === value;
         return (
           <TouchableOpacity
             key={opt}
             onPress={() => onSelect(opt)}
-            style={[styles.pill, active && styles.pillActive]}
+            style={[styles.pill, active && styles.pillActive, stretch && styles.pillStretch]}
             activeOpacity={0.7}
           >
-            <Text style={[styles.pillText, active && styles.pillTextActive]}>
+            <Text style={[styles.pillText, active && styles.pillTextActive, stretch && styles.pillTextCenter]}>
               {getLabel(opt)}
             </Text>
           </TouchableOpacity>
@@ -117,9 +119,24 @@ export function SettingsScreen({ navigation }: any) {
         const map = Object.fromEntries(pairs.map(([k, v]) => [k, v]));
         if (map.privacy_visibility) setVisibility(map.privacy_visibility as Visibility);
         setHomeRadius(map.privacy_home_radius ? Number(map.privacy_home_radius) : null);
-        if (map.notif_hazards !== null) setNotifHazards(map.notif_hazards !== 'false');
-        if (map.notif_heat !== null) setNotifHeat(map.notif_heat !== 'false');
-        if (map.notif_friend_walk !== null) setNotifFriendWalk(map.notif_friend_walk !== 'false');
+        if (map.notif_hazards !== null) {
+          setNotifHazards(map.notif_hazards !== 'false');
+        } else {
+          setNotifHazards(true);
+          AsyncStorage.setItem('notif_hazards', 'true');
+        }
+        if (map.notif_heat !== null) {
+          setNotifHeat(map.notif_heat !== 'false');
+        } else {
+          setNotifHeat(true);
+          AsyncStorage.setItem('notif_heat', 'true');
+        }
+        if (map.notif_friend_walk !== null) {
+          setNotifFriendWalk(map.notif_friend_walk !== 'false');
+        } else {
+          setNotifFriendWalk(true);
+          AsyncStorage.setItem('notif_friend_walk', 'true');
+        }
         if (map.notif_radius) setNotifRadius(map.notif_radius as NotifRadius);
         if (map.notif_ignore_types) {
           try { setIgnoredTypes(new Set(JSON.parse(map.notif_ignore_types))); } catch {}
@@ -191,6 +208,7 @@ export function SettingsScreen({ navigation }: any) {
               value={lang}
               getLabel={langLabel}
               onSelect={setLang}
+              stretch
             />
           </Row>
         </Section>
@@ -210,6 +228,7 @@ export function SettingsScreen({ navigation }: any) {
               value={visibility}
               getLabel={visLabel}
               onSelect={handleVisibility}
+              stretch
             />
           </Row>
 
@@ -235,45 +254,46 @@ export function SettingsScreen({ navigation }: any) {
         </Section>
 
         {/* ── Section 3: Notifications ── */}
-        <Section title={t('settings.notifications.title')}>
-          {/* Toggle rows */}
-          {([
-            { icon: '🚨', key: 'notif_hazards', label: t('settings.notifications.hazards'), value: notifHazards, setter: setNotifHazards },
-            { icon: '🌡️', key: 'notif_heat',    label: t('settings.notifications.heat'),    value: notifHeat,    setter: setNotifHeat },
-            { icon: '🐾', key: 'notif_friend_walk', label: t('settings.notifications.friend_walk'), value: notifFriendWalk, setter: setNotifFriendWalk },
-          ] as const).map(({ icon, key, label, value, setter }) => (
-            <Row key={key}>
-              <View style={styles.rowLeft}>
-                <Text style={styles.rowIcon}>{icon}</Text>
-                <Text style={styles.rowLabel}>{label}</Text>
-              </View>
-              <Switch
-                value={value === true || (value as any) === 'true'}
-                onValueChange={(v) => handleNotifToggle(key, setter as (v: boolean) => void, v)}
-                trackColor={{ false: colors.border, true: colors.primaryMid }}
-                thumbColor={value ? colors.primary : colors.textSoft}
-              />
-            </Row>
-          ))}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('settings.notifications.title')}</Text>
 
-          {/* Alert radius */}
-          <Row>
-            <Text style={styles.rowLabel}>{t('settings.notifications.radius')}</Text>
-          </Row>
-          <Row>
+          {/* Toggles card */}
+          <View style={[styles.sectionCard, shadows.sm]}>
+            {([
+              { icon: '🚨', key: 'notif_hazards', label: t('settings.notifications.hazards'), value: notifHazards, setter: setNotifHazards },
+              { icon: '🌡️', key: 'notif_heat',    label: t('settings.notifications.heat'),    value: notifHeat,    setter: setNotifHeat },
+              { icon: '🐾', key: 'notif_friend_walk', label: t('settings.notifications.friend_walk'), value: notifFriendWalk, setter: setNotifFriendWalk },
+            ] as const).map(({ icon, key, label, value, setter }, idx, arr) => (
+              <Row key={key} last={idx === arr.length - 1}>
+                <View style={styles.rowLeft}>
+                  <Text style={styles.rowIcon}>{icon}</Text>
+                  <Text style={styles.rowLabel}>{label}</Text>
+                </View>
+                <Switch
+                  value={value === true || (value as any) === 'true'}
+                  onValueChange={(v) => handleNotifToggle(key, setter as (v: boolean) => void, v)}
+                  trackColor={{ false: colors.border, true: colors.primaryMid }}
+                  thumbColor={value ? colors.primary : colors.textSoft}
+                />
+              </Row>
+            ))}
+          </View>
+
+          {/* Alert radius — separate card */}
+          <View style={[styles.subCard, shadows.sm]}>
+            <Text style={styles.subCardTitle}>{t('settings.notifications.radius')}</Text>
             <PillGroup
               options={NOTIF_RADIUS_OPTIONS}
               value={notifRadius}
               getLabel={radiusLabel}
               onSelect={handleNotifRadius}
+              stretch
             />
-          </Row>
+          </View>
 
-          {/* Ignore types */}
-          <Row>
-            <Text style={styles.rowLabel}>{t('settings.notifications.ignore_types')}</Text>
-          </Row>
-          <Row last>
+          {/* Ignore types — separate card */}
+          <View style={[styles.subCard, shadows.sm]}>
+            <Text style={styles.subCardTitle}>{t('settings.notifications.ignore_types')}</Text>
             <View style={styles.checkboxGrid}>
               {MARKER_TYPES.map((type) => {
                 const cfg = MARKER_CONFIG[type];
@@ -293,8 +313,8 @@ export function SettingsScreen({ navigation }: any) {
                 );
               })}
             </View>
-          </Row>
-        </Section>
+          </View>
+        </View>
       </ScrollView>
     </View>
   );
@@ -321,15 +341,31 @@ const styles = StyleSheet.create({
 
   section: { gap: spacing.sm },
   sectionTitle: {
-    ...typography.xs,
-    color: colors.textMuted,
-    letterSpacing: 0.8,
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.ink,
+    letterSpacing: 0.3,
     marginLeft: spacing.xs,
+    marginBottom: 8,
   },
   sectionCard: {
     backgroundColor: colors.card,
     borderRadius: radii.md,
     overflow: 'hidden',
+  },
+
+  subCard: {
+    backgroundColor: colors.card,
+    borderRadius: radii.md,
+    overflow: 'hidden',
+    marginTop: 8,
+    padding: spacing.lg,
+  },
+  subCardTitle: {
+    ...typography.sm,
+    color: colors.ink,
+    fontFamily: 'Nunito_600SemiBold',
+    marginBottom: spacing.sm,
   },
 
   row: {
@@ -357,15 +393,18 @@ const styles = StyleSheet.create({
   chevron: { fontSize: 20, color: colors.textMuted },
 
   pillRow: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
+  pillRowStretch: { flexWrap: 'nowrap' },
   pill: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderRadius: radii.full,
     backgroundColor: colors.surface,
   },
+  pillStretch: { flex: 1, alignItems: 'center', paddingHorizontal: spacing.sm },
   pillActive: { backgroundColor: colors.primary },
   pillText: { ...typography.sm, color: colors.textMuted, fontFamily: 'Nunito_600SemiBold' },
   pillTextActive: { color: colors.white },
+  pillTextCenter: { textAlign: 'center' },
 
   checkboxGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   checkboxItem: {

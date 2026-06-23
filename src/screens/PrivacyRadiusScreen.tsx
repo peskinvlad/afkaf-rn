@@ -105,27 +105,18 @@ export function PrivacyRadiusScreen({ navigation }: any) {
           <Text style={styles.mapBackText}>←</Text>
         </TouchableOpacity>
 
-        {/* Fixed centre marker */}
-        <View style={styles.centrePin} pointerEvents="none">
-          {/* Privacy circle */}
-          <View
-            style={[
-              styles.privacyCircle,
-              {
-                width: circlePx * 2,
-                height: circlePx * 2,
-                borderRadius: circlePx,
-                marginLeft: -circlePx,
-                marginTop: -circlePx,
-              },
-            ]}
-            pointerEvents="none"
-          />
-          {/* Centre dot */}
-          <View style={styles.centreDot} />
-          {/* Radius badge */}
-          <View style={styles.radiusBadge}>
-            <Text style={styles.radiusBadgeText}>{radius} м</Text>
+        {/* Full-size overlay — centres both circle and dot on exact map centre */}
+        <View style={styles.centreOverlay} pointerEvents="none">
+          {/* Pin wrapper sized to the circle — centred by flex overlay */}
+          <View style={{ width: circlePx * 2, height: circlePx * 2, alignItems: 'center', justifyContent: 'center' }}>
+            {/* Privacy circle fills the wrapper */}
+            <View style={[StyleSheet.absoluteFillObject, styles.privacyCircle, { borderRadius: circlePx }]} />
+            {/* Centre dot — centred by flex */}
+            <View style={styles.centreDot} />
+            {/* Radius badge — anchored to right of wrapper centre */}
+            <View style={styles.radiusBadge}>
+              <Text style={styles.radiusBadgeText}>{radius} м</Text>
+            </View>
           </View>
         </View>
       </View>
@@ -179,15 +170,16 @@ const styles = StyleSheet.create({
   },
   mapBackText: { fontSize: 20, color: colors.ink },
 
-  centrePin: {
+  centreOverlay: {
     position: 'absolute',
-    top: '50%',
-    left: '50%',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   privacyCircle: {
-    position: 'absolute',
     borderWidth: 2,
     borderColor: colors.primary,
     backgroundColor: 'rgba(44,95,37,0.12)',
@@ -202,8 +194,9 @@ const styles = StyleSheet.create({
   },
   radiusBadge: {
     position: 'absolute',
-    left: 16,
-    top: -10,
+    left: '60%',
+    top: '50%',
+    marginTop: -10,
     backgroundColor: colors.white,
     borderRadius: radii.sm,
     paddingHorizontal: spacing.sm,

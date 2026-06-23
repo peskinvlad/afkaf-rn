@@ -18,7 +18,7 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const MENU_ITEMS = [
   { key: 'map', icon: '🗺️', labelKey: 'menu.map', screen: 'MapScreen' },
   { key: 'walks', icon: '🐾', labelKey: 'menu.walks', screen: 'Walks' },
-  { key: 'alerts', icon: '🔔', labelKey: 'menu.alerts', screen: 'Alerts' },
+  { key: 'about', icon: 'ℹ️', labelKey: 'menu.about', screen: 'About' },
   { key: 'profile', icon: '👤', labelKey: 'menu.profile', screen: 'Profile' },
   { key: 'settings', icon: '⚙️', labelKey: 'menu.settings', screen: 'Settings' },
 ];
