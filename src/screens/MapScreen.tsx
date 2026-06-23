@@ -200,7 +200,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
       {!isHeatLoading && (
         <TouchableOpacity
           style={[styles.heatCard, shadows.sm, { bottom: 148 + insets.bottom, left: 14 }]}
-          onPress={() => navigation.navigate('HeatDetail')}
+          onPress={() => navigation.navigate('PavementTemp')}
           activeOpacity={0.8}
         >
           <Text style={[styles.heatTemp, { color: heatVis_.color }]}>{heatData.surface_est_c}°</Text>

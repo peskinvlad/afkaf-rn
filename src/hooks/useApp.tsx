@@ -5,7 +5,7 @@ import { Lang, t as translate, isRTL, loadSavedLang, saveLang, applyRTL } from '
 import { supabase } from '../lib/supabase';
 import { LatLng } from '../lib/geo';
 import { RadiusFilter } from '../components/MarkerFilterSheet';
-import { useAsphaltTemp, HeatStatus } from './useAsphaltTemp';
+import { useAsphaltTemp, HeatStatus, HourlyPoint } from './useAsphaltTemp';
 
 export interface HeatData {
   status: HeatStatus;
@@ -33,6 +33,10 @@ export interface AppState {
   toggleCategory: (key: string) => void;
   userLocation: LatLng | null;
   setUserLocation: (loc: LatLng) => void;
+  feelsLikeC: number | null;
+  weatherDescription: string | null;
+  weatherIcon: string | null;
+  hourlyForecast: HourlyPoint[];
 }
 
 const DEFAULT_CATEGORIES: Record<string, boolean> = {
@@ -62,7 +66,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   // ── Live asphalt temperature (real OpenWeatherMap data, see useAsphaltTemp) ─
-  const { surfaceTempC, airTempC, status: heatStatus, loading: isHeatLoading } = useAsphaltTemp();
+  const {
+    surfaceTempC, airTempC, status: heatStatus, loading: isHeatLoading,
+    feelsLikeC, weatherDescription, weatherIcon, hourlyForecast,
+  } = useAsphaltTemp();
   const heatData: HeatData = {
     status: heatStatus,
     surface_est_c: surfaceTempC ?? 0,
@@ -142,6 +149,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         toggleCategory,
         userLocation,
         setUserLocation,
+        feelsLikeC,
+        weatherDescription,
+        weatherIcon,
+        hourlyForecast,
       }}
     >
       {children}
