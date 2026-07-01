@@ -231,6 +231,9 @@ export function SettingsScreen({ navigation }: any) {
               stretch
             />
           </Row>
+          <Row>
+            <Text style={styles.visibilityDesc}>{t(`settings.privacy.desc_${visibility}`)}</Text>
+          </Row>
 
           {/* Home radius */}
           <Row last>
@@ -390,6 +393,7 @@ const styles = StyleSheet.create({
   rowIcon: { fontSize: 18 },
   rowLabel: { ...typography.body, color: colors.ink },
   rowSub: { ...typography.xs, color: colors.textMuted, marginTop: 2 },
+  visibilityDesc: { fontFamily: 'Nunito-Regular', fontSize: 13, color: colors.textMuted, marginTop: 6, lineHeight: 19 },
   chevron: { fontSize: 20, color: colors.textMuted },
 
   pillRow: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },

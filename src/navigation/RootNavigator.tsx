@@ -15,6 +15,7 @@ import { ProfileScreen } from '../screens/ProfileScreen';
 import { PavementTempScreen } from '../screens/PavementTempScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { PrivacyRadiusScreen } from '../screens/PrivacyRadiusScreen';
+import AboutScreen from '../screens/AboutScreen';
 import { colors } from '../theme/tokens';
 import { supabase } from '../lib/supabase';
 
@@ -66,7 +67,7 @@ export function RootNavigator() {
         <Stack.Screen name="RegisterPrompt"  component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
         <Stack.Screen name="Walks" component={PlaceholderScreen} />
         <Stack.Screen name="Alerts" component={PlaceholderScreen} />
-        <Stack.Screen name="About" component={PlaceholderScreen} />
+        <Stack.Screen name="About" component={AboutScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="PrivacyRadius" component={PrivacyRadiusScreen} />

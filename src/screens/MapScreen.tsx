@@ -17,6 +17,7 @@ import { MarkerFilterSheet, RadiusFilter } from '../components/MarkerFilterSheet
 import { MarkerDetailSheet } from '../components/MarkerDetailSheet';
 import { UserLocationMarker } from '../components/UserLocationMarker';
 import { useMapMarkers } from '../hooks/useMapMarkers';
+import NearbyDogsSheet from '../components/NearbyDogsSheet';
 import { filterMarkersAndWater } from '../lib/markerFilter';
 import { MARKER_CONFIG } from '../lib/markerConfig';
 
@@ -41,6 +42,8 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   const { markers, waterSources } = useMapMarkers();
 
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [nearbySheetVisible, setNearbySheetVisible] = useState(false);
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(130);
   const [detailMarker, setDetailMarker] = useState<import('../lib/markerConfig').MapMarker | null>(null);
 
   // Live user position + heading for the custom location marker
@@ -117,7 +120,8 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
 
   return (
     <View style={styles.container}>
-      {/* ── Map ── */}
+
+      {/* ── Карта — занимает весь экран ── */}
       <MapView
         style={StyleSheet.absoluteFill}
         provider={PROVIDER_DEFAULT}
@@ -162,7 +166,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         ))}
       </MapView>
 
-      {/* ── Hamburger — always top-left ── */}
+      {/* ── Hamburger — top-left ── */}
       {!drawerOpen && (
         <TouchableOpacity
           onPress={handleMenuPress}
@@ -173,7 +177,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         </TouchableOpacity>
       )}
 
-      {/* ── Filter — left of bell, top-right group ── */}
+      {/* ── Filter — top-right group ── */}
       <TouchableOpacity
         onPress={() => setFilterSheetOpen(true)}
         style={[styles.iconBtn, shadows.sm, { position: 'absolute', zIndex: 30, top: insets.top + 8, right: 66 }]}
@@ -187,7 +191,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         )}
       </TouchableOpacity>
 
-      {/* ── Bell — always top-right ── */}
+      {/* ── Bell — top-right ── */}
       <TouchableOpacity
         onPress={handleBellPress}
         style={[styles.iconBtn, shadows.sm, { position: 'absolute', zIndex: 30, top: insets.top + 8, right: 14 }]}
@@ -196,42 +200,65 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         <Bell size={20} color={colors.ink} />
       </TouchableOpacity>
 
-      {/* ── Heat card — always bottom-left of map (hidden while loading) ── */}
+      {/* ── Heat card ── */}
       {!isHeatLoading && (
-        <TouchableOpacity
-          style={[styles.heatCard, shadows.sm, { bottom: 148 + insets.bottom, left: 14 }]}
-          onPress={() => navigation.navigate('PavementTemp')}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.heatTemp, { color: heatVis_.color }]}>{heatData.surface_est_c}°</Text>
-          <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
-        </TouchableOpacity>
+        <View style={{ position: 'absolute', zIndex: 50, bottom: 165, left: 16 }}>
+          <TouchableOpacity
+            style={[styles.heatCard, shadows.sm]}
+            onPress={() => navigation.navigate('PavementTemp')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.heatTemp, { color: heatVis_.color }]}>{heatData.surface_est_c}°</Text>
+            <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
-      {/* ── FAB — always bottom-right of map ── */}
-      <TouchableOpacity
-        style={[styles.fab, shadows.lg, { bottom: 148 + insets.bottom, right: 14 }]}
-        onPress={() => {
-          if (isGuest) {
-            navigation.navigate('RegisterPrompt');
-          } else if (isTrusted || isWalking) {
-            navigation.navigate('MarkerCreate');
-          } else {
-            Alert.alert(t('marker.gatedTitle'), t('marker.gatedBody'));
-          }
-        }}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.fabIcon}>+</Text>
-      </TouchableOpacity>
+      {/* ── FAB ── */}
+      <View style={{ position: 'absolute', zIndex: 50, bottom: 165, right: 16 }}>
+        <TouchableOpacity
+          style={[styles.fab, shadows.lg]}
+          onPress={() => {
+            if (isGuest) {
+              navigation.navigate('RegisterPrompt');
+            } else if (isTrusted || isWalking) {
+              navigation.navigate('MarkerCreate');
+            } else {
+              Alert.alert(t('marker.gatedTitle'), t('marker.gatedBody'));
+            }
+          }}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.fabIcon}>+</Text>
+        </TouchableOpacity>
+      </View>
 
-      {/* ── Bottom sheet ── */}
-      <View style={[styles.bottomSheet, { paddingBottom: insets.bottom + 12 }]}>
-        {/* Walkers row */}
-        <View style={[styles.walkersRow, { flexDirection: 'row' }]}>
-          <Text style={styles.walkersEmoji}>🐕🐕🦮</Text>
-          <Text style={styles.walkersTxt}>{WALKERS_NOW}  {t('map.walkingNearby')}</Text>
-        </View>
+      {/* ── NearbyDogsSheet — абсолютный, bottomOffset = высота нижней панели ── */}
+      <View style={styles.nearbySheetWrap}>
+        <NearbyDogsSheet
+          visible={nearbySheetVisible}
+          onClose={() => setNearbySheetVisible(false)}
+          bottomOffset={bottomPanelHeight}
+          dogs={[
+            { id: '1', name: 'Бублик', breed: 'Бигль', emoji: '🐶' },
+            { id: '2', name: 'Рекс', breed: 'Лабрадор', emoji: '🦮' },
+            { id: '3', name: 'Муха', breed: 'Дворняга', emoji: '🐕' },
+          ]}
+          anonymousCount={2}
+        />
+      </View>
+
+      {/* ── Нижняя панель — абсолютная, всегда внизу ── */}
+      <View
+        style={[styles.bottomPanel, { paddingBottom: insets.bottom + 12 }]}
+        onLayout={e => setBottomPanelHeight(e.nativeEvent.layout.height)}
+      >
+        <TouchableOpacity onPress={() => setNearbySheetVisible(true)} activeOpacity={0.7}>
+          <View style={styles.walkersRow}>
+            <Text style={styles.walkersEmoji}>🐕🐕🦮</Text>
+            <Text style={styles.walkersTxt}>{WALKERS_NOW}  {t('map.walkingNearby')}</Text>
+          </View>
+        </TouchableOpacity>
 
         <WalkSlider
           asphaltTemp={heatData.surface_est_c}
@@ -255,6 +282,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         visible={detailMarker != null}
         onClose={() => setDetailMarker(null)}
       />
+
     </View>
   );
 }
@@ -292,8 +320,6 @@ const styles = StyleSheet.create({
 
   // Heat card — bottom-left, rectangular
   heatCard: {
-    position: 'absolute',
-    zIndex: 30,
     backgroundColor: colors.card,
     borderRadius: radii.sm,
     paddingHorizontal: 12,
@@ -313,14 +339,12 @@ const styles = StyleSheet.create({
 
   // FAB — square
   fab: {
-    position: 'absolute',
     width: 52,
     height: 52,
     borderRadius: radii.sm,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 30,
   },
   fabIcon: {
     fontSize: 28,
@@ -329,13 +353,21 @@ const styles = StyleSheet.create({
     marginTop: -2,
   },
 
-  // Bottom sheet
-  bottomSheet: {
+  nearbySheetWrap: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    zIndex: 30,
+    zIndex: 10,
+  },
+
+  // Bottom panel — абсолютный, всегда внизу
+  bottomPanel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
     backgroundColor: colors.card,
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
@@ -344,6 +376,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   walkersRow: {
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
