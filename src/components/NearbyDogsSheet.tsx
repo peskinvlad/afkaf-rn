@@ -25,6 +25,7 @@ type Props = {
   dogs: NearbyDog[];
   anonymousCount: number;
   bottomOffset?: number;
+  onHeightChange?: (height: number) => void;
 };
 
 const DogCard = ({ dog }: { dog: NearbyDog }) => (
@@ -52,7 +53,7 @@ const AnonymousCard = ({ count }: { count: number }) => (
   </View>
 );
 
-export default function NearbyDogsSheet({ visible, onClose, dogs, anonymousCount, bottomOffset = 0 }: Props) {
+export default function NearbyDogsSheet({ visible, onClose, dogs, anonymousCount, bottomOffset = 0, onHeightChange }: Props) {
   const translateY = useRef(new Animated.Value(300)).current;
 
   useEffect(() => {
@@ -87,6 +88,7 @@ export default function NearbyDogsSheet({ visible, onClose, dogs, anonymousCount
   return (
     <Animated.View
       style={[styles.sheet, { transform: [{ translateY }], paddingBottom: bottomOffset }]}
+      onLayout={(e) => onHeightChange?.(e.nativeEvent.layout.height)}
       {...panResponder.panHandlers}
     >
       <TouchableOpacity style={styles.handleWrap} onPress={onClose} activeOpacity={0.6}>

@@ -16,6 +16,9 @@ import { PavementTempScreen } from '../screens/PavementTempScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { PrivacyRadiusScreen } from '../screens/PrivacyRadiusScreen';
 import AboutScreen from '../screens/AboutScreen';
+import { FriendsScreen } from '../screens/FriendsScreen';
+import { AddFriendSheet } from '../components/AddFriendSheet';
+import { useDeepLink } from '../hooks/useDeepLink';
 import { colors } from '../theme/tokens';
 import { supabase } from '../lib/supabase';
 
@@ -33,6 +36,7 @@ export function RootNavigator() {
   // Decide the initial screen once, before the navigator mounts: a logged-in
   // user should land straight on Main, skipping Lang/Onboarding entirely.
   const [initialRoute, setInitialRoute] = useState<'Lang' | 'Main' | null>(null);
+  const { pendingFriendId, clearPendingFriend } = useDeepLink();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -45,33 +49,42 @@ export function RootNavigator() {
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
-        initialRouteName={initialRoute}
-      >
-        <Stack.Screen name="Lang" component={LangScreen} />
-        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-        <Stack.Screen name="DogProfile" component={DogProfileScreen} options={{ gestureEnabled: false }} />
-        <Stack.Screen name="ValueEntry" component={ValueEntryScreen} />
-        <Stack.Screen name="Main" component={MainScreen} />
-        <Stack.Screen name="Auth"            component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
-        <Stack.Screen name="Register"         component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
-        <Stack.Screen name="HeatWarning" component={PlaceholderScreen} />
-        <Stack.Screen name="HeatDetail" component={PlaceholderScreen} />
-        <Stack.Screen name="PavementTemp" component={PavementTempScreen} />
-        <Stack.Screen name="WalkActive" component={WalkScreen} />
-        <Stack.Screen name="WalkSummary" component={WalkSummaryScreen} />
-        <Stack.Screen name="Search" component={PlaceholderScreen} />
-        <Stack.Screen name="MarkerCreate" component={AddMarkerScreen} />
-        <Stack.Screen name="RegisterPrompt"  component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
-        <Stack.Screen name="Walks" component={PlaceholderScreen} />
-        <Stack.Screen name="Alerts" component={PlaceholderScreen} />
-        <Stack.Screen name="About" component={AboutScreen} />
-        <Stack.Screen name="Profile" component={ProfileScreen} />
-        <Stack.Screen name="Settings" component={SettingsScreen} />
-        <Stack.Screen name="PrivacyRadius" component={PrivacyRadiusScreen} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <View style={{ flex: 1 }}>
+      <NavigationContainer>
+        <Stack.Navigator
+          screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
+          initialRouteName={initialRoute}
+        >
+          <Stack.Screen name="Lang" component={LangScreen} />
+          <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+          <Stack.Screen name="DogProfile" component={DogProfileScreen} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="ValueEntry" component={ValueEntryScreen} />
+          <Stack.Screen name="Main" component={MainScreen} />
+          <Stack.Screen name="Auth"            component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
+          <Stack.Screen name="Register"         component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
+          <Stack.Screen name="HeatWarning" component={PlaceholderScreen} />
+          <Stack.Screen name="HeatDetail" component={PlaceholderScreen} />
+          <Stack.Screen name="PavementTemp" component={PavementTempScreen} />
+          <Stack.Screen name="WalkActive" component={WalkScreen} />
+          <Stack.Screen name="WalkSummary" component={WalkSummaryScreen} />
+          <Stack.Screen name="Search" component={PlaceholderScreen} />
+          <Stack.Screen name="MarkerCreate" component={AddMarkerScreen} />
+          <Stack.Screen name="RegisterPrompt"  component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
+          <Stack.Screen name="Walks" component={PlaceholderScreen} />
+          <Stack.Screen name="Alerts" component={PlaceholderScreen} />
+          <Stack.Screen name="About" component={AboutScreen} />
+          <Stack.Screen name="Profile" component={ProfileScreen} />
+          <Stack.Screen name="Friends" component={FriendsScreen} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="PrivacyRadius" component={PrivacyRadiusScreen} />
+        </Stack.Navigator>
+      </NavigationContainer>
+
+      <AddFriendSheet
+        visible={pendingFriendId !== null}
+        friendId={pendingFriendId}
+        onClose={clearPendingFriend}
+      />
+    </View>
   );
 }

@@ -5,6 +5,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Animated,
+  Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { PROVIDER_DEFAULT, Marker } from 'react-native-maps';
@@ -26,6 +28,12 @@ const FLORENTIN_COORD: [number, number] = [34.7722, 32.0559];
 
 const WALKERS_NOW = 3;
 
+// Base resting position of the heat card / FAB, and how far they lift when
+// NearbyDogsSheet is open — kept in sync with its own spring/timing so both
+// move together instead of the sheet covering them.
+const WIDGETS_BASE_BOTTOM = 165;
+const SHEET_HEIGHT_FALLBACK = 220; // real NearbyDogsSheet content is ~200-220px; used until onLayout measures it
+
 interface Props {
   navigation: any;
   onMenuPress?: () => void;
@@ -45,6 +53,22 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   const [nearbySheetVisible, setNearbySheetVisible] = useState(false);
   const [bottomPanelHeight, setBottomPanelHeight] = useState(130);
   const [detailMarker, setDetailMarker] = useState<import('../lib/markerConfig').MapMarker | null>(null);
+
+  // Lift the heat card / FAB above NearbyDogsSheet while it's open, in sync
+  // with its own open/close animation.
+  const [nearbySheetHeight, setNearbySheetHeight] = useState(SHEET_HEIGHT_FALLBACK);
+  const widgetsBottom = useRef(new Animated.Value(WIDGETS_BASE_BOTTOM)).current;
+
+  useEffect(() => {
+    // Open: sit just above the sheet's top edge. Closed: rest at the base offset.
+    const target = nearbySheetVisible ? nearbySheetHeight + 16 : WIDGETS_BASE_BOTTOM;
+    // 'bottom' is a layout prop — no native driver support, so both branches
+    // animate on the JS thread (useNativeDriver: false).
+    const animation = nearbySheetVisible
+      ? Animated.spring(widgetsBottom, { toValue: target, useNativeDriver: false, tension: 65, friction: 11 })
+      : Animated.timing(widgetsBottom, { toValue: target, duration: 250, easing: Easing.in(Easing.ease), useNativeDriver: false });
+    animation.start();
+  }, [nearbySheetVisible, nearbySheetHeight, widgetsBottom]);
 
   // Live user position + heading for the custom location marker
   const [livePos, setLivePos] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -202,7 +226,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
 
       {/* ── Heat card ── */}
       {!isHeatLoading && (
-        <View style={{ position: 'absolute', zIndex: 50, bottom: 165, left: 16 }}>
+        <Animated.View style={{ position: 'absolute', zIndex: 50, bottom: widgetsBottom, left: 16 }}>
           <TouchableOpacity
             style={[styles.heatCard, shadows.sm]}
             onPress={() => navigation.navigate('PavementTemp')}
@@ -211,11 +235,11 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
             <Text style={[styles.heatTemp, { color: heatVis_.color }]}>{heatData.surface_est_c}°</Text>
             <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
           </TouchableOpacity>
-        </View>
+        </Animated.View>
       )}
 
       {/* ── FAB ── */}
-      <View style={{ position: 'absolute', zIndex: 50, bottom: 165, right: 16 }}>
+      <Animated.View style={{ position: 'absolute', zIndex: 50, bottom: widgetsBottom, right: 16 }}>
         <TouchableOpacity
           style={[styles.fab, shadows.lg]}
           onPress={() => {
@@ -231,7 +255,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         >
           <Text style={styles.fabIcon}>+</Text>
         </TouchableOpacity>
-      </View>
+      </Animated.View>
 
       {/* ── NearbyDogsSheet — абсолютный, bottomOffset = высота нижней панели ── */}
       <View style={styles.nearbySheetWrap}>
@@ -239,6 +263,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           visible={nearbySheetVisible}
           onClose={() => setNearbySheetVisible(false)}
           bottomOffset={bottomPanelHeight}
+          onHeightChange={setNearbySheetHeight}
           dogs={[
             { id: '1', name: 'Бублик', breed: 'Бигль', emoji: '🐶' },
             { id: '2', name: 'Рекс', breed: 'Лабрадор', emoji: '🦮' },

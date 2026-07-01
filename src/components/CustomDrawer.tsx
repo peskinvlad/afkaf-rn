@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
+import { useFriends } from '../hooks/useFriends';
 import { colors, radii } from '../theme/tokens';
 
 const DRAWER_W = 280;
@@ -18,6 +19,7 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const MENU_ITEMS = [
   { key: 'map', icon: '🗺️', labelKey: 'menu.map', screen: 'MapScreen' },
   { key: 'walks', icon: '🐾', labelKey: 'menu.walks', screen: 'Walks' },
+  { key: 'friends', icon: '👥', labelKey: 'menu.friends', screen: 'Friends' },
   { key: 'about', icon: 'ℹ️', labelKey: 'menu.about', screen: 'About' },
   { key: 'profile', icon: '👤', labelKey: 'menu.profile', screen: 'Profile' },
   { key: 'settings', icon: '⚙️', labelKey: 'menu.settings', screen: 'Settings' },
@@ -33,6 +35,7 @@ interface Props {
 export function CustomDrawer({ open, onClose, onNavigate, activeScreen }: Props) {
   const insets = useSafeAreaInsets();
   const { t, rtl, lang, setLang } = useApp();
+  const { incomingCount } = useFriends();
 
   const slideAnim = useRef(new Animated.Value(0)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
@@ -98,6 +101,11 @@ export function CustomDrawer({ open, onClose, onNavigate, activeScreen }: Props)
                 <Text style={[styles.menuLabel, active && styles.menuLabelActive]}>
                   {t(item.labelKey)}
                 </Text>
+                {item.key === 'friends' && incomingCount > 0 && (
+                  <View style={styles.menuBadge}>
+                    <Text style={styles.menuBadgeTxt}>{incomingCount}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             );
           })}
@@ -177,6 +185,20 @@ const styles = StyleSheet.create({
   },
   menuLabelActive: {
     color: colors.primary,
+  },
+  menuBadge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuBadgeTxt: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.white,
   },
   langSwitcher: {
     flexDirection: 'row',
