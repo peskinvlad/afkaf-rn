@@ -10,10 +10,11 @@ import {
 } from 'react-native';
 import { useApp } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
+import { navigationRef } from '../lib/navigationRef';
 import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
 
 type FriendshipRpcStatus = 'friends' | 'pending_sent' | 'pending_received' | 'none';
-type ViewState = 'loading' | FriendshipRpcStatus | 'sent';
+type ViewState = 'loading' | FriendshipRpcStatus | 'sent' | 'guest';
 
 interface ProfileInfo {
   display_name: string | null;
@@ -59,7 +60,13 @@ export function AddFriendSheet({ visible, friendId, onClose }: Props) {
 
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { onClose(); return; }
+      if (!user) {
+        // Guest — profiles/dogs RLS is `TO authenticated` only (confirmed:
+        // anon reads return 0 rows), so we can't show who's inviting them.
+        // Generic invite card instead of silently closing.
+        if (!cancelled) setState('guest');
+        return;
+      }
       // Own QR / own link — nothing sensible to do here, just dismiss.
       if (user.id === friendId) { onClose(); return; }
 
@@ -97,6 +104,17 @@ export function AddFriendSheet({ visible, friendId, onClose }: Props) {
     setTimeout(onClose, 1500);
   }
 
+  // NOTE: doesn't resume the pending add-friend after registration completes
+  // (would need to survive the OAuth round-trip through an external browser).
+  // Deferred — see conversation notes; guest just lands on Register and has
+  // to reopen the invite link afterward.
+  function handleGuestCreateAccount() {
+    onClose();
+    if (navigationRef.isReady()) {
+      navigationRef.navigate('Register' as never);
+    }
+  }
+
   if (!visible) return null;
 
   const initial = (profile?.display_name ?? '?').trim().charAt(0).toUpperCase() || '?';
@@ -113,6 +131,27 @@ export function AddFriendSheet({ visible, friendId, onClose }: Props) {
       >
         {state === 'loading' ? (
           <ActivityIndicator size="large" color={colors.primary} style={styles.loading} />
+        ) : state === 'guest' ? (
+          <>
+            <View style={[styles.profileRow, rtl && styles.rowReverse]}>
+              <View style={[styles.avatar, styles.avatarFallback]}>
+                <Text style={styles.avatarInitial}>🐾</Text>
+              </View>
+              <View style={styles.profileInfo}>
+                <Text style={styles.name}>{t('friends.guestInvite.title')}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.statusText}>{t('friends.guestInvite.body')}</Text>
+
+            <TouchableOpacity style={styles.addBtn} onPress={handleGuestCreateAccount} activeOpacity={0.8}>
+              <Text style={styles.addBtnTxt}>{t('friends.guestInvite.cta')}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.cancelBtn} onPress={onClose} activeOpacity={0.7}>
+              <Text style={styles.cancelBtnTxt}>{t('friends.cancel')}</Text>
+            </TouchableOpacity>
+          </>
         ) : (
           <>
             <View style={[styles.profileRow, rtl && styles.rowReverse]}>

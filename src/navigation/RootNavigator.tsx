@@ -4,7 +4,6 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { LangScreen } from '../screens/LangScreen';
 import { OnboardingScreen } from '../screens/OnboardingScreen';
-import { ValueEntryScreen } from '../screens/ValueEntryScreen';
 import { MainScreen } from '../screens/MainScreen';
 import { WalkScreen } from '../screens/WalkScreen';
 import { WalkSummaryScreen } from '../screens/WalkSummaryScreen';
@@ -13,14 +12,19 @@ import { AuthScreen } from '../screens/AuthScreen';
 import { DogProfileScreen } from '../screens/DogProfileScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { PavementTempScreen } from '../screens/PavementTempScreen';
+import { HeatWarningScreen } from '../screens/HeatWarningScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { PrivacyRadiusScreen } from '../screens/PrivacyRadiusScreen';
 import AboutScreen from '../screens/AboutScreen';
 import { FriendsScreen } from '../screens/FriendsScreen';
+import { WalksScreen } from '../screens/WalksScreen';
+import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { AddFriendSheet } from '../components/AddFriendSheet';
+import { WalkRecoveryModal } from '../components/WalkRecoveryModal';
 import { useDeepLink } from '../hooks/useDeepLink';
 import { colors } from '../theme/tokens';
 import { supabase } from '../lib/supabase';
+import { navigationRef } from '../lib/navigationRef';
 
 const Stack = createStackNavigator();
 
@@ -50,7 +54,7 @@ export function RootNavigator() {
 
   return (
     <View style={{ flex: 1 }}>
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef}>
         <Stack.Navigator
           screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
           initialRouteName={initialRoute}
@@ -58,20 +62,19 @@ export function RootNavigator() {
           <Stack.Screen name="Lang" component={LangScreen} />
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />
           <Stack.Screen name="DogProfile" component={DogProfileScreen} options={{ gestureEnabled: false }} />
-          <Stack.Screen name="ValueEntry" component={ValueEntryScreen} />
           <Stack.Screen name="Main" component={MainScreen} />
-          <Stack.Screen name="Auth"            component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
-          <Stack.Screen name="Register"         component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
-          <Stack.Screen name="HeatWarning" component={PlaceholderScreen} />
+          <Stack.Screen name="Auth"            component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: true }} />
+          <Stack.Screen name="Register"         component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: true }} />
+          <Stack.Screen name="HeatWarning" component={HeatWarningScreen} />
           <Stack.Screen name="HeatDetail" component={PlaceholderScreen} />
           <Stack.Screen name="PavementTemp" component={PavementTempScreen} />
           <Stack.Screen name="WalkActive" component={WalkScreen} />
           <Stack.Screen name="WalkSummary" component={WalkSummaryScreen} />
           <Stack.Screen name="Search" component={PlaceholderScreen} />
           <Stack.Screen name="MarkerCreate" component={AddMarkerScreen} />
-          <Stack.Screen name="RegisterPrompt"  component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
-          <Stack.Screen name="Walks" component={PlaceholderScreen} />
-          <Stack.Screen name="Alerts" component={PlaceholderScreen} />
+          <Stack.Screen name="RegisterPrompt"  component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: true }} />
+          <Stack.Screen name="Walks" component={WalksScreen} />
+          <Stack.Screen name="Alerts" component={NotificationsScreen} />
           <Stack.Screen name="About" component={AboutScreen} />
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="Friends" component={FriendsScreen} />
@@ -85,6 +88,7 @@ export function RootNavigator() {
         friendId={pendingFriendId}
         onClose={clearPendingFriend}
       />
+      <WalkRecoveryModal />
     </View>
   );
 }

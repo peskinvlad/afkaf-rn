@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useApp } from '../hooks/useApp';
 
 const SWIPE_THRESHOLD = 50;
 
@@ -24,6 +25,8 @@ type Props = {
   onClose: () => void;
   dogs: NearbyDog[];
   anonymousCount: number;
+  locationAvailable: boolean;
+  onEnableLocation: () => void;
   bottomOffset?: number;
   onHeightChange?: (height: number) => void;
 };
@@ -41,19 +44,26 @@ const DogCard = ({ dog }: { dog: NearbyDog }) => (
   </View>
 );
 
-const AnonymousCard = ({ count }: { count: number }) => (
-  <View style={styles.card}>
-    <View style={styles.avatarWrap}>
-      <View style={[styles.avatar, styles.avatarAnon]}>
-        <Text style={styles.avatarEmoji}>🐾</Text>
+const AnonymousCard = ({ count }: { count: number }) => {
+  const { t } = useApp();
+  return (
+    <View style={styles.card}>
+      <View style={styles.avatarWrap}>
+        <View style={[styles.avatar, styles.avatarAnon]}>
+          <Text style={styles.avatarEmoji}>🐾</Text>
+        </View>
       </View>
+      <Text style={styles.cardName}>{t('nearby.more_count', { n: count })}</Text>
+      <Text style={styles.cardBreed}>{t('nearby.add_friends')}</Text>
     </View>
-    <Text style={styles.cardName}>ещё {count}</Text>
-    <Text style={styles.cardBreed}>Добавь друзей</Text>
-  </View>
-);
+  );
+};
 
-export default function NearbyDogsSheet({ visible, onClose, dogs, anonymousCount, bottomOffset = 0, onHeightChange }: Props) {
+export default function NearbyDogsSheet({
+  visible, onClose, dogs, anonymousCount, locationAvailable, onEnableLocation,
+  bottomOffset = 0, onHeightChange,
+}: Props) {
+  const { t } = useApp();
   const translateY = useRef(new Animated.Value(300)).current;
 
   useEffect(() => {
@@ -95,16 +105,32 @@ export default function NearbyDogsSheet({ visible, onClose, dogs, anonymousCount
         <View style={styles.handle} />
       </TouchableOpacity>
 
-      <Text style={styles.title}>{total} гуляют рядом</Text>
+      {locationAvailable ? (
+        <>
+          <Text style={styles.title}>{total} {t('map.walkingNearby')}</Text>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {dogs.map(dog => <DogCard key={dog.id} dog={dog} />)}
-        {anonymousCount > 0 && <AnonymousCard count={anonymousCount} />}
-      </ScrollView>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+          >
+            {dogs.map(dog => <DogCard key={dog.id} dog={dog} />)}
+            {anonymousCount > 0 && <AnonymousCard count={anonymousCount} />}
+          </ScrollView>
+        </>
+      ) : (
+        <View style={styles.noLocationWrap}>
+          <Text style={styles.noLocationEmoji}>📍</Text>
+          <Text style={styles.noLocationTxt}>{t('nearby.no_location.body')}</Text>
+          <TouchableOpacity
+            style={styles.noLocationBtn}
+            onPress={onEnableLocation}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.noLocationBtnTxt}>{t('nearby.no_location.cta')}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </Animated.View>
   );
 }
@@ -144,6 +170,33 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     gap: 12,
     alignItems: 'flex-start',
+  },
+  noLocationWrap: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    alignItems: 'center',
+    gap: 10,
+  },
+  noLocationEmoji: { fontSize: 28 },
+  noLocationTxt: {
+    fontFamily: 'Nunito-Regular',
+    fontSize: 14,
+    color: '#555',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  noLocationBtn: {
+    minHeight: 48,
+    paddingHorizontal: 20,
+    borderRadius: 24,
+    backgroundColor: '#2c5f25',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noLocationBtnTxt: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 14,
+    color: '#fff',
   },
   card: {
     width: 80,

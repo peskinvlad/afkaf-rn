@@ -14,7 +14,7 @@ import { radii, shadows } from '../theme/tokens';
 const SCREEN_W = Dimensions.get('window').width;
 const H_PADDING = 16;
 const PILL_W = SCREEN_W - H_PADDING * 2;
-const HANDLE_SIZE = 50;
+const HANDLE_SIZE = 56;
 const TRACK_W = PILL_W - HANDLE_SIZE - 8; // usable drag range (8 = inner padding)
 const TRIGGER_RATIO = 0.85;
 
@@ -114,7 +114,10 @@ export function WalkSlider({ asphaltTemp, onWalkStart }: Props) {
   });
 
   return (
-    <View style={[styles.pill, { backgroundColor: bg }, shadows.md]}>
+    <View
+      style={[styles.pill, { backgroundColor: bg }, shadows.md]}
+      {...panResponder.panHandlers}
+    >
 
       {/* ── Progress fill — own overflow:hidden to clip paws ── */}
       <Animated.View
@@ -148,10 +151,13 @@ export function WalkSlider({ asphaltTemp, onWalkStart }: Props) {
         {t('map.swipeToStart')}
       </Animated.Text>
 
-      {/* ── Drag handle ── */}
+      {/* ── Drag handle — visual only now; the whole pill (above) owns the
+          gesture, so touching anywhere along the track drags it. dragX is
+          gesture.dx (delta from touch-down), so the handle always starts
+          moving from its current position (0) rather than jumping to the
+          finger. ── */}
       <Animated.View
         style={[styles.handle, { backgroundColor: '#ffffff', transform: [{ translateX: dragX }] }]}
-        {...panResponder.panHandlers}
       >
         <Text style={styles.handleEmoji}>🐶</Text>
       </Animated.View>

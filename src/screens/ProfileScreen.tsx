@@ -13,6 +13,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Pencil } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
+import { useBadges } from '../hooks/useBadges';
+import { BADGES } from '../constants/badges';
 import { supabase } from '../lib/supabase';
 import { colors, radii, shadows } from '../theme/tokens';
 
@@ -40,7 +42,8 @@ interface Dog {
 interface Walk {
   id: string;
   started_at: string;
-  duration_sec: number | null;
+  duration_s: number | null;   // null on rows written before the column existed
+  duration_min: number | null; // legacy fallback for those rows
   distance_km: number | null;
   steps: number | null;
 }
@@ -79,7 +82,8 @@ interface Props { navigation: any }
 
 export function ProfileScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const { t, isTrusted, confirmedCount, refreshTrustStatus } = useApp();
+  const { t, isGuest, isTrusted, confirmedCount, refreshTrustStatus } = useApp();
+  const { earnedIds: earnedBadgeIds, refresh: refreshBadges } = useBadges();
 
   const [loading, setLoading]         = useState(true);
   const [profile, setProfile]         = useState<Profile | null>(null);
@@ -127,8 +131,8 @@ export function ProfileScreen({ navigation }: Props) {
 
     // Recent walks (last 10)
     const { data: walksData } = await supabase
-      .from('walks')
-      .select('id, started_at, duration_sec, distance_km, steps')
+      .from('walk_history')
+      .select('id, started_at, duration_s, duration_min, distance_km, steps')
       .eq('user_id', userId)
       .order('started_at', { ascending: false })
       .limit(10);
@@ -136,12 +140,12 @@ export function ProfileScreen({ navigation }: Props) {
 
     // Stats: walk count + km sum
     const { count: walkCount } = await supabase
-      .from('walks')
+      .from('walk_history')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId);
 
     const { data: kmData } = await supabase
-      .from('walks')
+      .from('walk_history')
       .select('distance_km')
       .eq('user_id', userId);
     const totalKm = (kmData ?? []).reduce((s, r) => s + (r.distance_km ?? 0), 0);
@@ -167,6 +171,7 @@ export function ProfileScreen({ navigation }: Props) {
   useFocusEffect(useCallback(() => {
     loadData();
     refreshTrustStatus();
+    refreshBadges();
   }, [loadData]));
 
   // ── Logout ──────────────────────────────────────────────────────────────────
@@ -221,82 +226,120 @@ export function ProfileScreen({ navigation }: Props) {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Avatar + user info ── */}
-        <View style={styles.heroSection}>
-          <View style={styles.avatarWrap}>
-            <AvatarView
-              googleUrl={profile?.google_avatar_url ?? null}
-              size={88}
-            />
-          </View>
-
-          <Text style={styles.displayName}>{displayName}</Text>
-
-          {/* Trust badge */}
-          <View style={[styles.trustBadge, isTrusted && styles.trustBadgeTrusted]}>
-            <Text style={[styles.trustBadgeTxt, isTrusted && styles.trustBadgeTxtTrusted]}>
-              ⭐ {isTrusted ? t('profile.trust.trusted') : t('profile.trust.beginner')}
-            </Text>
-          </View>
-
-          <Text style={styles.memberSince}>{t('profile.memberSince')} {memberSince}</Text>
-        </View>
-
-        {/* ── Trust progress (Beginner only) ── */}
-        {!isTrusted && (
-          <View style={[styles.card, styles.trustCard]}>
-            <Text style={styles.trustCardTitle}>{t('profile.trust.progressTitle')}</Text>
-            <View style={styles.trustBarBg}>
-              <View style={[styles.trustBarFill, { width: `${trustProgress * 100}%` }]} />
+        {isGuest ? (
+          /* ── Guest — no stats/dogs/badges to show, just a warm invite ── */
+          <View style={styles.guestSection}>
+            <View style={[styles.avatarWrap, styles.guestAvatar]}>
+              <Text style={styles.guestAvatarEmoji}>👤</Text>
             </View>
-            <Text style={styles.trustCardHint}>{t('profile.trust.hint')}</Text>
+            <Text style={styles.guestTitle}>{t('profile.guestEmpty.title')}</Text>
+            <TouchableOpacity
+              style={styles.guestBtn}
+              onPress={() => navigation.navigate('Register')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.guestBtnTxt}>{t('profile.guestEmpty.cta')}</Text>
+            </TouchableOpacity>
           </View>
-        )}
-
-        {/* ── Stats row ── */}
-        <View style={[styles.card, styles.statsRow]}>
-          <StatCol value={String(stats.walks)}        label={t('profile.stats.walks')} />
-          <View style={styles.statDivider} />
-          <StatCol value={stats.km.toFixed(1)}        label={t('profile.stats.km')} />
-          <View style={styles.statDivider} />
-          <StatCol value={String(stats.markers)}      label={t('profile.stats.markers')} />
-          <View style={styles.statDivider} />
-          {/* TODO: Friends feature not yet implemented — hardcoded 0 */}
-          <StatCol value="0"                          label={t('profile.stats.friends')} />
-        </View>
-
-        {/* ── My dog(s) ── */}
-        <SectionHeader title={t('profile.myDog')} />
-        {dogs.map((dog) => (
-          <DogCard
-            key={dog.id}
-            dog={dog}
-            onEdit={() => navigation.navigate('DogProfile', { dogId: dog.id })}
-            t={t}
-          />
-        ))}
-        <TouchableOpacity
-          style={styles.addDogBtn}
-          onPress={() => navigation.navigate('DogProfile')}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.addDogTxt}>+ {t('profile.addDog')}</Text>
-        </TouchableOpacity>
-
-        {/* ── Recent walks ── */}
-        {recentWalks.length > 0 && (
+        ) : (
           <>
-            <SectionHeader title={t('profile.recentWalks')} />
-            {recentWalks.map((w) => (
-              <WalkRow key={w.id} walk={w} />
+            {/* ── Avatar + user info ── */}
+            <View style={styles.heroSection}>
+              <View style={styles.avatarWrap}>
+                <AvatarView
+                  googleUrl={profile?.google_avatar_url ?? null}
+                  size={88}
+                />
+              </View>
+
+              <Text style={styles.displayName}>{displayName}</Text>
+
+              {/* Trust badge */}
+              <View style={[styles.trustBadge, isTrusted && styles.trustBadgeTrusted]}>
+                <Text style={[styles.trustBadgeTxt, isTrusted && styles.trustBadgeTxtTrusted]}>
+                  ⭐ {isTrusted ? t('profile.trust.trusted') : t('profile.trust.beginner')}
+                </Text>
+              </View>
+
+              <Text style={styles.memberSince}>{t('profile.memberSince')} {memberSince}</Text>
+            </View>
+
+            {/* ── Trust progress (Beginner only) ── */}
+            {!isTrusted && (
+              <View style={[styles.card, styles.trustCard]}>
+                <Text style={styles.trustCardTitle}>{t('profile.trust.progressTitle')}</Text>
+                <View style={styles.trustBarBg}>
+                  <View style={[styles.trustBarFill, { width: `${trustProgress * 100}%` }]} />
+                </View>
+                <Text style={styles.trustCardHint}>{t('profile.trust.hint')}</Text>
+              </View>
+            )}
+
+            {/* ── Stats row ── */}
+            <View style={[styles.card, styles.statsRow]}>
+              <StatCol value={String(stats.walks)}        label={t('profile.stats.walks')} />
+              <View style={styles.statDivider} />
+              <StatCol value={stats.km.toFixed(1)}        label={t('profile.stats.km')} />
+              <View style={styles.statDivider} />
+              <StatCol value={String(stats.markers)}      label={t('profile.stats.markers')} />
+              <View style={styles.statDivider} />
+              {/* TODO: Friends feature not yet implemented — hardcoded 0 */}
+              <StatCol value="0"                          label={t('profile.stats.friends')} />
+            </View>
+
+            {/* ── My dog(s) ── */}
+            <SectionHeader title={t('profile.myDog')} />
+            {dogs.map((dog) => (
+              <DogCard
+                key={dog.id}
+                dog={dog}
+                onEdit={() => navigation.navigate('DogProfile', { dogId: dog.id })}
+                t={t}
+              />
             ))}
+            <TouchableOpacity
+              style={styles.addDogBtn}
+              onPress={() => navigation.navigate('DogProfile')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.addDogTxt}>+ {t('profile.addDog')}</Text>
+            </TouchableOpacity>
+
+            {/* ── Achievements — personal milestones, not a leaderboard ── */}
+            <SectionHeader title={t('profile.badges.title')} />
+            <View style={[styles.card, styles.badgesGrid]}>
+              {BADGES.map((badge) => {
+                const earned = earnedBadgeIds.has(badge.id);
+                return (
+                  <View key={badge.id} style={[styles.badgeCell, !earned && styles.badgeCellLocked]}>
+                    <Text style={styles.badgeCellEmoji}>{badge.emoji}</Text>
+                    <Text
+                      style={[styles.badgeCellLabel, !earned && styles.badgeCellLabelLocked]}
+                      numberOfLines={2}
+                    >
+                      {t(badge.titleKey)}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* ── Recent walks ── */}
+            {recentWalks.length > 0 && (
+              <>
+                <SectionHeader title={t('profile.recentWalks')} />
+                {recentWalks.map((w) => (
+                  <WalkRow key={w.id} walk={w} />
+                ))}
+              </>
+            )}
+
+            {/* ── Logout ── */}
+            <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
+              <Text style={styles.logoutTxt}>{t('profile.logout')}</Text>
+            </TouchableOpacity>
           </>
         )}
-
-        {/* ── Logout ── */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
-          <Text style={styles.logoutTxt}>{t('profile.logout')}</Text>
-        </TouchableOpacity>
       </ScrollView>
 
     </View>
@@ -373,6 +416,8 @@ function DogTrait({ label, value }: { label: string; value: string }) {
 }
 
 function WalkRow({ walk }: { walk: Walk }) {
+  // Pre-duration_s rows only carry minutes — good enough for display
+  const durationSec = walk.duration_s ?? (walk.duration_min != null ? walk.duration_min * 60 : null);
   return (
     <View style={[styles.card, styles.walkRow]}>
       <View style={styles.walkLeft}>
@@ -380,7 +425,7 @@ function WalkRow({ walk }: { walk: Walk }) {
         <Text style={styles.walkTime}>{formatTime(walk.started_at)}</Text>
       </View>
       <View style={styles.walkStats}>
-        <WalkStat value={formatDuration(walk.duration_sec)} label="dur" />
+        <WalkStat value={formatDuration(durationSec)} label="dur" />
         <WalkStat value={walk.distance_km != null ? `${walk.distance_km.toFixed(2)} km` : '—'} label="dist" />
         <WalkStat value={walk.steps != null ? String(walk.steps) : '—'} label="steps" />
       </View>
@@ -417,6 +462,36 @@ const styles = StyleSheet.create({
 
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, gap: 12 },
+
+  // Guest empty state
+  guestSection: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 60,
+    paddingHorizontal: 24,
+  },
+  guestAvatar: {
+    width: 88, height: 88, borderRadius: 44,
+    backgroundColor: '#e8f0e6',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  guestAvatarEmoji: { fontSize: 40 },
+  guestTitle: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 21,
+  },
+  guestBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radii.lg,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    marginTop: 4,
+  },
+  guestBtnTxt: { fontSize: 15, fontWeight: '700', color: colors.white },
 
   // Hero
   heroSection: { alignItems: 'center', gap: 8, paddingVertical: 12 },
@@ -501,6 +576,26 @@ const styles = StyleSheet.create({
   dogTrait: { flex: 1, alignItems: 'center', gap: 3 },
   dogTraitLabel: { fontSize: 10, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
   dogTraitValue: { fontSize: 13, fontWeight: '600', color: colors.ink },
+
+  // Achievements grid
+  badgesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  badgeCell: {
+    flexBasis: '22%',
+    minWidth: 70,
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 8,
+  },
+  badgeCellLocked: { opacity: 0.35 },
+  badgeCellEmoji: { fontSize: 26 },
+  badgeCellLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.ink,
+    textAlign: 'center',
+    lineHeight: 13,
+  },
+  badgeCellLabelLocked: { color: colors.textMuted },
 
   // Add dog
   addDogBtn: {

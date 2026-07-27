@@ -6,6 +6,11 @@ export interface UseDeepLinkResult {
   clearPendingFriend: () => void;
 }
 
+// Standard 8-4-4-4-12 hex UUID shape (any version). Validated before the id
+// ever reaches a query so malformed/garbage deep links are dropped silently
+// instead of hitting the database.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Handles both the standalone/dev-client form (afkaf://add-friend/USER_ID)
 // and the Expo Go form (exp://host/--/add-friend/USER_ID) — expo-linking's
 // parse() normalizes the "--/" redirect prefix for us either way.
@@ -16,7 +21,8 @@ function extractFriendId(url: string): string | null {
   );
   const idx = segments.indexOf('add-friend');
   if (idx === -1 || !segments[idx + 1]) return null;
-  return segments[idx + 1];
+  const candidate = segments[idx + 1];
+  return UUID_RE.test(candidate) ? candidate : null;
 }
 
 export function useDeepLink(): UseDeepLinkResult {

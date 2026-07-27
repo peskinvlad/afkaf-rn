@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -39,8 +39,12 @@ export function CustomDrawer({ open, onClose, onNavigate, activeScreen }: Props)
 
   const slideAnim = useRef(new Animated.Value(0)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
+  // Stay mounted through the closing animation, unmount only once it
+  // finishes — avoids reading the private/untyped Animated.Value.__getValue().
+  const [mounted, setMounted] = useState(open);
 
   useEffect(() => {
+    if (open) setMounted(true);
     Animated.parallel([
       Animated.spring(slideAnim, {
         toValue: open ? 1 : 0,
@@ -53,7 +57,9 @@ export function CustomDrawer({ open, onClose, onNavigate, activeScreen }: Props)
         duration: 200,
         useNativeDriver: true,
       }),
-    ]).start();
+    ]).start(() => {
+      if (!open) setMounted(false);
+    });
   }, [open]);
 
   const translateX = slideAnim.interpolate({
@@ -61,7 +67,7 @@ export function CustomDrawer({ open, onClose, onNavigate, activeScreen }: Props)
     outputRange: [-DRAWER_W, 0],
   });
 
-  if (!open && slideAnim.__getValue() === 0) return null;
+  if (!mounted) return null;
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents={open ? 'auto' : 'none'}>

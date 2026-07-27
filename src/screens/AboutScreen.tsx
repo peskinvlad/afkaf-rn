@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,15 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useApp } from '../hooks/useApp';
+import { supabase } from '../lib/supabase';
+import { isDevUser } from '../constants/dev';
+import { DevPanel } from '../components/DevPanel';
+
+// Keep in sync with app.json → expo.version
+const APP_VERSION = '1.0.0';
+// Hidden dev entry: 5 quick taps on the version line within this window
+const DEV_TAP_COUNT = 5;
+const DEV_TAP_WINDOW_MS = 2000;
 
 const STRINGS = {
   ru: {
@@ -218,6 +227,34 @@ export default function AboutScreen() {
   const t = STRINGS[lang] ?? STRINGS.en;
   const isRTL = lang === 'he';
 
+  // ── Hidden dev entry ──────────────────────────────────────────────────────
+  // 5 quick taps on the version line open DevPanel — only for DEV_USER_IDS.
+  // For everyone else the taps are a silent no-op: no state, no UI trace.
+  const [devPanelVisible, setDevPanelVisible] = useState(false);
+  const currentUserId = useRef<string | null>(null);
+  const tapCount = useRef(0);
+  const firstTapAt = useRef(0);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      currentUserId.current = session?.user?.id ?? null;
+    });
+  }, []);
+
+  function handleVersionTap() {
+    const now = Date.now();
+    if (now - firstTapAt.current > DEV_TAP_WINDOW_MS) {
+      firstTapAt.current = now;
+      tapCount.current = 1;
+      return;
+    }
+    tapCount.current += 1;
+    if (tapCount.current >= DEV_TAP_COUNT && isDevUser(currentUserId.current)) {
+      tapCount.current = 0;
+      setDevPanelVisible(true);
+    }
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.hero}>
@@ -266,7 +303,14 @@ export default function AboutScreen() {
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>{t.madeWith}</Text>
+        <Text style={styles.versionText} onPress={handleVersionTap} suppressHighlighting>
+          v{APP_VERSION}
+        </Text>
       </View>
+
+      {devPanelVisible && (
+        <DevPanel visible={devPanelVisible} onClose={() => setDevPanelVisible(false)} />
+      )}
     </ScrollView>
   );
 }
@@ -306,6 +350,7 @@ const styles = StyleSheet.create({
   emailLink: { fontFamily: 'Nunito-SemiBold', fontSize: 15, color: PRIMARY_MID, marginTop: 8, textDecorationLine: 'underline' },
   footer: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 8, alignItems: 'center' },
   footerText: { fontFamily: 'Nunito-Regular', fontSize: 13, color: TEXT_LIGHT, textAlign: 'center' },
+  versionText: { fontFamily: 'Nunito-Regular', fontSize: 12, color: TEXT_LIGHT, marginTop: 6, paddingVertical: 8, paddingHorizontal: 16 },
   textRight: { textAlign: 'right' },
   rowReverse: { flexDirection: 'row-reverse' },
   faqSection: { marginBottom: 8 },

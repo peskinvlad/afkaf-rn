@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,40 +9,45 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  Animated,
+  Easing,
+  Keyboard,
 } from 'react-native';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Marker, Circle, PROVIDER_DEFAULT, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
+import { ensureLocationPermission } from '../lib/locationPermission';
+import { LocationRequiredCard } from '../components/LocationRequiredCard';
+import { haversine } from '../lib/geo';
+import { MARKER_CONFIG } from '../lib/markerConfig';
 import { colors, radii, shadows } from '../theme/tokens';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type MarkerType = 'hazard' | 'aggressive_dog' | 'forbidden' | 'danger';
-type ValidFor = '1h' | '3h' | 'allday';
 
-const MARKER_TYPES: { id: MarkerType; emoji: string; labelKey: string; selectedColor: string; selectedBg: string }[] = [
-  { id: 'hazard',         emoji: '⚠️', labelKey: 'addMarker.type.hazard',       selectedColor: '#ef4444', selectedBg: '#fee2e2' },
-  { id: 'aggressive_dog', emoji: '🦴', labelKey: 'addMarker.type.aggressiveDog', selectedColor: '#2c5f25', selectedBg: '#e8f0e6' },
-  { id: 'forbidden',      emoji: '🚫', labelKey: 'addMarker.type.noDogs',        selectedColor: '#2c5f25', selectedBg: '#e8f0e6' },
-  { id: 'danger',         emoji: '📍', labelKey: 'addMarker.type.other',         selectedColor: '#2c5f25', selectedBg: '#e8f0e6' },
-];
-
-const VALID_FOR_OPTIONS: { id: ValidFor; labelKey: string }[] = [
-  { id: '1h',     labelKey: 'addMarker.validFor.1h'     },
-  { id: '3h',     labelKey: 'addMarker.validFor.3h'     },
-  { id: 'allday', labelKey: 'addMarker.validFor.allDay' },
+// Icons and the active-chip fill come from MARKER_CONFIG — same visual
+// language as the pins on the map.
+const MARKER_TYPES: { id: MarkerType; labelKey: string }[] = [
+  { id: 'hazard',         labelKey: 'addMarker.type.hazard' },
+  { id: 'aggressive_dog', labelKey: 'addMarker.type.aggressiveDog' },
+  { id: 'forbidden',      labelKey: 'addMarker.type.noDogs' },
+  { id: 'danger',         labelKey: 'addMarker.type.other' },
 ];
 
 const FLORENTIN = { latitude: 32.0559, longitude: 34.7722 };
 
-function getExpiresAt(validFor: ValidFor): string {
-  const now = new Date();
-  if (validFor === '1h')     { now.setHours(now.getHours() + 1); }
-  if (validFor === '3h')     { now.setHours(now.getHours() + 3); }
-  if (validFor === 'allday') { now.setHours(23, 59, 59, 999); }
-  return now.toISOString();
-}
+// How far the marker may be nudged from the real GPS fix by panning the map.
+const ADJUST_RADIUS_M = 150;
+
+// Map block: fixed-height rounded map + the adjust hint below it. The whole
+// block collapses to 0 while the keyboard is up so chips + comment + submit
+// stay visible on one screen.
+const MAP_HEIGHT = 180;
+const MAP_BLOCK_HEIGHT = MAP_HEIGHT + 32; // + hint line
+const COLLAPSE_MS = 250;
 
 interface Props {
   navigation: any;
@@ -52,46 +57,156 @@ export function AddMarkerScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useApp();
 
+  // coords = the immutable GPS fix (circle centre + clamp anchor).
+  // markerCoords = the point actually saved = current map centre, kept within
+  // ADJUST_RADIUS_M of the fix. They start equal on a fresh fix.
   const [coords, setCoords] = useState(FLORENTIN);
-  const [locReady, setLocReady] = useState(false);
+  const [markerCoords, setMarkerCoords] = useState(FLORENTIN);
+  const mapRef = useRef<MapView>(null);
+  const isSnapping = useRef(false); // guards the snap-induced onRegionChangeComplete
+  // Map-area state machine:
+  //   'loading' → spinner (an attempt is actively in flight)
+  //   'nofix'   → GPS didn't return in time / errored → retry card
+  //   'ready'   → show the map (real fix, or the FLORENTIN fallback when
+  //               permission was denied — the handleAdd guard blocks saving there)
+  const [locState, setLocState] = useState<'loading' | 'nofix' | 'ready'>('loading');
+  const [locationGranted, setLocationGranted] = useState(false);
+  const [locationCardVisible, setLocationCardVisible] = useState(false);
 
   const [selectedType, setSelectedType] = useState<MarkerType>('hazard');
   const [description, setDescription]   = useState('');
-  const [validFor, setValidFor]         = useState<ValidFor>('1h');
   const [saving, setSaving]             = useState(false);
 
-  // ── Get current location once ─────────────────────────────────────────────
+  const mountedRef = useRef(true);
   useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') { setLocReady(true); return; }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      setCoords({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-      setLocReady(true);
-    })();
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
   }, []);
+
+  // ── Keyboard ⇄ map collapse ────────────────────────────────────────────────
+  // 0 = map visible, 1 = collapsed. Height animates on the JS thread (layout
+  // props don't support the native driver) — fine for a rare, short animation.
+  const collapse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const run = (toValue: number) =>
+      Animated.timing(collapse, {
+        toValue,
+        duration: COLLAPSE_MS,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: false,
+      }).start();
+    const showSub = Keyboard.addListener(showEvt, () => run(1));
+    const hideSub = Keyboard.addListener(hideEvt, () => run(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [collapse]);
+  const mapBlockHeight = collapse.interpolate({ inputRange: [0, 1], outputRange: [MAP_BLOCK_HEIGHT, 0] });
+  const mapBlockOpacity = collapse.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
+
+  // ── Get current location ──────────────────────────────────────────────────
+  // A marker is always the author's real physical position, so we insist on
+  // Accuracy.High (GPS) — never a wifi/cell estimate. Guarded with a 10s race
+  // (cold GPS start needs more than the 4s used elsewhere) so a failed fix
+  // shows the retry card instead of hanging forever. coords stays at the
+  // FLORENTIN fallback if permission is denied — used only for the preview,
+  // never for a saved marker (see the locationGranted guard in handleAdd).
+  const fetchLocation = useCallback(async () => {
+    setLocState('loading');
+    const { granted } = await ensureLocationPermission();
+    if (!mountedRef.current) return;
+    if (!granted) {
+      setLocationCardVisible(true);
+      setLocState('ready'); // permission-denied path unchanged: fallback map + card
+      return;
+    }
+    try {
+      const locPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000));
+      const loc = await Promise.race([locPromise, timeoutPromise]);
+      if (!mountedRef.current) return;
+      if (loc === null) {
+        setLocState('nofix'); // timed out — no fix within 10s
+        return;
+      }
+      const fix = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+      setCoords(fix);
+      setMarkerCoords(fix); // marker starts exactly on the fix, adjustable from there
+      setLocationGranted(true);
+      setLocState('ready');
+    } catch (_) {
+      if (!mountedRef.current) return;
+      setLocState('nofix'); // reject no longer swallowed
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLocation();
+  }, [fetchLocation]);
+
+  // ── Keep the marker (map centre) within ADJUST_RADIUS_M of the fix ──────────
+  // Pin and saved point always coincide: if the centre drifts past the radius
+  // we snap the map back to the nearest edge point rather than silently
+  // clamping only the stored coords.
+  function handleRegionChangeComplete(r: Region) {
+    if (!locationGranted) return; // fallback map (permission denied) isn't adjustable
+    if (isSnapping.current) {
+      isSnapping.current = false; // ignore the callback our own snap triggered
+      return;
+    }
+    const center = { latitude: r.latitude, longitude: r.longitude };
+    const distM = haversine(coords, center) * 1000;
+    if (distM <= ADJUST_RADIUS_M) {
+      setMarkerCoords(center);
+      return;
+    }
+    // Project the centre onto the circle edge (linear interp is exact enough at
+    // 150m scale) and animate the map there — a soft snap.
+    const ratio = ADJUST_RADIUS_M / distM;
+    const snapped = {
+      latitude: coords.latitude + (center.latitude - coords.latitude) * ratio,
+      longitude: coords.longitude + (center.longitude - coords.longitude) * ratio,
+    };
+    setMarkerCoords(snapped);
+    isSnapping.current = true;
+    mapRef.current?.animateToRegion(
+      { ...snapped, latitudeDelta: r.latitudeDelta, longitudeDelta: r.longitudeDelta },
+      250,
+    );
+  }
 
   // ── Save to Supabase ───────────────────────────────────────────────────────
   async function handleAdd() {
-    if (saving) return;
+    if (saving || !locationGranted) return; // never save a marker at the FLORENTIN fallback
+    // Second line of defence: the saved point must be within the adjust radius
+    // of the fix. Shouldn't trip while the snap works, but the guard stays
+    // (small epsilon absorbs float/interp rounding on the boundary).
+    if (haversine(coords, markerCoords) * 1000 > ADJUST_RADIUS_M + 5) {
+      Alert.alert(t('common.save_error'));
+      return;
+    }
     setSaving(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      await supabase.from('markers').insert({
+      const { error } = await supabase.from('markers').insert({
         type:       selectedType,
         description: description.trim() || null,
-        valid_for:  validFor,
-        lat:        coords.latitude,
-        lng:        coords.longitude,
+        lat:        markerCoords.latitude,
+        lng:        markerCoords.longitude,
         user_id:    session?.user?.id ?? null,
         created_at: new Date().toISOString(),
-        expires_at: getExpiresAt(validFor),
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       });
+      if (error) throw error;
+      navigation.goBack();
     } catch (_) {
-      // silent fail — marker may not be saved for guests
+      // Keep the screen open so the typed description isn't lost.
+      Alert.alert(t('common.save_error'));
     } finally {
       setSaving(false);
-      navigation.goBack();
     }
   }
 
@@ -117,66 +232,100 @@ export function AddMarkerScreen({ navigation }: Props) {
         <View style={styles.backBtn} />
       </View>
 
-      {/* ── Map preview ── */}
+      {/* ── Map block: rounded map + adjust hint, collapses under keyboard ── */}
+      <Animated.View style={{ height: mapBlockHeight, opacity: mapBlockOpacity, overflow: 'hidden' }}>
       <View style={styles.mapContainer}>
-        {locReady ? (
-          <MapView
-            style={StyleSheet.absoluteFill}
-            provider={PROVIDER_DEFAULT}
-            region={region}
-            scrollEnabled={false}
-            zoomEnabled={false}
-            pitchEnabled={false}
-            rotateEnabled={false}
-            showsCompass={false}
-            toolbarEnabled={false}
-          >
-            <Marker coordinate={coords} pinColor="#ef4444" />
-          </MapView>
-        ) : (
+        {locState === 'loading' ? (
           <View style={styles.mapLoading}>
             <ActivityIndicator color={colors.primary} />
           </View>
+        ) : locState === 'nofix' ? (
+          <View style={styles.noFixCard}>
+            <Text style={styles.noFixEmoji}>📡</Text>
+            <Text style={styles.noFixTitle}>{t('location.no_fix.title')}</Text>
+            <Text style={styles.noFixBody}>{t('location.no_fix.body')}</Text>
+            <TouchableOpacity style={styles.noFixBtn} onPress={fetchLocation} activeOpacity={0.85}>
+              <Text style={styles.noFixBtnTxt}>{t('location.no_fix.retry')}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <MapView
+              ref={mapRef}
+              style={StyleSheet.absoluteFill}
+              provider={PROVIDER_DEFAULT}
+              initialRegion={region}
+              scrollEnabled={locationGranted}
+              zoomEnabled={locationGranted}
+              minZoomLevel={15}
+              pitchEnabled={false}
+              rotateEnabled={false}
+              showsCompass={false}
+              toolbarEnabled={false}
+              onRegionChangeComplete={handleRegionChangeComplete}
+            >
+              {locationGranted ? (
+                <Circle
+                  center={coords}
+                  radius={ADJUST_RADIUS_M}
+                  strokeColor={colors.primary}
+                  strokeWidth={1.5}
+                  fillColor="rgba(44,95,37,0.12)"
+                />
+              ) : (
+                <Marker coordinate={coords} pinColor="#ef4444" />
+              )}
+            </MapView>
+            {/* Fixed centre pin — the marker point is always the map centre */}
+            {locationGranted && (
+              <View style={styles.centerPinOverlay} pointerEvents="none">
+                <View style={styles.centerPin} />
+              </View>
+            )}
+          </>
         )}
       </View>
 
-      {/* ── Form ── */}
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Type grid 2×2 */}
+      {/* ── Adjust hint — own line under the map, fully visible ── */}
+      {locState === 'ready' && locationGranted && (
+        <Text style={styles.adjustHint}>{t('marker.adjust_hint')}</Text>
+      )}
+      </Animated.View>
+
+      {/* ── Form — no vertical scroll: everything fits on one screen ── */}
+      <View style={styles.form}>
+        {/* Type chips — horizontal row, icons/colors from MARKER_CONFIG */}
         <Text style={styles.sectionLabel}>{t('addMarker.typeLabel')}</Text>
-        <View style={styles.typeGrid}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.typeRowScroll}
+          contentContainerStyle={styles.typeRow}
+          keyboardShouldPersistTaps="handled"
+        >
           {MARKER_TYPES.map((mt) => {
+            const cfg = MARKER_CONFIG[mt.id];
             const selected = selectedType === mt.id;
             return (
               <TouchableOpacity
                 key={mt.id}
                 style={[
-                  styles.typeBtn,
+                  styles.typeChip,
                   selected
-                    ? { backgroundColor: mt.selectedBg, borderColor: mt.selectedColor }
-                    : styles.typeBtnIdle,
+                    ? { backgroundColor: cfg.pinColor, borderColor: cfg.pinColor }
+                    : styles.typeChipIdle,
                 ]}
                 onPress={() => setSelectedType(mt.id)}
                 activeOpacity={0.75}
               >
-                <Text style={styles.typeEmoji}>{mt.emoji}</Text>
-                <Text
-                  style={[
-                    styles.typeLabel,
-                    selected ? { color: mt.selectedColor } : { color: colors.textMuted },
-                  ]}
-                >
+                <Text style={styles.typeChipEmoji}>{cfg.emoji}</Text>
+                <Text style={[styles.typeChipTxt, selected && styles.typeChipTxtActive]}>
                   {t(mt.labelKey)}
                 </Text>
               </TouchableOpacity>
             );
           })}
-        </View>
+        </ScrollView>
 
         {/* Comment */}
         <Text style={styles.sectionLabel}>{t('addMarker.commentLabel')}</Text>
@@ -188,45 +337,35 @@ export function AddMarkerScreen({ navigation }: Props) {
           onChangeText={setDescription}
           multiline
           numberOfLines={3}
+          maxLength={500}
           textAlignVertical="top"
         />
+      </View>
 
-        {/* Valid For pills */}
-        <Text style={styles.sectionLabel}>{t('addMarker.validForLabel')}</Text>
-        <View style={styles.pillRow}>
-          {VALID_FOR_OPTIONS.map((opt) => {
-            const selected = validFor === opt.id;
-            return (
-              <TouchableOpacity
-                key={opt.id}
-                style={[styles.pill, selected && styles.pillSelected]}
-                onPress={() => setValidFor(opt.id)}
-                activeOpacity={0.75}
-              >
-                <Text style={[styles.pillTxt, selected && styles.pillTxtSelected]}>
-                  {t(opt.labelKey)}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </ScrollView>
+      {/* Pushes the submit button to the bottom */}
+      <View style={styles.spacer} />
 
       {/* ── Add button — pinned to bottom ── */}
       <View style={[styles.addBtnContainer, { paddingBottom: insets.bottom + 12 }]}>
         <TouchableOpacity
-          style={[styles.addBtn, shadows.md, saving && styles.addBtnDisabled]}
+          style={[styles.addBtn, shadows.md, (saving || !locationGranted) && styles.addBtnDisabled]}
           onPress={handleAdd}
           activeOpacity={0.85}
-          disabled={saving}
+          disabled={saving || !locationGranted}
         >
           {saving ? (
             <ActivityIndicator color={colors.white} />
           ) : (
-            <Text style={styles.addBtnTxt}>{t('addMarker.submit')}</Text>
+            <Text style={styles.addBtnTxt}>
+              {locationGranted ? t('addMarker.submit') : t('location.no_fix.waiting')}
+            </Text>
           )}
         </TouchableOpacity>
       </View>
+
+      {locationCardVisible && (
+        <LocationRequiredCard onDismiss={() => setLocationCardVisible(false)} />
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -259,9 +398,12 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
 
-  // Map
+  // Map — fixed height, card-style rounding
   mapContainer: {
-    height: 210,
+    height: MAP_HEIGHT,
+    marginHorizontal: 16,
+    borderRadius: radii.lg,
+    overflow: 'hidden',
     backgroundColor: colors.card,
   },
   mapLoading: {
@@ -269,15 +411,69 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  // Scroll
-  scroll: { flex: 1 },
-  scrollContent: {
-    paddingTop: 20,
+  noFixCard: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    gap: 6,
+  },
+  noFixEmoji: { fontSize: 30 },
+  noFixTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.ink,
+    textAlign: 'center',
+  },
+  noFixBody: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  noFixBtn: {
+    marginTop: 8,
+    minHeight: 44,
+    paddingHorizontal: 20,
+    borderRadius: radii.lg,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noFixBtnTxt: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  centerPinOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  centerPin: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#ef4444',
+    borderWidth: 3,
+    borderColor: colors.white,
+    ...shadows.sm,
+  },
+  adjustHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 20,
+    paddingTop: 10,
+  },
+
+  // Form — plain block, no vertical scroll
+  form: {
+    paddingTop: 14,
+    paddingHorizontal: 16,
     gap: 10,
   },
+  spacer: { flex: 1 },
 
   // Section label
   sectionLabel: {
@@ -289,30 +485,34 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
-  // Type grid
-  typeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+  // Type chips — horizontal row, ≥48pt touch targets
+  typeRowScroll: { flexGrow: 0, marginHorizontal: -16 },
+  typeRow: {
+    paddingHorizontal: 16,
+    gap: 8,
   },
-  typeBtn: {
-    width: '47%',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderRadius: radii.md,
-    borderWidth: 1.5,
+  typeChip: {
+    height: 48,
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    paddingHorizontal: 14,
+    borderRadius: radii.full,
+    borderWidth: 1.5,
   },
-  typeBtnIdle: {
+  typeChipIdle: {
     backgroundColor: colors.card,
     borderColor: colors.border,
   },
-  typeEmoji: { fontSize: 22 },
-  typeLabel: {
+  // includeFontPadding — Android: kill baseline padding that sinks emoji
+  typeChipEmoji: { fontSize: 18, lineHeight: 20, textAlign: 'center', includeFontPadding: false },
+  typeChipTxt: {
     fontSize: 13,
     fontWeight: '600',
-    textAlign: 'center',
+    color: colors.textSecondary,
+  },
+  typeChipTxtActive: {
+    color: colors.white,
   },
 
   // Comment
@@ -329,34 +529,6 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
 
-  // Pills
-  pillRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  pill: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: radii.full,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    ...shadows.sm,
-  },
-  pillSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryLight,
-  },
-  pillTxt: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textMuted,
-  },
-  pillTxtSelected: {
-    color: colors.primary,
-  },
-
   // Add button — pinned to bottom
   addBtnContainer: {
     paddingHorizontal: 16,
@@ -368,7 +540,7 @@ const styles = StyleSheet.create({
   addBtn: {
     backgroundColor: colors.primary,
     borderRadius: radii.lg,
-    paddingVertical: 16,
+    paddingVertical: 18,
     alignItems: 'center',
   },
   addBtnDisabled: { opacity: 0.6 },

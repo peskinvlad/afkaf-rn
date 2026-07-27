@@ -6,11 +6,19 @@ import { supabase } from '../lib/supabase';
 import { LatLng } from '../lib/geo';
 import { RadiusFilter } from '../components/MarkerFilterSheet';
 import { useAsphaltTemp, HeatStatus, HourlyPoint } from './useAsphaltTemp';
+import { checkAndAwardBadges } from '../lib/badges';
+import { flushPendingWalkHistory } from '../lib/walkHistory';
 
 export interface HeatData {
   status: HeatStatus;
   surface_est_c: number;
   air_temp_c: number;
+}
+
+export interface AbandonedWalk {
+  distanceKm: number;
+  startedAt: string;
+  updatedAt: string;
 }
 
 export interface AppState {
@@ -33,10 +41,13 @@ export interface AppState {
   toggleCategory: (key: string) => void;
   userLocation: LatLng | null;
   setUserLocation: (loc: LatLng) => void;
+  abandonedWalk: AbandonedWalk | null;
+  clearAbandonedWalk: () => void;
   feelsLikeC: number | null;
   weatherDescription: string | null;
   weatherIcon: string | null;
   hourlyForecast: HourlyPoint[];
+  isFallbackLocation: boolean;
 }
 
 const DEFAULT_CATEGORIES: Record<string, boolean> = {
@@ -58,6 +69,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (data?.[0]) {
       setIsTrusted(data[0].is_trusted);
       setConfirmedCount(data[0].confirmed_count);
+      // Marker-count badges (marker_1/3/5/10/25) can only change here —
+      // confirmed_count is the only place this app learns a marker got
+      // confirmed by someone else. Fire-and-forget: no UI to show a new
+      // badge from this trigger, ProfileScreen just reflects it next open.
+      checkAndAwardBadges(data[0].confirmed_count);
     }
   }
 
@@ -65,10 +81,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (currentUserId.current) fetchTrustStatus(currentUserId.current);
   }
 
+  // ── Forgotten-walk recovery ──────────────────────────────────────────────
+  // Checked once per app session, right after a session becomes available.
+  // Any leftover active_walks row (stale or fresh — full walk resume isn't
+  // implemented, see WalkRecoveryModal) surfaces the recovery card.
+  const [abandonedWalk, setAbandonedWalk] = useState<AbandonedWalk | null>(null);
+  const hasCheckedAbandonedWalk = useRef(false);
+  // Walks that failed to insert on finish (see saveWalkHistory) are delivered
+  // once per app session, as soon as an authenticated session is available.
+  const hasFlushedPendingWalks = useRef(false);
+
+  function flushPendingWalksOnce() {
+    if (hasFlushedPendingWalks.current) return;
+    hasFlushedPendingWalks.current = true;
+    flushPendingWalkHistory();
+  }
+
+  async function checkAbandonedWalk(userId: string) {
+    if (hasCheckedAbandonedWalk.current) return;
+    hasCheckedAbandonedWalk.current = true;
+    const { data } = await supabase
+      .from('active_walks')
+      .select('distance_km, started_at, updated_at')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (data) {
+      setAbandonedWalk({
+        distanceKm: data.distance_km ?? 0,
+        startedAt: data.started_at,
+        updatedAt: data.updated_at,
+      });
+    }
+  }
+
+  function clearAbandonedWalk() {
+    setAbandonedWalk(null);
+  }
+
   // ── Live asphalt temperature (real OpenWeatherMap data, see useAsphaltTemp) ─
   const {
     surfaceTempC, airTempC, status: heatStatus, loading: isHeatLoading,
-    feelsLikeC, weatherDescription, weatherIcon, hourlyForecast,
+    feelsLikeC, weatherDescription, weatherIcon, hourlyForecast, isFallbackLocation,
   } = useAsphaltTemp();
   const heatData: HeatData = {
     status: heatStatus,
@@ -100,6 +153,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (session?.user) {
         currentUserId.current = session.user.id;
         fetchTrustStatus(session.user.id);
+        checkAbandonedWalk(session.user.id);
+        flushPendingWalksOnce();
       }
     });
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -107,6 +162,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (session?.user) {
         currentUserId.current = session.user.id;
         fetchTrustStatus(session.user.id);
+        checkAbandonedWalk(session.user.id);
+        flushPendingWalksOnce();
       } else {
         currentUserId.current = null;
         setIsTrusted(false);
@@ -149,10 +206,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         toggleCategory,
         userLocation,
         setUserLocation,
+        abandonedWalk,
+        clearAbandonedWalk,
         feelsLikeC,
         weatherDescription,
         weatherIcon,
         hourlyForecast,
+        isFallbackLocation,
       }}
     >
       {children}

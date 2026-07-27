@@ -162,7 +162,8 @@ const styles = StyleSheet.create({
     borderColor: '#2c5f25',
     backgroundColor: '#e8f0e6',
   },
-  categoryEmoji: { fontSize: 18 },
+  // includeFontPadding — Android: kill baseline padding that sinks emoji
+  categoryEmoji: { fontSize: 18, lineHeight: 20, textAlign: 'center', includeFontPadding: false },
   categoryLabel: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.ink },
   checkbox: {
     width: 22, height: 22, borderRadius: 6,

@@ -11,7 +11,7 @@ export function useMapMarkers() {
       const now = new Date().toISOString();
       const { data, error } = await supabase
         .from('markers')
-        .select('id, type, lat, lng, description, user_id')
+        .select('id, type, lat, lng, description, user_id, created_at')
         .or(`expires_at.is.null,expires_at.gt."${now}"`);
       if (error) {
         console.warn('[useMapMarkers] markers fetch error:', error.message, error.code);

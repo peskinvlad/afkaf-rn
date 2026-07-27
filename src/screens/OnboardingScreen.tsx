@@ -10,6 +10,7 @@ const SLIDES = [
   { key: '1', emoji: '🗺️' },
   { key: '2', emoji: '⚠️' },
   { key: '3', emoji: '🐕‍🦺' },
+  { key: '4', emoji: '🔒' },
 ];
 
 interface Props {

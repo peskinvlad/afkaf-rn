@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { X } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
 import { colors, radii, shadows } from '../theme/tokens';
@@ -85,19 +86,17 @@ export function AuthScreen({ navigation }: Props) {
       return;
     }
 
-    console.warn('[Auth] redirect URL contained neither code nor tokens:', url);
+    console.warn('[Auth] redirect URL contained neither code nor tokens');
     setLoadingProvider(null);
   }
 
   // ── Linking fallback (Android / browser escaping the session) ─────────────
   useEffect(() => {
     const sub = Linking.addEventListener('url', ({ url }) => {
-      console.log('[Auth] Linking.addEventListener fired:', url.slice(0, 200));
       handleRedirectUrl(url);
     });
     Linking.getInitialURL().then((url) => {
       if (url) {
-        console.log('[Auth] getInitialURL:', url.slice(0, 200));
         handleRedirectUrl(url);
       }
     });
@@ -122,17 +121,11 @@ export function AuthScreen({ navigation }: Props) {
         return;
       }
 
-      console.log('[Auth] redirectTo:', REDIRECT_URI);
-      console.log('[Auth] OAuth URL:', data.url.slice(0, 120), '…');
-
       // ASWebAuthenticationSession (iOS) / Chrome Custom Tabs (Android).
       // Closes automatically when it detects a redirect to REDIRECT_URI.
       const result = await WebBrowser.openAuthSessionAsync(data.url, REDIRECT_URI);
 
-      console.log('[Auth] WebBrowser result type:', result.type);
-      console.log('[Auth] WebBrowser result full:', JSON.stringify(result));
       if (result.type === 'success') {
-        console.log('[Auth] redirect URL:', result.url.slice(0, 200));
         await handleRedirectUrl(result.url);
       } else {
         // type === 'cancel' or 'dismiss' — Linking listener may still fire if OS handled the deep link
@@ -147,6 +140,14 @@ export function AuthScreen({ navigation }: Props) {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      {/* ── Close — a guest should always have a way out ── */}
+      <TouchableOpacity
+        style={[styles.closeBtn, { top: insets.top + 8 }]}
+        onPress={() => navigation.goBack()}
+        hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+      >
+        <X size={22} color={colors.textMuted} />
+      </TouchableOpacity>
 
       {/* ── Logo + branding ── */}
       <View style={styles.hero}>
@@ -217,6 +218,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     justifyContent: 'space-between',
     paddingHorizontal: 24,
+  },
+
+  closeBtn: {
+    position: 'absolute',
+    right: 20,
+    zIndex: 10,
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Hero

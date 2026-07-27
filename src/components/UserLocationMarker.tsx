@@ -1,9 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { Animated, View, Text, StyleSheet } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 
 interface Props {
-  heading: number;   // degrees clockwise from north (0-360)
+  // Continuous heading in degrees from useHeading — drives the rotation on
+  // the native thread; a compass tick never re-renders this component.
+  headingAnim: Animated.Value;
   accuracy?: number; // metres — shown as ring when < 120
 }
 
@@ -17,29 +19,17 @@ const R = 17;          // outer circle radius
 //   left  (18, 8): distance to (24,24) ≈ 17.09 ✓
 //   right (30, 8): same by symmetry ✓
 // Tip at (24, 2) — 6px above the circle edge.
-// Arc goes clockwise from left-base to right-base covering the bottom 320° of the circle.
-const SHELL_PATH = `M ${CX} 2 L 18 8 A ${R} ${R} 0 1 1 30 8 Z`;
+// Arc from left-base to right-base covers the bottom 320° of the circle:
+// >180° → large-arc-flag 1; the walk left-base → bottom → right-base is
+// counterclockwise on screen (SVG y-down) → sweep-flag 0. Sweep 1 would make
+// the renderer pick the mirrored arc centre above the marker and bulge the
+// arc outwards past the tip.
+const SHELL_PATH = `M ${CX} 2 L 18 8 A ${R} ${R} 0 1 0 30 8 Z`;
 
-export function UserLocationMarker({ heading, accuracy }: Props) {
-  const rotateAnim = useRef(new Animated.Value(heading)).current;
-  const prevHeading = useRef(heading);
-
-  useEffect(() => {
-    // Shortest-arc rotation — avoids spinning the long way round 359° → 0°
-    let delta = heading - (prevHeading.current % 360);
-    if (delta > 180) delta -= 360;
-    if (delta < -180) delta += 360;
-    const target = prevHeading.current + delta;
-    prevHeading.current = target;
-
-    Animated.timing(rotateAnim, {
-      toValue: target,
-      duration: 250,
-      useNativeDriver: true,
-    }).start();
-  }, [heading]);
-
-  const rotate = rotateAnim.interpolate({
+export function UserLocationMarker({ headingAnim, accuracy }: Props) {
+  // Shortest-arc unwrapping happens in useHeading; here the continuous value
+  // maps straight to degrees (default extrapolation covers many full turns).
+  const rotate = headingAnim.interpolate({
     inputRange: [-720, 720],
     outputRange: ['-720deg', '720deg'],
   });

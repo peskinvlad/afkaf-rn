@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 import { LatLng } from '../lib/geo';
+import { getDevAsphaltOverride, onDevSettingsChange } from '../constants/dev';
 
 export type HeatStatus = 'ok' | 'caution' | 'danger';
 
@@ -16,6 +17,7 @@ export type HourlyPoint = {
 const FLORENTIN_FALLBACK: LatLng = { latitude: 32.0559, longitude: 34.7722 };
 
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes, same cadence as the PWA
+const RETRY_DELAY_MS = 15 * 1000; // one retry per failed update, so a single network blip doesn't leave the widget stale for 30 min
 
 interface AsphaltTempResult {
   surfaceTempC: number | null;
@@ -26,6 +28,7 @@ interface AsphaltTempResult {
   weatherDescription: string | null;
   weatherIcon: string | null;
   hourlyForecast: HourlyPoint[];
+  isFallbackLocation: boolean;
 }
 
 function statusFor(surfaceTempC: number): HeatStatus {
@@ -85,61 +88,108 @@ export function useAsphaltTemp(): AsphaltTempResult {
   const [weatherIcon, setWeatherIcon] = useState<string | null>(null);
   const [hourlyForecast, setHourlyForecast] = useState<HourlyPoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isFallbackLocation, setIsFallbackLocation] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Dev-only asphalt override (null for everyone outside DEV_USER_IDS — the
+  // getter checks the list itself). OWM keeps fetching as usual; the override
+  // only replaces the surface temperature on the way out, so the widget and
+  // HeatWarning react to it as if it were real.
+  const [devOverrideC, setDevOverrideC] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      getDevAsphaltOverride().then((v) => {
+        if (!cancelled) setDevOverrideC(v);
+      });
+    };
+    refresh();
+    const unsubscribe = onDevSettingsChange(refresh);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-    async function update() {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      let coords = FLORENTIN_FALLBACK;
-      if (status === 'granted') {
-        const locPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, timeInterval: 3000 });
-        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000));
-        const loc = await Promise.race([locPromise, timeoutPromise]);
-        if (loc !== null) {
-          coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+    // Never throws — a failed update keeps the last successful data on screen
+    // and reports success so the caller can schedule the single retry.
+    async function update(): Promise<boolean> {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        let coords = FLORENTIN_FALLBACK;
+        let usedFallback = true;
+        if (status === 'granted') {
+          const locPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, timeInterval: 3000 });
+          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000));
+          const loc = await Promise.race([locPromise, timeoutPromise]);
+          if (loc !== null) {
+            coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+            usedFallback = false;
+          }
         }
+        if (cancelled) return true;
+        setIsFallbackLocation(usedFallback);
+
+        // Fire both requests in parallel, but unblock loading as soon as current weather arrives
+        const currentPromise = fetchCurrentWeather(coords.latitude, coords.longitude);
+        const forecastPromise = fetchForecast(coords.latitude, coords.longitude);
+
+        const current = await currentPromise;
+        if (cancelled) return true;
+        if (current !== null) {
+          setAirTempC(Math.round(current.temp));
+          setSurfaceTempC(Math.round(current.temp * 1.3 + 2));
+          setFeelsLikeC(Math.round(current.feelsLike));
+          setWeatherDescription(current.description);
+          setWeatherIcon(current.icon);
+        }
+        setLoading(false);
+
+        // Forecast arrives slightly later — update separately without blocking main UI
+        const forecast = await forecastPromise;
+        if (cancelled) return true;
+        console.log('[useAsphaltTemp] hourlyForecast length:', forecast.length, 'first:', forecast[0]);
+        setHourlyForecast(forecast);
+        return true;
+      } catch (e) {
+        console.warn('[asphaltTemp] update failed:', e);
+        return false;
       }
-
-      // Fire both requests in parallel, but unblock loading as soon as current weather arrives
-      const currentPromise = fetchCurrentWeather(coords.latitude, coords.longitude);
-      const forecastPromise = fetchForecast(coords.latitude, coords.longitude);
-
-      const current = await currentPromise;
-      if (cancelled) return;
-      if (current !== null) {
-        setAirTempC(Math.round(current.temp));
-        setSurfaceTempC(Math.round(current.temp * 1.3 + 2));
-        setFeelsLikeC(Math.round(current.feelsLike));
-        setWeatherDescription(current.description);
-        setWeatherIcon(current.icon);
-      }
-      setLoading(false);
-
-      // Forecast arrives slightly later — update separately without blocking main UI
-      const forecast = await forecastPromise;
-      if (cancelled) return;
-      console.log('[useAsphaltTemp] hourlyForecast length:', forecast.length, 'first:', forecast[0]);
-      setHourlyForecast(forecast);
     }
 
-    update();
-    timerRef.current = setInterval(update, REFRESH_INTERVAL_MS);
+    // One retry, RETRY_DELAY_MS later; the retry itself never re-schedules
+    async function updateWithRetry() {
+      const ok = await update();
+      if (!ok && !cancelled) {
+        if (retryTimer) clearTimeout(retryTimer);
+        retryTimer = setTimeout(() => { update(); }, RETRY_DELAY_MS);
+      }
+    }
+
+    updateWithRetry();
+    timerRef.current = setInterval(updateWithRetry, REFRESH_INTERVAL_MS);
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
 
+  const effectiveSurfaceC = devOverrideC ?? surfaceTempC;
+
   return {
-    surfaceTempC,
+    surfaceTempC: effectiveSurfaceC,
     airTempC,
-    status: surfaceTempC !== null ? statusFor(surfaceTempC) : 'ok',
+    status: effectiveSurfaceC !== null ? statusFor(effectiveSurfaceC) : 'ok',
     loading,
     feelsLikeC,
     weatherDescription,
     weatherIcon,
     hourlyForecast,
+    isFallbackLocation,
   };
 }

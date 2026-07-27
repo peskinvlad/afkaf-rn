@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -117,7 +118,6 @@ export function DogProfileScreen({ navigation, route }: Props) {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
-      console.log('[DogProfile] userId:', userId, 'dogId:', dogId);
 
       // ── Derive owner_name from profiles.display_name (first word only) ──
       let ownerFirstName: string | null = null;
@@ -128,7 +128,9 @@ export function DogProfileScreen({ navigation, route }: Props) {
           .eq('id', userId)
           .maybeSingle();
         const displayName = profileData?.display_name?.trim();
-        ownerFirstName = displayName ? displayName.split(/\s+/)[0] : null;
+        // Cap at the dogs.owner_name CHECK (≤50); first word is normally short,
+        // but the source is external (OAuth), so guard the write.
+        ownerFirstName = displayName ? displayName.split(/\s+/)[0].slice(0, 50) : null;
       }
 
       // ── Upload photo ──
@@ -140,24 +142,21 @@ export function DogProfileScreen({ navigation, route }: Props) {
         const safeExt  = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
         const path     = `${userId}/dog.${safeExt}`;
 
-        console.log('[DogProfile] uploading photo to path:', path);
         const base64 = await FileSystem.readAsStringAsync(photoUri, {
           encoding: FileSystem.EncodingType.Base64,
         });
         const bytes = toByteArray(base64);
-        console.log('[DogProfile] photo byte length:', bytes.length);
         const { error: uploadError } = await supabase.storage
           .from('dog-photos')
           .upload(path, bytes, { upsert: true, contentType: `image/${safeExt}` });
 
         if (uploadError) {
-          console.log('[DogProfile] photo upload error:', JSON.stringify(uploadError));
+          console.warn('[DogProfile] photo upload error:', uploadError.message);
         } else {
           const { data: urlData } = supabase.storage
             .from('dog-photos')
             .getPublicUrl(path);
           photoUrl = urlData.publicUrl;
-          console.log('[DogProfile] photo_url:', photoUrl);
         }
       }
 
@@ -177,27 +176,27 @@ export function DogProfileScreen({ navigation, route }: Props) {
         ...(photoUrl !== null ? { photo_url: photoUrl } : {}),
       };
 
-      console.log('[DogProfile] saving payload:', JSON.stringify(payload));
-
       if (dogId) {
         // Edit mode — update the specific row
         const { error } = await supabase
           .from('dogs')
           .update(payload)
           .eq('id', dogId);
-        console.log('[DogProfile] update error:', JSON.stringify(error));
+        if (error) throw error;
       } else {
         // Create mode — insert a new dog
         const { error } = await supabase
           .from('dogs')
           .insert(payload);
-        console.log('[DogProfile] insert error:', JSON.stringify(error));
+        if (error) throw error;
       }
+      navigation.goBack();
     } catch (e) {
-      console.warn('[DogProfile] save exception:', e);
+      // Keep the screen open so the entered form data isn't lost.
+      console.warn('[DogProfile] save error:', e);
+      Alert.alert(t('common.save_error'));
     } finally {
       setSaving(false);
-      navigation.goBack();
     }
   }
 
@@ -284,6 +283,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
           placeholderTextColor={colors.textSoft}
           value={dogName}
           onChangeText={setDogName}
+          maxLength={50}
         />
 
         {/* ── Breed ── */}
@@ -294,6 +294,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
           placeholderTextColor={colors.textSoft}
           value={breed}
           onChangeText={setBreed}
+          maxLength={50}
         />
 
         {/* ── Age + Weight in a row ── */}

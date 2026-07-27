@@ -25,7 +25,7 @@ function fmtTime(epoch: number): string {
   return `${h}:${m}`;
 }
 
-type LucideIcon = React.ComponentType<{ size?: number; color?: string }>;
+type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 
 const OWM_ICON_MAP: Record<string, LucideIcon> = {
   '01d': Sun,    '01n': Moon,
@@ -41,6 +41,21 @@ const OWM_ICON_MAP: Record<string, LucideIcon> = {
 
 function iconToLucide(icon: string): LucideIcon {
   return OWM_ICON_MAP[icon] ?? Cloud;
+}
+
+// One size + one stroke for every weather icon. Icons that read optically
+// smaller in the same bounding box get a size multiplier — never a stroke
+// change. Keyed by OWM code (day/night pairs listed together). The icon is
+// rendered inside a fixed WEATHER_ICON_SIZE box so multipliers don't shift
+// the forecast card layout.
+const WEATHER_ICON_SIZE = 32;
+const WEATHER_ICON_STROKE = 1.5;
+const WEATHER_ICON_OPTICAL: Record<string, number> = {
+  '03d': 1.15, '03n': 1.15, // Cloud — squat single-cloud glyph
+};
+
+function weatherIconSize(icon: string): number {
+  return Math.round(WEATHER_ICON_SIZE * (WEATHER_ICON_OPTICAL[icon] ?? 1));
 }
 
 // Temperature scale: maps 0–55°C range to a 0–1 position, clamped
@@ -67,7 +82,7 @@ const TIPS_KEYS = ['heat.tips.0', 'heat.tips.1', 'heat.tips.2'] as const;
 
 export function PavementTempScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
-  const { t, heatData, feelsLikeC, weatherDescription, weatherIcon, hourlyForecast } = useApp();
+  const { t, heatData, feelsLikeC, weatherDescription, weatherIcon, hourlyForecast, isFallbackLocation } = useApp();
 
   const status = heatData.status;
   const vis = heatVis[status];
@@ -129,6 +144,12 @@ export function PavementTempScreen({ navigation }: any) {
             {t(`heat.advice.${status}`)}
           </Text>
         </View>
+
+        {/* Fallback-location caption — only when coords are FLORENTIN_FALLBACK,
+            not compared here: useAsphaltTemp already tracks this itself. */}
+        {isFallbackLocation && (
+          <Text style={styles.fallbackLocationCaption}>{t('heat.fallback_location.caption')}</Text>
+        )}
 
         {/* ── B. Air card ── */}
         <View style={[styles.airCard, shadows.sm]}>
@@ -195,7 +216,9 @@ export function PavementTempScreen({ navigation }: any) {
                     <Text style={[styles.forecastTime, isCurrent && styles.forecastTimeBold]}>
                       {fmtTime(pt.timeEpoch)}
                     </Text>
-                    <WeatherIcon size={32} color="#888" strokeWidth={1.5} />
+                    <View style={styles.forecastIconBox}>
+                      <WeatherIcon size={weatherIconSize(pt.icon)} color="#888" strokeWidth={WEATHER_ICON_STROKE} />
+                    </View>
                     <Text style={styles.forecastAir}>{pt.airTempC}°</Text>
                     <Text style={[styles.forecastSurface, { color: ptVis.color }]}>
                       {pt.surfaceTempC}°
@@ -293,6 +316,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     alignItems: 'center',
     gap: spacing.xs,
+  },
+  fallbackLocationCaption: {
+    fontSize: 11,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: -spacing.sm,
   },
   statusIcon: {
     fontSize: 40,
@@ -420,6 +449,12 @@ const styles = StyleSheet.create({
   forecastTime: {
     ...typography.xs,
     color: colors.textMuted,
+  },
+  forecastIconBox: {
+    width: WEATHER_ICON_SIZE,
+    height: WEATHER_ICON_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   forecastTimeBold: {
     fontFamily: 'Nunito_700Bold',

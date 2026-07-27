@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,24 +9,30 @@ import {
   Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import MapView, { PROVIDER_DEFAULT, Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { Menu, Bell, SlidersHorizontal } from 'lucide-react-native';
+import { Menu, Bell, SlidersHorizontal, Locate } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { colors, radii, shadows, heatVis } from '../theme/tokens';
 import { WalkSlider } from '../components/WalkSlider';
 import { MarkerFilterSheet, RadiusFilter } from '../components/MarkerFilterSheet';
 import { MarkerDetailSheet } from '../components/MarkerDetailSheet';
 import { UserLocationMarker } from '../components/UserLocationMarker';
+import { MapMarkerIcon } from '../components/MapMarkerIcon';
 import { useMapMarkers } from '../hooks/useMapMarkers';
+import { useHeading } from '../hooks/useHeading';
+import { useNearbyDogs } from '../hooks/useNearbyDogs';
 import NearbyDogsSheet from '../components/NearbyDogsSheet';
+import { CoverageBanner } from '../components/CoverageBanner';
+import { LocationRequiredCard } from '../components/LocationRequiredCard';
 import { filterMarkersAndWater } from '../lib/markerFilter';
 import { MARKER_CONFIG } from '../lib/markerConfig';
+import { ensureLocationPermission } from '../lib/locationPermission';
+import { supabase } from '../lib/supabase';
 
 // Florentin, Tel Aviv
 const FLORENTIN_COORD: [number, number] = [34.7722, 32.0559];
-
-const WALKERS_NOW = 3;
 
 // Base resting position of the heat card / FAB, and how far they lift when
 // NearbyDogsSheet is open — kept in sync with its own spring/timing so both
@@ -48,16 +54,20 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   } = useApp();
 
   const { markers, waterSources } = useMapMarkers();
+  const { dogs: nearbyDogs, hiddenCount: nearbyHiddenCount, locationAvailable: nearbyLocationAvailable } = useNearbyDogs(userLocation);
+  const nearbyTotal = nearbyDogs.length + nearbyHiddenCount;
 
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [nearbySheetVisible, setNearbySheetVisible] = useState(false);
   const [bottomPanelHeight, setBottomPanelHeight] = useState(130);
   const [detailMarker, setDetailMarker] = useState<import('../lib/markerConfig').MapMarker | null>(null);
+  const [locationCardVisible, setLocationCardVisible] = useState(false);
 
   // Lift the heat card / FAB above NearbyDogsSheet while it's open, in sync
   // with its own open/close animation.
   const [nearbySheetHeight, setNearbySheetHeight] = useState(SHEET_HEIGHT_FALLBACK);
   const widgetsBottom = useRef(new Animated.Value(WIDGETS_BASE_BOTTOM)).current;
+  const mapRef = useRef<MapView | null>(null);
 
   useEffect(() => {
     // Open: sit just above the sheet's top edge. Closed: rest at the base offset.
@@ -70,66 +80,179 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     animation.start();
   }, [nearbySheetVisible, nearbySheetHeight, widgetsBottom]);
 
-  // Live user position + heading for the custom location marker
+  // Live user position for the custom location marker
   const [livePos, setLivePos] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [heading, setHeading] = useState(0);
   const [accuracy, setAccuracy] = useState<number | undefined>(undefined);
-  // tracksViewChanges: briefly true after each heading update so react-native-maps redraws
-  const [tracksViewChanges, setTracksViewChanges] = useState(true);
-  const tracksTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Subscriptions live in refs (not the effect closure) so a late start —
+  // an in-app grant via handleEnableLocation — is still covered by the
+  // unmount cleanup. Caller is responsible for permission being granted.
+  const locationSubRef = useRef<Location.LocationSubscription | null>(null);
+  const locationUnmountedRef = useRef(false);
+
+  // Compass: Animated.Value straight into the marker — a heading tick never
+  // re-renders this screen. Enabled once location permission is confirmed
+  // (same gate the old inline watcher had via startLocationWatcher), and
+  // paused while a walk is active — WalkScreen owns the compass then.
+  const [locationGranted, setLocationGranted] = useState(false);
+  const headingAnim = useHeading(locationGranted && !isWalking);
+  // Ref mirror of isWalking for the async gap in startLocationWatcher —
+  // a walk that started while watchPositionAsync was in flight must not
+  // leave a live duplicate subscription behind.
+  const walkPausedRef = useRef(isWalking);
+
+  async function startLocationWatcher() {
+    setLocationGranted(true); // callers only invoke this with permission granted
+    if (locationSubRef.current) return; // one watcher max
+    const sub = await Location.watchPositionAsync(
+      { accuracy: Location.Accuracy.High, timeInterval: 1000, distanceInterval: 2 },
+      (loc) => {
+        const pt = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+        setLivePos(pt);
+        setUserLocation(pt);
+        setAccuracy(loc.coords.accuracy ?? undefined);
+      }
+    );
+    // While we awaited: a concurrent start may have won, the screen unmounted,
+    // or a walk began (WalkScreen's watcher feeds the shared context now)
+    if (locationUnmountedRef.current || locationSubRef.current || walkPausedRef.current) {
+      sub.remove();
+      return;
+    }
+    locationSubRef.current = sub;
+  }
+
+  // Walk starts → drop our GPS watcher (WalkScreen runs its own and writes
+  // userLocation to the shared context). Walk ends → resume, provided
+  // permission was ever granted.
+  useEffect(() => {
+    walkPausedRef.current = isWalking;
+    if (isWalking) {
+      locationSubRef.current?.remove();
+      locationSubRef.current = null;
+    } else if (locationGranted) {
+      startLocationWatcher();
+    }
+  }, [isWalking, locationGranted]);
 
   useEffect(() => {
-    let sub: Location.LocationSubscription | null = null;
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return;
-      sub = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.High, timeInterval: 1000, distanceInterval: 2 },
-        (loc) => {
-          const pt = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-          setLivePos(pt);
-          setUserLocation(pt);
-          setAccuracy(loc.coords.accuracy ?? undefined);
-          if (loc.coords.heading != null && loc.coords.heading >= 0) {
-            setHeading(loc.coords.heading);
-          }
-          // Briefly re-enable tracksViewChanges so the marker view redraws
-          setTracksViewChanges(true);
-          if (tracksTimer.current) clearTimeout(tracksTimer.current);
-          tracksTimer.current = setTimeout(() => setTracksViewChanges(false), 200);
-        }
-      );
+      await startLocationWatcher();
     })();
     return () => {
-      sub?.remove();
-      if (tracksTimer.current) clearTimeout(tracksTimer.current);
+      locationUnmountedRef.current = true;
+      locationSubRef.current?.remove();
+      locationSubRef.current = null;
     };
   }, []);
 
   const hiddenCount = Object.values(activeCategories).filter((v) => !v).length;
 
+  // Bell badge: pending incoming friend requests. Lightweight head-count on
+  // focus — returning from NotificationsScreen refocuses Main, so the badge
+  // updates right after accept/decline without any polling.
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      if (isGuest) {
+        setPendingRequestCount(0);
+        return;
+      }
+      let cancelled = false;
+      (async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user || cancelled) return;
+        const { count } = await supabase
+          .from('friendships')
+          .select('id', { count: 'exact', head: true })
+          .eq('addressee_id', user.id)
+          .eq('status', 'pending');
+        if (!cancelled) setPendingRequestCount(count ?? 0);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [isGuest])
+  );
+
   // Geolocation is fetched lazily — only once the user picks a radius other than "all"
   async function handleRadiusChange(next: RadiusFilter) {
-    setRadius(next);
     if (next !== 'all' && !userLocation) {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
+      const { granted } = await ensureLocationPermission();
+      if (!granted) {
+        setLocationCardVisible(true);
+        return; // radius stays whatever it was — never silently claim "500m" while showing everything
+      }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       setUserLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
     }
+    setRadius(next);
+  }
+
+  // "Включить" in NearbyDogsSheet's no-location state. granted → start the
+  // watcher immediately (the mount effect never retries after a denial), so
+  // the sheet comes alive without leaving the screen. blocked → recovery card;
+  // a bare first-time denial already got its own native dialog from this same
+  // ensureLocationPermission() call.
+  async function handleEnableLocation() {
+    const { granted, blocked } = await ensureLocationPermission();
+    if (granted) {
+      startLocationWatcher();
+      return;
+    }
+    if (blocked) setLocationCardVisible(true);
   }
 
   const { filteredMarkers, filteredWaterSources } = filterMarkersAndWater(
     markers, waterSources, radius, activeCategories, userLocation,
   );
 
-  function handleStartWalk() {
+  async function handleStartWalk() {
+    // Location gate strictly before the heat intercept — without it the
+    // walk can start but never actually get tracked/saved (WalkScreen's
+    // GPS watcher silently no-ops without permission).
+    const { granted } = await ensureLocationPermission();
+    if (!granted) {
+      setLocationCardVisible(true);
+      return;
+    }
+
     if (heatData.status === 'danger') {
       navigation.navigate('HeatWarning');
     } else {
       setIsWalking(true);
       navigation.navigate('WalkActive');
     }
+  }
+
+  function centerMapOn(coord: { latitude: number; longitude: number }) {
+    // ~city-block zoom
+    mapRef.current?.animateToRegion(
+      { ...coord, latitudeDelta: 0.005, longitudeDelta: 0.005 },
+      350,
+    );
+  }
+
+  // One-shot centre on the user — no follow mode. Without a position yet:
+  // same permission flow as the other entry points (first-time denial already
+  // got its native dialog; blocked → recovery card).
+  async function handleCenterOnMe() {
+    if (userLocation) {
+      centerMapOn(userLocation);
+      return;
+    }
+    const { granted, blocked } = await ensureLocationPermission();
+    if (!granted) {
+      if (blocked) setLocationCardVisible(true);
+      return;
+    }
+    startLocationWatcher();
+    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    const pt = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+    setUserLocation(pt);
+    centerMapOn(pt);
   }
 
   function handleMenuPress() {
@@ -147,6 +270,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
 
       {/* ── Карта — занимает весь экран ── */}
       <MapView
+        ref={mapRef}
         style={StyleSheet.absoluteFill}
         provider={PROVIDER_DEFAULT}
         initialRegion={{
@@ -164,27 +288,31 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
             coordinate={livePos}
             anchor={{ x: 0.5, y: 0.5 }}
             flat
-            tracksViewChanges={tracksViewChanges}
+            // Constant true on this one marker only: the native-driven rotation
+            // needs a live view. The rest of the map never pulses anymore.
+            tracksViewChanges
           >
-            <UserLocationMarker heading={heading} accuracy={accuracy} />
+            <UserLocationMarker headingAnim={headingAnim} accuracy={accuracy} />
           </Marker>
         )}
 
         {filteredMarkers.map((m) => (
-          <Marker
+          <MapMarkerIcon
             key={m.id}
             coordinate={{ latitude: m.lat, longitude: m.lng }}
-            pinColor={MARKER_CONFIG[m.type]?.pinColor ?? '#6b7280'}
+            emoji={MARKER_CONFIG[m.type]?.emoji ?? '📍'}
+            color={MARKER_CONFIG[m.type]?.pinColor ?? '#6b7280'}
             onPress={() => setDetailMarker(m)}
           />
         ))}
 
         {filteredWaterSources.map((w) => (
-          <Marker
+          <MapMarkerIcon
             key={`water-${w.id}`}
             coordinate={{ latitude: w.lat, longitude: w.lng }}
+            emoji={MARKER_CONFIG.water.emoji}
+            color={MARKER_CONFIG.water.pinColor}
             title={MARKER_CONFIG.water.emoji}
-            pinColor={MARKER_CONFIG.water.pinColor}
             description={w.amenity ?? undefined}
           />
         ))}
@@ -222,6 +350,13 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         activeOpacity={0.8}
       >
         <Bell size={20} color={colors.ink} />
+        {pendingRequestCount > 0 && (
+          <View style={styles.filterBadge}>
+            <Text style={styles.filterBadgeTxt}>
+              {pendingRequestCount > 9 ? '9+' : pendingRequestCount}
+            </Text>
+          </View>
+        )}
       </TouchableOpacity>
 
       {/* ── Heat card ── */}
@@ -238,10 +373,18 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         </Animated.View>
       )}
 
-      {/* ── FAB ── */}
-      <Animated.View style={{ position: 'absolute', zIndex: 50, bottom: widgetsBottom, right: 16 }}>
+      {/* ── Right-hand map controls column: locate-me above add-marker FAB.
+             Physical right — deliberately not mirrored in RTL, same as the FAB. ── */}
+      <Animated.View style={{ position: 'absolute', zIndex: 50, bottom: widgetsBottom, right: 16, gap: 12 }}>
         <TouchableOpacity
-          style={[styles.fab, shadows.lg]}
+          style={[styles.mapControlBtn, shadows.lg]}
+          onPress={handleCenterOnMe}
+          activeOpacity={0.85}
+        >
+          <Locate size={24} color={colors.white} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.mapControlBtn, shadows.lg]}
           onPress={() => {
             if (isGuest) {
               navigation.navigate('RegisterPrompt');
@@ -257,6 +400,9 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         </TouchableOpacity>
       </Animated.View>
 
+      {/* ── Coverage banner — показывается, если пользователь вне зоны покрытия ── */}
+      <CoverageBanner />
+
       {/* ── NearbyDogsSheet — абсолютный, bottomOffset = высота нижней панели ── */}
       <View style={styles.nearbySheetWrap}>
         <NearbyDogsSheet
@@ -264,12 +410,10 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           onClose={() => setNearbySheetVisible(false)}
           bottomOffset={bottomPanelHeight}
           onHeightChange={setNearbySheetHeight}
-          dogs={[
-            { id: '1', name: 'Бублик', breed: 'Бигль', emoji: '🐶' },
-            { id: '2', name: 'Рекс', breed: 'Лабрадор', emoji: '🦮' },
-            { id: '3', name: 'Муха', breed: 'Дворняга', emoji: '🐕' },
-          ]}
-          anonymousCount={2}
+          dogs={nearbyDogs}
+          anonymousCount={nearbyHiddenCount}
+          locationAvailable={nearbyLocationAvailable}
+          onEnableLocation={handleEnableLocation}
         />
       </View>
 
@@ -281,7 +425,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         <TouchableOpacity onPress={() => setNearbySheetVisible(true)} activeOpacity={0.7}>
           <View style={styles.walkersRow}>
             <Text style={styles.walkersEmoji}>🐕🐕🦮</Text>
-            <Text style={styles.walkersTxt}>{WALKERS_NOW}  {t('map.walkingNearby')}</Text>
+            <Text style={styles.walkersTxt}>{nearbyTotal}  {t('map.walkingNearby')}</Text>
           </View>
         </TouchableOpacity>
 
@@ -307,6 +451,10 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         visible={detailMarker != null}
         onClose={() => setDetailMarker(null)}
       />
+
+      {locationCardVisible && (
+        <LocationRequiredCard onDismiss={() => setLocationCardVisible(false)} />
+      )}
 
     </View>
   );
@@ -362,8 +510,8 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 
-  // FAB — square
-  fab: {
+  // Shared look of the right-hand map controls (locate-me + add-marker FAB)
+  mapControlBtn: {
     width: 52,
     height: 52,
     borderRadius: radii.sm,

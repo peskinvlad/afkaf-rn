@@ -8,20 +8,32 @@ import {
 import MapView, { PROVIDER_DEFAULT, Polyline, Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bell, SlidersHorizontal } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { colors, radii, shadows, heatVis } from '../theme/tokens';
-import { haversine } from '../lib/geo';
+import { haversine, LatLng } from '../lib/geo';
+import { loadHomeZone, isInsideHomeZone, HomeZone } from '../lib/privacyZone';
 import { useMapMarkers } from '../hooks/useMapMarkers';
+import { useNearbyDogs } from '../hooks/useNearbyDogs';
+import { useHeading } from '../hooks/useHeading';
 import { filterMarkersAndWater } from '../lib/markerFilter';
 import { MARKER_CONFIG } from '../lib/markerConfig';
 import { MarkerFilterSheet, RadiusFilter } from '../components/MarkerFilterSheet';
 import { MarkerDetailSheet } from '../components/MarkerDetailSheet';
 import { UserLocationMarker } from '../components/UserLocationMarker';
+import { MapMarkerIcon } from '../components/MapMarkerIcon';
+import { FirstWalkTipCard } from '../components/FirstWalkTipCard';
+import { supabase } from '../lib/supabase';
+import { Visibility } from './SettingsScreen';
+import { checkAndAwardBadges } from '../lib/badges';
+import { saveWalkHistory, toWalkPath } from '../lib/walkHistory';
 
 const FLORENTIN_COORD = { latitude: 32.0559, longitude: 34.7722 };
-const WALKERS_NEARBY = 3;
+const ACTIVE_WALK_PING_MS = 60000;
+const MIN_VALID_DISTANCE_KM = 0.3;
+const MIN_VALID_DURATION_SEC = 300;
 
 interface Props {
   navigation: any;
@@ -30,13 +42,15 @@ interface Props {
 export function WalkScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const {
-    t, heatData, isHeatLoading, isGuest,
+    t, heatData, isHeatLoading, isGuest, confirmedCount,
     radius, setRadius, activeCategories, toggleCategory, userLocation, setUserLocation,
   } = useApp();
   const heatVis_ = heatVis[heatData.status];
 
   // ── Markers + water sources (same shared data as MapScreen) ────────────
   const { markers, waterSources } = useMapMarkers();
+  const { dogs: nearbyDogs, hiddenCount: nearbyHiddenCount } = useNearbyDogs(userLocation);
+  const nearbyTotal = nearbyDogs.length + nearbyHiddenCount;
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [detailMarker, setDetailMarker] = useState<import('../lib/markerConfig').MapMarker | null>(null);
   const hiddenCount = Object.values(activeCategories).filter((v) => !v).length;
@@ -52,6 +66,7 @@ export function WalkScreen({ navigation }: Props) {
 
   // ── Timer ──────────────────────────────────────────────────────────────
   const [seconds, setSeconds] = useState(0);
+  const walkStartedAt = useRef(new Date().toISOString()).current;
   useEffect(() => {
     const id = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(id);
@@ -78,42 +93,224 @@ export function WalkScreen({ navigation }: Props) {
     longitudeDelta: 0.01,
   });
   const [livePos, setLivePos] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [heading, setHeading] = useState(0);
   const [accuracy, setAccuracy] = useState<number | undefined>(undefined);
-  const [tracksViewChanges, setTracksViewChanges] = useState(true);
-  const tracksTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Compass drives the marker via Animated.Value — no per-tick re-renders.
+  // Enabled once the GPS effect below confirms permission.
+  const [locationGranted, setLocationGranted] = useState(false);
+  const headingAnim = useHeading(locationGranted);
+
+  // ── active_walks presence row ───────────────────────────────────────────
+  // Created on the first GPS fix of this screen (i.e. right as the walk
+  // starts), pinged every 60s while walking, deleted on finish/unmount.
+  // Skipped entirely for guests and for visibility='nobody'.
+  const activeWalkUserId = useRef<string | null>(null);
+  const activeWalkRowExists = useRef(false);
+  const activeWalkStartAttempted = useRef(false);
+  const latestPos = useRef<LatLng | null>(null);
+  const distanceKmRef = useRef(0);
+  // Publish context resolved once on the first fix, reused by every publish
+  // decision after (no re-hitting auth/dogs/AsyncStorage per ping).
+  const activeWalkVisibility = useRef<Visibility | null>(null);
+  const activeWalkDogId = useRef<string | null>(null);
+  const activeWalkStartedAt = useRef<string>('');
+  const activeWalkContextReady = useRef(false);
+  const homeZone = useRef<HomeZone | null>(null);
+
+  // Resolve who we are, chosen visibility, our dog, and the home privacy zone.
+  // Returns false when this walk must never publish (guest or 'nobody').
+  // Home zone is read here — once at start, not per ping.
+  async function resolveActiveWalkContext(): Promise<boolean> {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) return false; // guest — no active_walks row
+
+    const stored = await AsyncStorage.getItem('privacy_visibility');
+    const visibility: Visibility = (stored as Visibility) || 'friends';
+    if (visibility === 'nobody') return false;
+
+    const { data: dog } = await supabase
+      .from('dogs')
+      .select('id')
+      .eq('owner_id', userId)
+      .limit(1)
+      .maybeSingle();
+
+    activeWalkUserId.current = userId;
+    activeWalkVisibility.current = visibility;
+    activeWalkDogId.current = dog?.id ?? null;
+    activeWalkStartedAt.current = new Date().toISOString();
+    homeZone.current = await loadHomeZone();
+    activeWalkContextReady.current = true;
+    return true;
+  }
+
+  // Create the presence row (first publish). Upsert so it also recovers a row
+  // a previous session may have left behind for this user.
+  async function createActiveWalkRow(pt: LatLng) {
+    const { error } = await supabase.from('active_walks').upsert(
+      {
+        user_id: activeWalkUserId.current,
+        dog_id: activeWalkDogId.current,
+        lat: pt.latitude,
+        lng: pt.longitude,
+        distance_km: distanceKmRef.current,
+        visibility: activeWalkVisibility.current,
+        started_at: activeWalkStartedAt.current,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' }
+    );
+    if (!error) activeWalkRowExists.current = true;
+  }
+
+  async function pingActiveWalkRow(pt: LatLng) {
+    if (!activeWalkRowExists.current || !activeWalkUserId.current) return;
+    await supabase
+      .from('active_walks')
+      .update({
+        lat: pt.latitude,
+        lng: pt.longitude,
+        distance_km: distanceKmRef.current,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', activeWalkUserId.current);
+  }
+
+  async function stopActiveWalkRow() {
+    if (!activeWalkRowExists.current || !activeWalkUserId.current) return;
+    activeWalkRowExists.current = false;
+    await supabase.from('active_walks').delete().eq('user_id', activeWalkUserId.current);
+  }
+
+  // Single publish gate used by both the first fix and every 60s ping.
+  // Order: guest/nobody (context) first, then the home-zone check.
+  //   inside home zone → never publish; take an existing row down
+  //   outside the zone → create the row (first time) or ping it
+  // No home zone configured → homeZone is null → always "outside" → old behaviour.
+  async function syncActiveWalkRow(pt: LatLng) {
+    if (!activeWalkContextReady.current) return;
+    const zone = homeZone.current;
+    const inside = zone != null && isInsideHomeZone(pt.latitude, pt.longitude, zone);
+    if (inside) {
+      // Entered zone → remove the row, don't leave a stale edge point up for 30 min
+      await stopActiveWalkRow();
+      return;
+    }
+    if (activeWalkRowExists.current) {
+      await pingActiveWalkRow(pt);
+    } else {
+      await createActiveWalkRow(pt);
+    }
+  }
+
+  // First GPS fix: resolve context once, then run the publish gate.
+  async function startActiveWalkRow(pt: LatLng) {
+    const ok = await resolveActiveWalkContext();
+    if (!ok) return;
+    await syncActiveWalkRow(pt);
+  }
+
+  // A walk only "counts" (walk_history + badges) past a minimum bar, so an
+  // accidental swipe doesn't pollute streaks/totals.
+  async function handleFinish() {
+    stopActiveWalkRow();
+
+    const isValidWalk = distanceKm >= MIN_VALID_DISTANCE_KM && seconds >= MIN_VALID_DURATION_SEC;
+    let newBadgeIds: string[] = [];
+
+    if (isValidWalk) {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      if (userId) {
+        // Dog already resolved on the first GPS fix unless publishing was
+        // skipped (visibility='nobody') — then it's one lookup at finish.
+        let dogId = activeWalkDogId.current;
+        if (!activeWalkContextReady.current) {
+          const { data: dog } = await supabase
+            .from('dogs')
+            .select('id')
+            .eq('owner_id', userId)
+            .limit(1)
+            .maybeSingle();
+          dogId = dog?.id ?? null;
+        }
+        await saveWalkHistory({
+          user_id: userId,
+          distance_km: distanceKm,
+          duration_min: Math.floor(seconds / 60),
+          duration_s: seconds,
+          started_at: walkStartedAt,
+          ended_at: new Date().toISOString(),
+          steps,
+          dog_id: dogId,
+          path: toWalkPath(route),
+          is_valid: isValidWalk,
+        });
+        const newBadges = await checkAndAwardBadges(confirmedCount);
+        newBadgeIds = newBadges.map((b) => b.id);
+      }
+    }
+
+    navigation.replace('WalkSummary', {
+      duration: seconds,
+      steps,
+      distanceKm,
+      routeCoordinates: route,
+      isValidWalk,
+      newBadgeIds,
+    });
+  }
+
+  // 60s publish tick while walking — the gate decides publish vs unpublish
+  // based on whether the current point is inside the home privacy zone.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (latestPos.current) syncActiveWalkRow(latestPos.current);
+    }, ACTIVE_WALK_PING_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  // Safety net: leaving the screen any other way than "Finish" still cleans up
+  useEffect(() => {
+    return () => { stopActiveWalkRow(); };
+  }, []);
 
   useEffect(() => {
     let sub: Location.LocationSubscription | null = null;
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return;
+      setLocationGranted(true);
       sub = await Location.watchPositionAsync(
         { accuracy: Location.Accuracy.High, timeInterval: 1000, distanceInterval: 5 },
         (loc) => {
           const pt = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
           setLivePos(pt);
           setAccuracy(loc.coords.accuracy ?? undefined);
-          if (loc.coords.heading != null && loc.coords.heading >= 0) {
-            setHeading(loc.coords.heading);
-          }
           setRoute((prev) => {
             if (prev.length > 0) {
-              setDistanceKm((d) => d + haversine(prev[prev.length - 1], pt));
+              const inc = haversine(prev[prev.length - 1], pt);
+              setDistanceKm((d) => {
+                const next = d + inc;
+                distanceKmRef.current = next;
+                return next;
+              });
             }
             return [...prev, pt];
           });
           setRegion((r) => ({ ...r, ...pt }));
           setUserLocation(pt);
-          setTracksViewChanges(true);
-          if (tracksTimer.current) clearTimeout(tracksTimer.current);
-          tracksTimer.current = setTimeout(() => setTracksViewChanges(false), 200);
+
+          latestPos.current = pt;
+          if (!activeWalkStartAttempted.current) {
+            activeWalkStartAttempted.current = true;
+            startActiveWalkRow(pt);
+          }
         }
       );
     })();
     return () => {
       sub?.remove();
-      if (tracksTimer.current) clearTimeout(tracksTimer.current);
     };
   }, []);
 
@@ -150,27 +347,31 @@ export function WalkScreen({ navigation }: Props) {
               coordinate={livePos}
               anchor={{ x: 0.5, y: 0.5 }}
               flat
-              tracksViewChanges={tracksViewChanges}
+              // Constant true on this one marker only — the native-driven
+              // rotation needs a live view; no more per-fix pulsing.
+              tracksViewChanges
             >
-              <UserLocationMarker heading={heading} accuracy={accuracy} />
+              <UserLocationMarker headingAnim={headingAnim} accuracy={accuracy} />
             </Marker>
           )}
 
           {filteredMarkers.map((m) => (
-            <Marker
+            <MapMarkerIcon
               key={m.id}
               coordinate={{ latitude: m.lat, longitude: m.lng }}
-              pinColor={MARKER_CONFIG[m.type]?.pinColor ?? '#6b7280'}
+              emoji={MARKER_CONFIG[m.type]?.emoji ?? '📍'}
+              color={MARKER_CONFIG[m.type]?.pinColor ?? '#6b7280'}
               onPress={() => setDetailMarker(m)}
             />
           ))}
 
           {filteredWaterSources.map((w) => (
-            <Marker
+            <MapMarkerIcon
               key={`water-${w.id}`}
               coordinate={{ latitude: w.lat, longitude: w.lng }}
+              emoji={MARKER_CONFIG.water.emoji}
+              color={MARKER_CONFIG.water.pinColor}
               title={MARKER_CONFIG.water.emoji}
-              pinColor={MARKER_CONFIG.water.pinColor}
               description={w.amenity ?? undefined}
             />
           ))}
@@ -185,8 +386,9 @@ export function WalkScreen({ navigation }: Props) {
         {/* ── Filter — top right group ── */}
         <TouchableOpacity
           onPress={() => setFilterSheetOpen(true)}
-          style={[styles.iconBtn, shadows.sm, { position: 'absolute', zIndex: 30, top: insets.top + 8, right: 66 }]}
+          style={[styles.iconBtn, shadows.sm, { position: 'absolute', zIndex: 30, top: insets.top + 8, right: 70 }]}
           activeOpacity={0.8}
+          hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
         >
           <SlidersHorizontal size={20} color={colors.ink} />
           {hiddenCount > 0 && (
@@ -201,6 +403,7 @@ export function WalkScreen({ navigation }: Props) {
           onPress={() => navigation.navigate('Alerts')}
           style={[styles.iconBtn, shadows.sm, { position: 'absolute', zIndex: 30, top: insets.top + 8, right: 14 }]}
           activeOpacity={0.8}
+          hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
         >
           <Bell size={20} color={colors.ink} />
         </TouchableOpacity>
@@ -248,7 +451,7 @@ export function WalkScreen({ navigation }: Props) {
         {/* Walkers nearby */}
         <TouchableOpacity style={styles.nearbyRow} activeOpacity={0.7}>
           <Text style={styles.nearbyEmoji}>🐕🐕🦮</Text>
-          <Text style={styles.nearbyTxt}>{WALKERS_NEARBY}  {t('walk.nearby')}</Text>
+          <Text style={styles.nearbyTxt}>{nearbyTotal}  {t('walk.nearby')}</Text>
           <Text style={styles.nearbyArrow}>▼</Text>
         </TouchableOpacity>
 
@@ -266,7 +469,7 @@ export function WalkScreen({ navigation }: Props) {
             >
               <Text style={styles.bannerCtaTxt}>{t('walk.guest.cta')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.bannerClose} onPress={dismissBanner} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+            <TouchableOpacity style={styles.bannerClose} onPress={dismissBanner} hitSlop={{ top: 14, right: 14, bottom: 14, left: 14 }}>
               <Text style={styles.bannerCloseTxt}>×</Text>
             </TouchableOpacity>
           </View>
@@ -275,12 +478,7 @@ export function WalkScreen({ navigation }: Props) {
         {/* Finish button */}
         <TouchableOpacity
           style={[styles.finishBtn, shadows.sm]}
-          onPress={() => navigation.replace('WalkSummary', {
-            duration: seconds,
-            steps,
-            distanceKm,
-            routeCoordinates: route,
-          })}
+          onPress={handleFinish}
           activeOpacity={0.85}
         >
           <Text style={styles.finishTxt}>{t('walk.active.finish')}</Text>
@@ -303,6 +501,8 @@ export function WalkScreen({ navigation }: Props) {
         visible={detailMarker != null}
         onClose={() => setDetailMarker(null)}
       />
+
+      <FirstWalkTipCard onSetupPrivacy={() => navigation.navigate('PrivacyRadius')} />
     </View>
   );
 }
@@ -465,6 +665,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     paddingVertical: 2,
+    minHeight: 48,
   },
   nearbyEmoji: { fontSize: 16 },
   nearbyTxt: {
@@ -502,6 +703,9 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     paddingHorizontal: 12,
     paddingVertical: 7,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   bannerCtaTxt: {
     fontSize: 13,
@@ -509,7 +713,10 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
   bannerClose: {
-    padding: 2,
+    padding: 4,
+    // banner's row gap already gives 8pt from bannerCta — this adds the
+    // remaining 6pt to reach a 14pt gap between two small, adjacent targets.
+    marginLeft: 6,
   },
   bannerCloseTxt: {
     fontSize: 18,
@@ -523,7 +730,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.borderStrong,
-    paddingVertical: 14,
+    paddingVertical: 19,
     alignItems: 'center',
   },
   finishTxt: {

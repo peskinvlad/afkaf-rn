@@ -11,6 +11,7 @@ import MapView, { PROVIDER_DEFAULT, Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
 import { colors, radii, shadows } from '../theme/tokens';
+import { BADGES } from '../constants/badges';
 
 // ── Emotion logic ──────────────────────────────────────────────────────────────
 const SHORT_KEYS  = ['walk.emotion.short.1',  'walk.emotion.short.2',  'walk.emotion.short.3'];
@@ -25,25 +26,22 @@ function pickEmotionKey(durationSec: number, distanceKm: number): string {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-// Static pace bar heights (mock)
-const PACE_BARS = [55, 70, 45, 80, 60, 90, 50, 75, 65, 85, 40, 70];
-
 interface RouteCoord { latitude: number; longitude: number; }
 
 interface Props {
   navigation: any;
-  route: {
-    params: {
-      duration: number;       // seconds
-      steps: number;
-      distanceKm: number;
-      routeCoordinates: RouteCoord[];
-    };
-  };
+  route: any;
 }
 
 export function WalkSummaryScreen({ navigation, route }: Props) {
-  const { duration = 0, steps = 0, distanceKm = 0, routeCoordinates = [] } = route.params ?? {};
+  const {
+    duration = 0, steps = 0, distanceKm = 0, routeCoordinates = [],
+    isValidWalk = false, newBadgeIds = [],
+  }: {
+    duration: number; steps: number; distanceKm: number; routeCoordinates: RouteCoord[];
+    isValidWalk?: boolean; newBadgeIds?: string[];
+  } = route.params ?? {};
+  const newBadges = newBadgeIds.map((id: string) => BADGES.find((b) => b.id === id)).filter(Boolean) as typeof BADGES;
   const insets = useSafeAreaInsets();
   const { t, isGuest, setIsWalking } = useApp();
   const mapRef = useRef<MapView>(null);
@@ -142,7 +140,7 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
         {/* Dog emotion */}
         <View style={styles.emotionRow}>
           <Text style={styles.emotionTxt}>{emotionText}</Text>
-          {!isGuest && (
+          {!isGuest && isValidWalk && (
             <View style={styles.personalBestChip}>
               <Text style={styles.personalBestTxt}>{t('walk.summary.personalBest')}</Text>
             </View>
@@ -158,15 +156,33 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
           <StatCol value={String(steps)} label={t('walk.summary.steps')} />
         </View>
 
-        {/* Pace chart */}
-        <View style={styles.paceSection}>
-          <Text style={styles.paceLabel}>{t('walk.summary.pace')}</Text>
-          <View style={styles.paceChart}>
-            {PACE_BARS.map((h, i) => (
-              <View key={i} style={[styles.paceBar, { height: h }]} />
-            ))}
+        {/* New badges — soft cards, no confetti/sound, just a warm nod */}
+        {isValidWalk && newBadges.map((badge) => (
+          <View key={badge.id} style={styles.badgeCard}>
+            <Text style={styles.badgeCardEmoji}>{badge.emoji}</Text>
+            <Text style={styles.badgeCardTxt}>
+              {t('badge.new_milestone', { name: t(badge.titleKey) })}
+            </Text>
           </View>
-        </View>
+        ))}
+
+        {/* Guest soft-prompt — walk_history/badges are silently skipped for
+            guests (no user_id to attach them to), so tell them instead of
+            just losing the data with no explanation. No hard wall before
+            the walk itself. */}
+        {isGuest && (
+          <View style={styles.guestCard}>
+            <Text style={styles.guestCardTitle}>{t('walk.summary.guestSave.title')}</Text>
+            <Text style={styles.guestCardBody}>{t('walk.summary.guestSave.body')}</Text>
+            <TouchableOpacity
+              style={styles.guestCardBtn}
+              onPress={() => navigation.navigate('Register')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.guestCardBtnTxt}>{t('walk.summary.guestSave.cta')}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Done button */}
         <TouchableOpacity
@@ -305,32 +321,54 @@ const styles = StyleSheet.create({
   },
   divider: { width: 1, height: 36, backgroundColor: colors.border },
 
-  // Pace chart
-  paceSection: { gap: 8 },
-  paceLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  paceChart: {
+  // New badge — soft, no confetti
+  badgeCard: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 4,
-    height: 96,
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radii.lg,
+    padding: 14,
+  },
+  badgeCardEmoji: { fontSize: 24 },
+  badgeCardTxt: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primaryDark,
+    lineHeight: 19,
+  },
+
+  // Guest soft-prompt
+  guestCard: {
     backgroundColor: colors.card,
     borderRadius: radii.lg,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    overflow: 'hidden',
-    ...shadows.sm,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    padding: 16,
+    gap: 8,
   },
-  paceBar: {
-    flex: 1,
-    backgroundColor: '#2c5f25',
-    borderRadius: 3,
-    opacity: 0.8,
+  guestCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  guestCardBody: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  guestCardBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radii.md,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  guestCardBtnTxt: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.white,
   },
 
   // Done button

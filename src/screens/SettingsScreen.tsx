@@ -16,7 +16,7 @@ import { LANGS } from '../i18n';
 import { MARKER_CONFIG } from '../lib/markerConfig';
 import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
 
-type Visibility = 'everyone' | 'friends' | 'nobody';
+export type Visibility = 'everyone' | 'friends' | 'nobody';
 type NotifRadius = '50' | '100' | '150';
 
 const VISIBILITY_OPTIONS: Visibility[] = ['everyone', 'friends', 'nobody'];
@@ -426,7 +426,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.dangerBg,
     borderColor: colors.danger,
   },
-  checkboxEmoji: { fontSize: 14 },
+  // includeFontPadding — Android: kill baseline padding that sinks emoji
+  checkboxEmoji: { fontSize: 14, lineHeight: 16, textAlign: 'center', includeFontPadding: false },
   checkboxLabel: { ...typography.xs, color: colors.textMuted },
   checkboxLabelActive: { color: colors.danger },
 });
