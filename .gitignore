@@ -42,3 +42,6 @@ yarn-error.*
 /ios
 /android
 HANDOFF*.md
+
+# local dev scripts (puppet.sql etc.)
+dev/
