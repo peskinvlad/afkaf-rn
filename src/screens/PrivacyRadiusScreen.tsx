@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -43,13 +43,21 @@ export function PrivacyRadiusScreen({ navigation }: any) {
   const sliderBase = useRef(0);
   const sliderStartX = useRef(0);
 
+  // The PanResponder is created once so an in-flight gesture is never torn down
+  // mid-drag, which means its handlers keep the *first* render's closure forever.
+  // Anything they read that changes over time has to come through a ref that
+  // each render refreshes — otherwise every drag would restart from the radius
+  // the screen was opened with.
+  const radiusRef = useRef(radius);
+  useEffect(() => { radiusRef.current = radius; }, [radius]);
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (_, gs) => {
         sliderStartX.current = gs.x0;
-        sliderBase.current = radius;
+        sliderBase.current = radiusRef.current;
       },
       onPanResponderMove: (_, gs) => {
         const delta = gs.dx / SLIDER_WIDTH;

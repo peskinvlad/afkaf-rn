@@ -84,11 +84,17 @@ export default function NearbyDogsSheet({
     }
   }, [visible]);
 
+  // Created once so a swipe already in flight is never torn down mid-gesture,
+  // which means these handlers keep the first render's closure forever. Read the
+  // changing prop through a ref each render refreshes rather than capturing it.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) => g.dy > 8,
       onPanResponderRelease: (_, g) => {
-        if (g.dy > SWIPE_THRESHOLD) onClose();
+        if (g.dy > SWIPE_THRESHOLD) onCloseRef.current();
       },
     })
   ).current;
