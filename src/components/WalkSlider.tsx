@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useApp } from '../hooks/useApp';
 import { radii, shadows } from '../theme/tokens';
+import { statusFor } from '../lib/heat';
 
 const SCREEN_W = Dimensions.get('window').width;
 const H_PADDING = 16;
@@ -23,26 +24,16 @@ const PAW_SPACING = 36;
 // Enough paws to fill the full pill width
 const PAW_COUNT = Math.ceil(PILL_W / PAW_SPACING) + 1;
 
-// Pastel pill bg
-function bgColor(temp: number): string {
-  if (temp > 45) return '#f5e0e0';
-  if (temp >= 35) return '#f5eddb';
-  return '#e8f0e6';
-}
-
-// Saturated fill color (progress bar + handle)
-function fillColor(temp: number): string {
-  if (temp > 45) return '#dc2626';
-  if (temp >= 35) return '#d97706';
-  return '#2c5f25';
-}
-
-// Text color (darker, readable on pastel bg)
-function textColor(temp: number): string {
-  if (temp > 45) return '#9b1c1c';
-  if (temp >= 35) return '#92580a';
-  return '#2c5f25';
-}
+// Палитра пилюли по статусу. Раньше здесь были свои `> 45` / `>= 35` — вторая
+// копия порогов, которая молча разъезжалась бы с lib/heat.ts. Цвета прежние,
+// границы те же, источник статуса теперь один.
+// bg — пастельный фон, fill — насыщенная заливка (прогресс + ручка),
+// txt — тёмный текст, читаемый на пастели.
+const PILL_COLORS = {
+  ok:      { bg: '#e8f0e6', fill: '#2c5f25', txt: '#2c5f25' },
+  caution: { bg: '#f5eddb', fill: '#d97706', txt: '#92580a' },
+  danger:  { bg: '#f5e0e0', fill: '#dc2626', txt: '#9b1c1c' },
+} as const;
 
 interface Props {
   asphaltTemp: number;
@@ -54,9 +45,7 @@ export function WalkSlider({ asphaltTemp, onWalkStart }: Props) {
   const dragX = useRef(new Animated.Value(0)).current;
   const [triggered, setTriggered] = useState(false);
 
-  const bg = bgColor(asphaltTemp);
-  const fill = fillColor(asphaltTemp);
-  const txt = textColor(asphaltTemp);
+  const { bg, fill, txt } = PILL_COLORS[statusFor(asphaltTemp)];
 
   const panResponder = useRef(
     PanResponder.create({

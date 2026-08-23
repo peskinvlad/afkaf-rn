@@ -2,8 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 import { LatLng } from '../lib/geo';
 import { getDevAsphaltOverride, onDevSettingsChange } from '../constants/dev';
+import { HeatStatus, statusFor, surfaceFromAir, getEffectiveAsphaltTemp } from '../lib/heat';
 
-export type HeatStatus = 'ok' | 'caution' | 'danger';
+// Пороги и подмена оверрайдом живут в lib/heat.ts — здесь только ре-экспорт
+// типа для существующих импортёров.
+export type { HeatStatus };
 
 export type HourlyPoint = {
   timeEpoch: number;
@@ -29,12 +32,10 @@ interface AsphaltTempResult {
   weatherIcon: string | null;
   hourlyForecast: HourlyPoint[];
   isFallbackLocation: boolean;
-}
-
-function statusFor(surfaceTempC: number): HeatStatus {
-  if (surfaceTempC < 35) return 'ok';
-  if (surfaceTempC <= 45) return 'caution';
-  return 'danger';
+  // Диагностика dev-оверрайда (DevPanel → Info). Для не-dev пользователей
+  // overrideActive всегда false: гейт стоит в constants/dev.ts.
+  overrideActive: boolean;
+  realSurfaceTempC: number | null;
 }
 
 interface CurrentWeather {
@@ -69,7 +70,7 @@ async function fetchForecast(lat: number, lon: number): Promise<HourlyPoint[]> {
   const list = (data.list ?? []).slice(0, 8);
   return list.map((entry: any) => {
     const airTempC = Math.round(entry.main.temp);
-    const surfaceTempC = Math.round(airTempC * 1.3 + 2);
+    const surfaceTempC = surfaceFromAir(airTempC);
     return {
       timeEpoch: entry.dt,
       airTempC,
@@ -142,7 +143,7 @@ export function useAsphaltTemp(): AsphaltTempResult {
         if (cancelled) return true;
         if (current !== null) {
           setAirTempC(Math.round(current.temp));
-          setSurfaceTempC(Math.round(current.temp * 1.3 + 2));
+          setSurfaceTempC(surfaceFromAir(current.temp));
           setFeelsLikeC(Math.round(current.feelsLike));
           setWeatherDescription(current.description);
           setWeatherIcon(current.icon);
@@ -179,17 +180,20 @@ export function useAsphaltTemp(): AsphaltTempResult {
     };
   }, []);
 
-  const effectiveSurfaceC = devOverrideC ?? surfaceTempC;
+  // Единая точка подмены — та же функция, что задаёт статус всем потребителям.
+  const effective = getEffectiveAsphaltTemp(surfaceTempC, devOverrideC);
 
   return {
-    surfaceTempC: effectiveSurfaceC,
+    surfaceTempC: effective.surfaceTempC,
     airTempC,
-    status: effectiveSurfaceC !== null ? statusFor(effectiveSurfaceC) : 'ok',
+    status: effective.status,
     loading,
     feelsLikeC,
     weatherDescription,
     weatherIcon,
     hourlyForecast,
     isFallbackLocation,
+    overrideActive: effective.overrideActive,
+    realSurfaceTempC: effective.realSurfaceTempC,
   };
 }

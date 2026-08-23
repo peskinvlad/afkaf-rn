@@ -66,7 +66,6 @@ export function RootNavigator() {
           <Stack.Screen name="Auth"            component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: true }} />
           <Stack.Screen name="Register"         component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: true }} />
           <Stack.Screen name="HeatWarning" component={HeatWarningScreen} />
-          <Stack.Screen name="HeatDetail" component={PlaceholderScreen} />
           <Stack.Screen name="PavementTemp" component={PavementTempScreen} />
           <Stack.Screen name="WalkActive" component={WalkScreen} />
           <Stack.Screen name="WalkSummary" component={WalkSummaryScreen} />

@@ -64,8 +64,15 @@ export async function getDevAsphaltOverride(): Promise<number | null> {
     const raw = await AsyncStorage.getItem(DEV_ASPHALT_OVERRIDE_KEY);
     if (raw == null) return null;
     const n = Number(raw);
-    return Number.isFinite(n) ? n : null;
-  } catch {
+    if (Number.isFinite(n)) return n;
+    // Ключ есть, но в нём не число — это поломка, а не «оверрайда нет».
+    console.warn('[dev] asphalt override is not a number:', JSON.stringify(raw));
+    return null;
+  } catch (e) {
+    // Раньше здесь был молчаливый `return null`: любой сбой getSession()
+    // (протухший токен, нет сети, гонка с обновлением сессии) бесследно
+    // выключал оверрайд — ровно тот симптом «не работает, ошибок нет».
+    console.warn('[dev] getDevAsphaltOverride failed:', e);
     return null;
   }
 }
@@ -75,7 +82,8 @@ export async function getDevVoteOwnMarkers(): Promise<boolean> {
     const { data: { session } } = await supabase.auth.getSession();
     if (!isDevUser(session?.user?.id)) return false;
     return (await AsyncStorage.getItem(DEV_VOTE_OWN_KEY)) === 'true';
-  } catch {
+  } catch (e) {
+    console.warn('[dev] getDevVoteOwnMarkers failed:', e);
     return false;
   }
 }

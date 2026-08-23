@@ -8,6 +8,7 @@ import { RadiusFilter } from '../components/MarkerFilterSheet';
 import { useAsphaltTemp, HeatStatus, HourlyPoint } from './useAsphaltTemp';
 import { checkAndAwardBadges } from '../lib/badges';
 import { flushPendingWalkHistory } from '../lib/walkHistory';
+import { emitDevSettingsChange } from '../constants/dev';
 
 export interface HeatData {
   status: HeatStatus;
@@ -48,6 +49,9 @@ export interface AppState {
   weatherIcon: string | null;
   hourlyForecast: HourlyPoint[];
   isFallbackLocation: boolean;
+  // Диагностика dev-оверрайда температуры (читает только DevPanel).
+  heatOverrideActive: boolean;
+  realSurfaceTempC: number | null;
 }
 
 const DEFAULT_CATEGORIES: Record<string, boolean> = {
@@ -122,6 +126,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const {
     surfaceTempC, airTempC, status: heatStatus, loading: isHeatLoading,
     feelsLikeC, weatherDescription, weatherIcon, hourlyForecast, isFallbackLocation,
+    overrideActive: heatOverrideActive, realSurfaceTempC,
   } = useAsphaltTemp();
   const heatData: HeatData = {
     status: heatStatus,
@@ -150,6 +155,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setIsGuest(!session?.user);
+      // Dev-геттеры гейтятся по isDevUser и читаются один раз при монтировании
+      // AppProvider — то есть до того, как сессия восстановлена. Без этого
+      // пинка оверрайд оставался выключенным до следующего открытия DevPanel.
+      emitDevSettingsChange();
       if (session?.user) {
         currentUserId.current = session.user.id;
         fetchTrustStatus(session.user.id);
@@ -159,6 +168,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsGuest(!session?.user);
+      // Логин/логаут меняет вердикт isDevUser — перечитать оверрайды.
+      emitDevSettingsChange();
       if (session?.user) {
         currentUserId.current = session.user.id;
         fetchTrustStatus(session.user.id);
@@ -213,6 +224,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         weatherIcon,
         hourlyForecast,
         isFallbackLocation,
+        heatOverrideActive,
+        realSurfaceTempC,
       }}
     >
       {children}

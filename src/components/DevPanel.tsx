@@ -37,7 +37,7 @@ interface Props {
 
 export function DevPanel({ visible, onClose }: Props) {
   const insets = useSafeAreaInsets();
-  const { isTrusted, confirmedCount, userLocation } = useApp();
+  const { isTrusted, confirmedCount, userLocation, heatData, heatOverrideActive, realSurfaceTempC } = useApp();
 
   const [userId, setUserId] = useState<string | null>(null);
   const [visibility, setVisibility] = useState<string | null>(null);
@@ -173,6 +173,19 @@ export function DevPanel({ visible, onClose }: Props) {
             <InfoRow
               label="privacy_home_lat/lng/radius"
               value={`${homeRaw.lat ?? '—'} / ${homeRaw.lng ?? '—'} / ${homeRaw.radius ?? '—'}`}
+            />
+            {/* Что реально применилось к температурной логике — единственный
+                способ увидеть в поле, сработал оверрайд или нет. Значение
+                берётся из того же heatData, что кормит виджет, слайдер и
+                интерцепт HeatWarning. */}
+            <InfoRow
+              label="Effective temp"
+              value={
+                heatOverrideActive
+                  ? `${heatData.surface_est_c}°C (override active · real ${realSurfaceTempC ?? '—'}°C) · ${heatData.status}`
+                  : `${heatData.surface_est_c}°C (override off) · ${heatData.status}`
+              }
+              highlight
             />
             <InfoRow label="СЕЙЧАС" value={zoneStatus} highlight />
           </View>

@@ -429,7 +429,7 @@ export function WalkScreen({ navigation }: Props) {
           ) : (
             <TouchableOpacity
               style={[styles.heatCard, shadows.sm]}
-              onPress={() => navigation.navigate('HeatDetail')}
+              onPress={() => navigation.navigate('PavementTemp')}
               activeOpacity={0.8}
             >
               <Text style={[styles.heatTemp, { color: heatVis_.color }]}>{heatData.surface_est_c}°</Text>
