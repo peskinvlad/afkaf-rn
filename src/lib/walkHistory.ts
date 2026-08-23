@@ -70,6 +70,31 @@ export async function saveWalkHistory(entry: WalkHistoryEntry): Promise<void> {
 // Deliver walks parked by saveWalkHistory. The key is cleared only when every
 // entry made it; entries that still fail (e.g. RLS rejects another user's
 // row) stay queued for the next attempt. Never throws.
+// Лучшая дистанция среди ПРОШЛЫХ засчитанных прогулок — для «личного рекорда»
+// в итогах. Только чтение существующей таблицы, схема не меняется. Вызывать
+// строго до вставки текущей прогулки, иначе она станет рекордом сама себе.
+//
+// ok:false — запрос не удался; рекорд в этом случае не заявляем: лучше не
+// похвалить, чем соврать. ok:true + bestKm:null — засчитанных прогулок ещё не
+// было, то есть текущая и есть первый рекорд.
+export async function getPreviousBestDistanceKm(
+  userId: string,
+): Promise<{ ok: boolean; bestKm: number | null }> {
+  const { data, error } = await supabase
+    .from('walk_history')
+    .select('distance_km')
+    .eq('user_id', userId)
+    .eq('is_valid', true)
+    .order('distance_km', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn('[walkHistory] previous best fetch failed:', error.message);
+    return { ok: false, bestKm: null };
+  }
+  return { ok: true, bestKm: data?.distance_km ?? null };
+}
+
 export async function flushPendingWalkHistory(): Promise<void> {
   try {
     const raw = await AsyncStorage.getItem(PENDING_KEY);

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,19 +12,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
 import { colors, radii, shadows } from '../theme/tokens';
 import { BADGES } from '../constants/badges';
-
-// ── Emotion logic ──────────────────────────────────────────────────────────────
-const SHORT_KEYS  = ['walk.emotion.short.1',  'walk.emotion.short.2',  'walk.emotion.short.3'];
-const NORMAL_KEYS = ['walk.emotion.normal.1', 'walk.emotion.normal.2', 'walk.emotion.normal.3'];
-const GREAT_KEYS  = ['walk.emotion.great.1',  'walk.emotion.great.2',  'walk.emotion.great.3'];
-
-function pickEmotionKey(durationSec: number, distanceKm: number): string {
-  const mins = durationSec / 60;
-  const isShort  = mins < 10 || distanceKm < 0.3;
-  const isGreat  = mins > 30 || distanceKm > 1.5;
-  const pool = isShort ? SHORT_KEYS : isGreat ? GREAT_KEYS : NORMAL_KEYS;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
+import { HeatStatus, HEAT_DANGER_ABOVE_C } from '../lib/heat';
+import { pickWalkVerdict, VERDICT_TITLE_KEY } from '../lib/walkVerdict';
 
 interface RouteCoord { latitude: number; longitude: number; }
 
@@ -37,9 +26,13 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
   const {
     duration = 0, steps = 0, distanceKm = 0, routeCoordinates = [],
     isValidWalk = false, newBadgeIds = [],
+    isPersonalBest = false, heatStatusAtFinish = 'ok',
   }: {
     duration: number; steps: number; distanceKm: number; routeCoordinates: RouteCoord[];
     isValidWalk?: boolean; newBadgeIds?: string[];
+    // Оба зафиксированы в WalkScreen.handleFinish — здесь ничего не
+    // пересчитывается, погода не перечитывается.
+    isPersonalBest?: boolean; heatStatusAtFinish?: HeatStatus;
   } = route.params ?? {};
   const newBadges = newBadgeIds.map((id: string) => BADGES.find((b) => b.id === id)).filter(Boolean) as typeof BADGES;
   const insets = useSafeAreaInsets();
@@ -58,10 +51,15 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
     }
   }, []);
 
-  // Pick emotion once on mount
-  const emotionKey = useMemo(() => pickEmotionKey(duration, distanceKm), []);
+  // Вердикт — чистый маппинг по входам, зафиксированным на момент завершения.
+  const verdict = pickWalkVerdict({
+    isValidWalk,
+    hasNewBadge: newBadges.length > 0,
+    isPersonalBest,
+    heatStatus: heatStatusAtFinish,
+  });
   const dogName = t('walk.summary.yourDog');
-  const emotionText = t(emotionKey, { name: dogName });
+  const verdictText = t(VERDICT_TITLE_KEY[verdict], { name: dogName });
 
   // Formatted stats
   const mins = Math.floor(duration / 60);
@@ -78,7 +76,7 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
   }
 
   function handleShare() {
-    Share.share({ message: `${emotionText} — ${kmStr} km in ${mins} min 🐾` });
+    Share.share({ message: `${verdictText} — ${kmStr} km in ${mins} min 🐾` });
   }
 
   return (
@@ -137,15 +135,29 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 16 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Dog emotion */}
+        {/* Вердикт */}
         <View style={styles.emotionRow}>
-          <Text style={styles.emotionTxt}>{emotionText}</Text>
-          {!isGuest && isValidWalk && (
+          <Text style={styles.emotionTxt}>{verdictText}</Text>
+          {/* Условие было `!isGuest && isValidWalk`, то есть чип «личный
+              рекорд» висел на каждой засчитанной прогулке залогиненного
+              пользователя — и врал. Теперь только настоящий рекорд,
+              посчитанный по walk_history на момент завершения. */}
+          {isPersonalBest && (
             <View style={styles.personalBestChip}>
               <Text style={styles.personalBestTxt}>{t('walk.summary.personalBest')}</Text>
             </View>
           )}
         </View>
+
+        {/* Короткая прогулка в жару — объясняем, почему это правильно, а не
+            недоработка. Порог берётся из lib/heat.ts, своей копии числа нет. */}
+        {verdict === 'heatPraise' && (
+          <View style={styles.praiseCard}>
+            <Text style={styles.praiseTxt}>
+              {t('walk.verdict.heatPraise.body', { c: HEAT_DANGER_ABOVE_C })}
+            </Text>
+          </View>
+        )}
 
         {/* Stats */}
         <View style={styles.statsRow}>
@@ -320,6 +332,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   divider: { width: 1, height: 36, backgroundColor: colors.border },
+
+  // Похвала за короткую прогулку в жару — мягкая карточка, тон поддержки
+  praiseCard: {
+    backgroundColor: colors.safeBg,
+    borderRadius: radii.lg,
+    padding: 14,
+  },
+  praiseTxt: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.safe,
+    lineHeight: 19,
+  },
 
   // New badge — soft, no confetti
   badgeCard: {

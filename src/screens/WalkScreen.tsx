@@ -30,7 +30,7 @@ import { FirstWalkTipCard } from '../components/FirstWalkTipCard';
 import { supabase } from '../lib/supabase';
 import { Visibility } from './SettingsScreen';
 import { checkAndAwardBadges } from '../lib/badges';
-import { saveWalkHistory, toWalkPath } from '../lib/walkHistory';
+import { saveWalkHistory, toWalkPath, getPreviousBestDistanceKm } from '../lib/walkHistory';
 
 const FLORENTIN_COORD = { latitude: 32.0559, longitude: 34.7722 };
 const ACTIVE_WALK_PING_MS = 60000;
@@ -221,6 +221,14 @@ export function WalkScreen({ navigation }: Props) {
 
     const isValidWalk = distanceKm >= MIN_VALID_DISTANCE_KM && seconds >= MIN_VALID_DURATION_SEC;
     let newBadgeIds: string[] = [];
+    let isPersonalBest = false;
+
+    // Температурный статус фиксируем ЗДЕСЬ, в момент завершения. heatData
+    // приходит из единственного useAsphaltTemp через getEffectiveAsphaltTemp
+    // (lib/heat.ts), то есть уже с учётом dev-оверрайда. Экран итогов получает
+    // готовое значение и не перечитывает погоду: остывший к тому времени
+    // асфальт не должен задним числом отменять вердикт про жару.
+    const heatStatusAtFinish = heatData.status;
 
     if (isValidWalk) {
       const { data: { session } } = await supabase.auth.getSession();
@@ -238,6 +246,12 @@ export function WalkScreen({ navigation }: Props) {
             .maybeSingle();
           dogId = dog?.id ?? null;
         }
+        // Строго до вставки текущей прогулки — иначе она побьёт сама себя.
+        const prevBest = await getPreviousBestDistanceKm(userId);
+        isPersonalBest = prevBest.ok
+          ? prevBest.bestKm == null || distanceKm > prevBest.bestKm
+          : false;
+
         await saveWalkHistory({
           user_id: userId,
           distance_km: distanceKm,
@@ -262,6 +276,8 @@ export function WalkScreen({ navigation }: Props) {
       routeCoordinates: route,
       isValidWalk,
       newBadgeIds,
+      isPersonalBest,
+      heatStatusAtFinish,
     });
   }
 
