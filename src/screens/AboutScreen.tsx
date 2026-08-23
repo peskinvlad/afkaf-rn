@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useApp } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
-import { isDevUser, isDevListConfigured } from '../constants/dev';
+import { isDevUser } from '../constants/dev';
 import { DevPanel } from '../components/DevPanel';
 
 // Keep in sync with app.json → expo.version
@@ -253,14 +253,6 @@ export default function AboutScreen() {
     // you kept tapping.
     tapCount.current = gap > DEV_TAP_GAP_MS ? 1 : tapCount.current + 1;
 
-    // TODO remove — temporary dev-entry diagnostics
-    console.log(
-      `[dev-entry] tap ${tapCount.current}/${DEV_TAP_COUNT} (gap ${gap}ms)`,
-      '| cachedUserId:', currentUserId.current,
-      '| listConfigured:', isDevListConfigured(),
-      '| gate:', isDevUser(currentUserId.current),
-    );
-
     if (tapCount.current < DEV_TAP_COUNT) return;
 
     // getSession() is async and the session can be refreshed while this screen
@@ -272,13 +264,6 @@ export default function AboutScreen() {
       userId = session?.user?.id ?? null;
       currentUserId.current = userId;
     }
-
-    // TODO remove — temporary dev-entry diagnostics
-    console.log(
-      '[dev-entry] threshold reached | resolvedUserId:', userId,
-      '| listConfigured:', isDevListConfigured(),
-      '| isDevUser:', isDevUser(userId),
-    );
 
     // Gate unchanged: not on DEV_USER_IDS → nothing happens, no UI trace.
     if (!isDevUser(userId)) return;

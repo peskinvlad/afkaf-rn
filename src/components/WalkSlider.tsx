@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Animated,
   Dimensions,
@@ -43,9 +43,25 @@ interface Props {
 export function WalkSlider({ asphaltTemp, onWalkStart }: Props) {
   const { t } = useApp();
   const dragX = useRef(new Animated.Value(0)).current;
-  const [triggered, setTriggered] = useState(false);
 
   const { bg, fill, txt } = PILL_COLORS[statusFor(asphaltTemp)];
+
+  // The PanResponder below is created once, so a drag is never torn down
+  // mid-gesture — which also means its handlers close over the FIRST render's
+  // props and state, forever. MapScreen re-creates onWalkStart every render,
+  // closing over that render's heatData, so the frozen copy was the one from
+  // before the weather had loaded: it always saw status 'ok' and the >45°C
+  // HeatWarning intercept could never fire, override or not. Both values the
+  // handler needs are read through refs that stay current instead.
+  const onWalkStartRef = useRef(onWalkStart);
+  useEffect(() => {
+    onWalkStartRef.current = onWalkStart;
+  }, [onWalkStart]);
+
+  // Same trap: `triggered` used to be state read from that frozen closure, so
+  // it was permanently false and the re-entrancy guard did nothing. It never
+  // took part in rendering, so a ref is both correct and one render cheaper.
+  const triggeredRef = useRef(false);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -59,17 +75,17 @@ export function WalkSlider({ asphaltTemp, onWalkStart }: Props) {
 
       onPanResponderRelease: (_, { dx }) => {
         const ratio = dx / TRACK_W;
-        if (ratio >= TRIGGER_RATIO && !triggered) {
-          setTriggered(true);
+        if (ratio >= TRIGGER_RATIO && !triggeredRef.current) {
+          triggeredRef.current = true;
           Animated.spring(dragX, {
             toValue: TRACK_W,
             useNativeDriver: false,
             bounciness: 0,
           }).start(() => {
-            onWalkStart();
+            onWalkStartRef.current();
             setTimeout(() => {
               dragX.setValue(0);
-              setTriggered(false);
+              triggeredRef.current = false;
             }, 400);
           });
         } else {

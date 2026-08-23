@@ -30,12 +30,6 @@ export function isDevUser(userId: string | null | undefined): boolean {
   return DEV_USER_ID_SET.has(userId.trim().toLowerCase());
 }
 
-// Есть ли в списке хотя бы один валидный UUID. Нужно только диагностике
-// dev-входа в AboutScreen: отличает «гейт сказал нет» от «список не заполнен».
-export function isDevListConfigured(): boolean {
-  return DEV_USER_ID_SET.size > 0;
-}
-
 // AsyncStorage-ключи dev-оверрайдов
 export const DEV_ASPHALT_OVERRIDE_KEY = 'dev_asphalt_temp_override';
 export const DEV_VOTE_OWN_KEY = 'dev_vote_own_markers';
