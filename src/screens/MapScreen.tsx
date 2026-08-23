@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import MapView, { PROVIDER_DEFAULT, Marker } from 'react-native-maps';
+import MapView, { PROVIDER_DEFAULT, MarkerAnimated } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Menu, Bell, SlidersHorizontal, Locate } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
@@ -22,6 +22,7 @@ import { UserLocationMarker } from '../components/UserLocationMarker';
 import { MapMarkerIcon } from '../components/MapMarkerIcon';
 import { useMapMarkers } from '../hooks/useMapMarkers';
 import { useHeading } from '../hooks/useHeading';
+import { useSmoothedPosition } from '../hooks/useSmoothedPosition';
 import { useNearbyDogs } from '../hooks/useNearbyDogs';
 import NearbyDogsSheet from '../components/NearbyDogsSheet';
 import { CoverageBanner } from '../components/CoverageBanner';
@@ -29,6 +30,7 @@ import { LocationRequiredCard } from '../components/LocationRequiredCard';
 import { filterMarkersAndWater } from '../lib/markerFilter';
 import { MARKER_CONFIG } from '../lib/markerConfig';
 import { ensureLocationPermission } from '../lib/locationPermission';
+import { isAccurateFix } from '../lib/gpsQuality';
 import { supabase } from '../lib/supabase';
 
 // Florentin, Tel Aviv
@@ -80,8 +82,9 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     animation.start();
   }, [nearbySheetVisible, nearbySheetHeight, widgetsBottom]);
 
-  // Live user position for the custom location marker
-  const [livePos, setLivePos] = useState<{ latitude: number; longitude: number } | null>(null);
+  // Live user position for the custom location marker. The marker slides to
+  // each new fix instead of teleporting — see useSmoothedPosition.
+  const { coord: userCoord, hasFix: hasUserFix, moveTo: moveUserMarker } = useSmoothedPosition();
   const [accuracy, setAccuracy] = useState<number | undefined>(undefined);
 
   // Subscriptions live in refs (not the effect closure) so a late start —
@@ -95,7 +98,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   // (same gate the old inline watcher had via startLocationWatcher), and
   // paused while a walk is active — WalkScreen owns the compass then.
   const [locationGranted, setLocationGranted] = useState(false);
-  const headingAnim = useHeading(locationGranted && !isWalking);
+  const { headingAnim, reportGpsFix } = useHeading(locationGranted && !isWalking);
   // Ref mirror of isWalking for the async gap in startLocationWatcher —
   // a walk that started while watchPositionAsync was in flight must not
   // leave a live duplicate subscription behind.
@@ -105,12 +108,17 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     setLocationGranted(true); // callers only invoke this with permission granted
     if (locationSubRef.current) return; // one watcher max
     const sub = await Location.watchPositionAsync(
-      { accuracy: Location.Accuracy.High, timeInterval: 1000, distanceInterval: 2 },
+      { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 2 },
       (loc) => {
+        // A fix worse than the gate is dropped whole: it moves neither the
+        // marker nor the position everything else (radius filter, nearby
+        // dogs, heading source) reads from.
+        if (!isAccurateFix(loc.coords.accuracy)) return;
         const pt = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-        setLivePos(pt);
+        moveUserMarker(pt);
         setUserLocation(pt);
         setAccuracy(loc.coords.accuracy ?? undefined);
+        reportGpsFix(loc.coords);
       }
     );
     // While we awaited: a concurrent start may have won, the screen unmounted,
@@ -283,9 +291,9 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         showsCompass={false}
         toolbarEnabled={false}
       >
-        {livePos && (
-          <Marker
-            coordinate={livePos}
+        {hasUserFix && (
+          <MarkerAnimated
+            coordinate={userCoord}
             anchor={{ x: 0.5, y: 0.5 }}
             flat
             // Constant true on this one marker only: the native-driven rotation
@@ -293,7 +301,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
             tracksViewChanges
           >
             <UserLocationMarker headingAnim={headingAnim} accuracy={accuracy} />
-          </Marker>
+          </MarkerAnimated>
         )}
 
         {filteredMarkers.map((m) => (

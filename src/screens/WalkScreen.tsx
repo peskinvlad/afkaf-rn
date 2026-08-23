@@ -5,7 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import MapView, { PROVIDER_DEFAULT, Polyline, Marker } from 'react-native-maps';
+import MapView, { PROVIDER_DEFAULT, Polyline, MarkerAnimated } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,6 +18,8 @@ import { loadHomeZone, isInsideHomeZone, HomeZone } from '../lib/privacyZone';
 import { useMapMarkers } from '../hooks/useMapMarkers';
 import { useNearbyDogs } from '../hooks/useNearbyDogs';
 import { useHeading } from '../hooks/useHeading';
+import { useSmoothedPosition } from '../hooks/useSmoothedPosition';
+import { isAccurateFix } from '../lib/gpsQuality';
 import { filterMarkersAndWater } from '../lib/markerFilter';
 import { MARKER_CONFIG } from '../lib/markerConfig';
 import { MarkerFilterSheet, RadiusFilter } from '../components/MarkerFilterSheet';
@@ -92,12 +94,14 @@ export function WalkScreen({ navigation }: Props) {
     latitudeDelta: 0.01,
     longitudeDelta: 0.01,
   });
-  const [livePos, setLivePos] = useState<{ latitude: number; longitude: number } | null>(null);
+  // The marker slides to each new fix instead of teleporting there.
+  const { coord: userCoord, hasFix: hasUserFix, moveTo: moveUserMarker } = useSmoothedPosition();
   const [accuracy, setAccuracy] = useState<number | undefined>(undefined);
-  // Compass drives the marker via Animated.Value — no per-tick re-renders.
-  // Enabled once the GPS effect below confirms permission.
+  // Heading drives the marker via Animated.Value — no per-tick re-renders.
+  // Enabled once the GPS effect below confirms permission; that same effect
+  // feeds it every accepted fix so it can switch to GPS course while moving.
   const [locationGranted, setLocationGranted] = useState(false);
-  const headingAnim = useHeading(locationGranted);
+  const { headingAnim, reportGpsFix } = useHeading(locationGranted);
 
   // ── active_walks presence row ───────────────────────────────────────────
   // Created on the first GPS fix of this screen (i.e. right as the walk
@@ -282,10 +286,16 @@ export function WalkScreen({ navigation }: Props) {
       if (status !== 'granted') return;
       setLocationGranted(true);
       sub = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.High, timeInterval: 1000, distanceInterval: 5 },
+        { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 5 },
         (loc) => {
+          // Everything below this line — marker, recorded track, distance,
+          // the published presence row — is fed only by fixes that pass the
+          // accuracy gate. A bad fix used to add tens of metres of phantom
+          // distance to the walk and drag the route line with it.
+          if (!isAccurateFix(loc.coords.accuracy)) return;
           const pt = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-          setLivePos(pt);
+          moveUserMarker(pt);
+          reportGpsFix(loc.coords);
           setAccuracy(loc.coords.accuracy ?? undefined);
           setRoute((prev) => {
             if (prev.length > 0) {
@@ -342,9 +352,9 @@ export function WalkScreen({ navigation }: Props) {
             <Polyline coordinates={route} strokeColor={colors.primary} strokeWidth={4} />
           )}
 
-          {livePos && (
-            <Marker
-              coordinate={livePos}
+          {hasUserFix && (
+            <MarkerAnimated
+              coordinate={userCoord}
               anchor={{ x: 0.5, y: 0.5 }}
               flat
               // Constant true on this one marker only — the native-driven
@@ -352,7 +362,7 @@ export function WalkScreen({ navigation }: Props) {
               tracksViewChanges
             >
               <UserLocationMarker headingAnim={headingAnim} accuracy={accuracy} />
-            </Marker>
+            </MarkerAnimated>
           )}
 
           {filteredMarkers.map((m) => (

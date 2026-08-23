@@ -22,6 +22,7 @@ import { supabase } from '../lib/supabase';
 import { ensureLocationPermission } from '../lib/locationPermission';
 import { LocationRequiredCard } from '../components/LocationRequiredCard';
 import { haversine } from '../lib/geo';
+import { isAccurateFix, GPS_ACCURACY_MAX_M } from '../lib/gpsQuality';
 import { MARKER_CONFIG } from '../lib/markerConfig';
 import { colors, radii, shadows } from '../theme/tokens';
 
@@ -41,6 +42,11 @@ const FLORENTIN = { latitude: 32.0559, longitude: 34.7722 };
 
 // How far the marker may be nudged from the real GPS fix by panning the map.
 const ADJUST_RADIUS_M = 150;
+
+// How long we wait for a fix of *any* quality before offering the retry card.
+// Once fixes are arriving we keep waiting for an accurate one instead — the
+// user can see the accuracy climbing down and knows to step into the open.
+const FIRST_FIX_TIMEOUT_MS = 10000;
 
 // Map block: fixed-height rounded map + the adjust hint below it. The whole
 // block collapses to 0 while the keyboard is up so chips + comment + submit
@@ -65,12 +71,18 @@ export function AddMarkerScreen({ navigation }: Props) {
   const mapRef = useRef<MapView>(null);
   const isSnapping = useRef(false); // guards the snap-induced onRegionChangeComplete
   // Map-area state machine:
-  //   'loading' → spinner (an attempt is actively in flight)
-  //   'nofix'   → GPS didn't return in time / errored → retry card
-  //   'ready'   → show the map (real fix, or the FLORENTIN fallback when
-  //               permission was denied — the handleAdd guard blocks saving there)
-  const [locState, setLocState] = useState<'loading' | 'nofix' | 'ready'>('loading');
-  const [locationGranted, setLocationGranted] = useState(false);
+  //   'loading'   → spinner: permission settled, no fix of any quality yet
+  //   'searching' → fixes are arriving but none within GPS_ACCURACY_MAX_M
+  //   'nofix'     → nothing came back at all in FIRST_FIX_TIMEOUT_MS → retry card
+  //   'ready'     → an accurate fix is locked in (or the FLORENTIN fallback when
+  //                 permission was denied — the handleAdd guard blocks saving there)
+  const [locState, setLocState] = useState<'loading' | 'searching' | 'nofix' | 'ready'>('loading');
+  // A marker is a claim about a physical spot, so it may only be published on
+  // a fix we actually trust. Everything that writes a coordinate — the adjust
+  // circle, the map panning, the submit button — hangs off this flag.
+  const [hasAccurateFix, setHasAccurateFix] = useState(false);
+  const [permissionGranted, setPermissionGranted] = useState(false);
+  const [fixAccuracy, setFixAccuracy] = useState<number | null>(null);
   const [locationCardVisible, setLocationCardVisible] = useState(false);
 
   const [selectedType, setSelectedType] = useState<MarkerType>('hazard');
@@ -108,51 +120,96 @@ export function AddMarkerScreen({ navigation }: Props) {
   const mapBlockOpacity = collapse.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
 
   // ── Get current location ──────────────────────────────────────────────────
-  // A marker is always the author's real physical position, so we insist on
-  // Accuracy.High (GPS) — never a wifi/cell estimate. Guarded with a 10s race
-  // (cold GPS start needs more than the 4s used elsewhere) so a failed fix
-  // shows the retry card instead of hanging forever. coords stays at the
+  // A marker is always the author's real physical position, so a one-shot fix
+  // isn't enough: we watch at BestForNavigation until a fix lands inside
+  // GPS_ACCURACY_MAX_M, then lock the anchor and stop. Until that happens the
+  // screen sits in 'searching' with the submit button disabled — publishing a
+  // ±60 m marker puts a hazard on the wrong street. coords stays at the
   // FLORENTIN fallback if permission is denied — used only for the preview,
-  // never for a saved marker (see the locationGranted guard in handleAdd).
+  // never for a saved marker (see the hasAccurateFix guard in handleAdd).
+  const watchRef = useRef<Location.LocationSubscription | null>(null);
+  const firstFixTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lockedRef = useRef(false); // an accurate fix arrived; anchor is final
+
+  const stopWatching = useCallback(() => {
+    watchRef.current?.remove();
+    watchRef.current = null;
+    if (firstFixTimer.current) {
+      clearTimeout(firstFixTimer.current);
+      firstFixTimer.current = null;
+    }
+  }, []);
+
   const fetchLocation = useCallback(async () => {
+    stopWatching();
+    lockedRef.current = false;
     setLocState('loading');
+    setHasAccurateFix(false);
+    setFixAccuracy(null);
     const { granted } = await ensureLocationPermission();
     if (!mountedRef.current) return;
     if (!granted) {
+      setPermissionGranted(false);
       setLocationCardVisible(true);
       setLocState('ready'); // permission-denied path unchanged: fallback map + card
       return;
     }
+    setPermissionGranted(true);
     try {
-      const locPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000));
-      const loc = await Promise.race([locPromise, timeoutPromise]);
-      if (!mountedRef.current) return;
-      if (loc === null) {
-        setLocState('nofix'); // timed out — no fix within 10s
+      const sub = await Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 0 },
+        (loc) => {
+          if (!mountedRef.current || lockedRef.current) return;
+          const acc = loc.coords.accuracy ?? null;
+          setFixAccuracy(acc);
+          if (!isAccurateFix(acc)) {
+            // Something is coming back, it just isn't good enough to pin a
+            // marker on. Keep watching and show what we're waiting for.
+            setLocState('searching');
+            return;
+          }
+          // Locked on. The anchor stops moving here so the adjust circle
+          // doesn't crawl out from under the user's finger while they aim.
+          lockedRef.current = true;
+          const fix = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+          setCoords(fix);
+          setMarkerCoords(fix); // marker starts exactly on the fix, adjustable from there
+          setHasAccurateFix(true);
+          setLocState('ready');
+          stopWatching();
+        }
+      );
+      // The first callback can land before this await resolves — then the
+      // watcher is already meant to be gone.
+      if (!mountedRef.current || lockedRef.current) {
+        sub.remove();
         return;
       }
-      const fix = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-      setCoords(fix);
-      setMarkerCoords(fix); // marker starts exactly on the fix, adjustable from there
-      setLocationGranted(true);
-      setLocState('ready');
+      watchRef.current = sub;
+      // Silence for the whole window → the retry card, as before. Once fixes
+      // are flowing ('searching') we stay put and let the user decide.
+      firstFixTimer.current = setTimeout(() => {
+        if (!mountedRef.current) return;
+        setLocState((prev) => (prev === 'loading' ? 'nofix' : prev));
+      }, FIRST_FIX_TIMEOUT_MS);
     } catch (_) {
       if (!mountedRef.current) return;
       setLocState('nofix'); // reject no longer swallowed
     }
-  }, []);
+  }, [stopWatching]);
 
   useEffect(() => {
     fetchLocation();
   }, [fetchLocation]);
+
+  useEffect(() => stopWatching, [stopWatching]);
 
   // ── Keep the marker (map centre) within ADJUST_RADIUS_M of the fix ──────────
   // Pin and saved point always coincide: if the centre drifts past the radius
   // we snap the map back to the nearest edge point rather than silently
   // clamping only the stored coords.
   function handleRegionChangeComplete(r: Region) {
-    if (!locationGranted) return; // fallback map (permission denied) isn't adjustable
+    if (!hasAccurateFix) return; // no trusted anchor yet → nothing to adjust around
     if (isSnapping.current) {
       isSnapping.current = false; // ignore the callback our own snap triggered
       return;
@@ -180,7 +237,7 @@ export function AddMarkerScreen({ navigation }: Props) {
 
   // ── Save to Supabase ───────────────────────────────────────────────────────
   async function handleAdd() {
-    if (saving || !locationGranted) return; // never save a marker at the FLORENTIN fallback
+    if (saving || !hasAccurateFix) return; // never save on a fallback or a loose fix
     // Second line of defence: the saved point must be within the adjust radius
     // of the fix. Shouldn't trip while the snap works, but the guard stays
     // (small epsilon absorbs float/interp rounding on the boundary).
@@ -239,6 +296,19 @@ export function AddMarkerScreen({ navigation }: Props) {
           <View style={styles.mapLoading}>
             <ActivityIndicator color={colors.primary} />
           </View>
+        ) : locState === 'searching' ? (
+          <View style={styles.noFixCard}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={styles.noFixTitle}>{t('gps.searching.title')}</Text>
+            <Text style={styles.noFixBody}>
+              {t('gps.searching.body', { m: GPS_ACCURACY_MAX_M })}
+            </Text>
+            {fixAccuracy != null && (
+              <Text style={styles.gpsAccuracy}>
+                {t('gps.searching.accuracy', { n: Math.round(fixAccuracy) })}
+              </Text>
+            )}
+          </View>
         ) : locState === 'nofix' ? (
           <View style={styles.noFixCard}>
             <Text style={styles.noFixEmoji}>📡</Text>
@@ -255,8 +325,8 @@ export function AddMarkerScreen({ navigation }: Props) {
               style={StyleSheet.absoluteFill}
               provider={PROVIDER_DEFAULT}
               initialRegion={region}
-              scrollEnabled={locationGranted}
-              zoomEnabled={locationGranted}
+              scrollEnabled={hasAccurateFix}
+              zoomEnabled={hasAccurateFix}
               minZoomLevel={15}
               pitchEnabled={false}
               rotateEnabled={false}
@@ -264,7 +334,7 @@ export function AddMarkerScreen({ navigation }: Props) {
               toolbarEnabled={false}
               onRegionChangeComplete={handleRegionChangeComplete}
             >
-              {locationGranted ? (
+              {hasAccurateFix ? (
                 <Circle
                   center={coords}
                   radius={ADJUST_RADIUS_M}
@@ -277,7 +347,7 @@ export function AddMarkerScreen({ navigation }: Props) {
               )}
             </MapView>
             {/* Fixed centre pin — the marker point is always the map centre */}
-            {locationGranted && (
+            {hasAccurateFix && (
               <View style={styles.centerPinOverlay} pointerEvents="none">
                 <View style={styles.centerPin} />
               </View>
@@ -287,7 +357,7 @@ export function AddMarkerScreen({ navigation }: Props) {
       </View>
 
       {/* ── Adjust hint — own line under the map, fully visible ── */}
-      {locState === 'ready' && locationGranted && (
+      {locState === 'ready' && hasAccurateFix && (
         <Text style={styles.adjustHint}>{t('marker.adjust_hint')}</Text>
       )}
       </Animated.View>
@@ -348,16 +418,22 @@ export function AddMarkerScreen({ navigation }: Props) {
       {/* ── Add button — pinned to bottom ── */}
       <View style={[styles.addBtnContainer, { paddingBottom: insets.bottom + 12 }]}>
         <TouchableOpacity
-          style={[styles.addBtn, shadows.md, (saving || !locationGranted) && styles.addBtnDisabled]}
+          style={[styles.addBtn, shadows.md, (saving || !hasAccurateFix) && styles.addBtnDisabled]}
           onPress={handleAdd}
           activeOpacity={0.85}
-          disabled={saving || !locationGranted}
+          disabled={saving || !hasAccurateFix}
         >
           {saving ? (
             <ActivityIndicator color={colors.white} />
           ) : (
+            // Disabled is never silent: the label says whether we're waiting
+            // on permission or on a fix good enough to pin a marker on.
             <Text style={styles.addBtnTxt}>
-              {locationGranted ? t('addMarker.submit') : t('location.no_fix.waiting')}
+              {!permissionGranted
+                ? t('location.no_fix.waiting')
+                : !hasAccurateFix
+                  ? t('gps.searching.title')
+                  : t('addMarker.submit')}
             </Text>
           )}
         </TouchableOpacity>
@@ -430,6 +506,15 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 18,
     textAlign: 'center',
+  },
+  // Live accuracy readout under the "searching" copy — turns an opaque wait
+  // into something the walker can act on by stepping into the open.
+  gpsAccuracy: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.ink,
+    textAlign: 'center',
+    marginTop: 2,
   },
   noFixBtn: {
     marginTop: 8,
