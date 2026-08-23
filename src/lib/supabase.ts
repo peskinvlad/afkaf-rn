@@ -10,5 +10,12 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+    // PKCE задан явно, а не оставлен на дефолт библиотеки. На мобильном
+    // редирект приходит на кастомную схему afkaf://, которую может
+    // зарегистрировать любое приложение. При implicit-флоу в этом редиректе
+    // едут сами токены — перехватчик получает готовую сессию. При PKCE едет
+    // одноразовый code, бесполезный без code_verifier: тот генерируется здесь
+    // же, лежит в этом storage и никогда не покидает устройство.
+    flowType: 'pkce',
   },
 });

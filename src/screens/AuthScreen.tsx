@@ -20,6 +20,12 @@ WebBrowser.maybeCompleteAuthSession();
 // The custom scheme registered in app.json + Supabase Redirect URLs
 const REDIRECT_URI = 'afkaf://auth/callback';
 
+// Как долго после нажатия «войти» мы вообще готовы рассматривать входящий
+// auth-редирект. Окно нужно для Android-случая, когда Custom Tab закрылась,
+// а ссылку доставила ОС мимо промиса openAuthSessionAsync. Двух минут хватает
+// на ввод пароля и 2FA; вне окна любой afkaf://auth/callback игнорируется.
+const OAUTH_ACCEPT_MS = 120_000;
+
 // Detect "new user" — created within last 60 seconds
 function isNewUser(createdAt: string | undefined): boolean {
   if (!createdAt) return true;
@@ -52,53 +58,52 @@ export function AuthScreen({ navigation }: Props) {
     return () => data.subscription.unsubscribe();
   }, []);
 
-  // ── Parse redirect URL → establish Supabase session ───────────────────────
-  // supabase-js v2 defaults to PKCE flow in React Native:
-  //   redirect = afkaf://auth/callback?code=XXXX          ← PKCE (default)
-  // Implicit flow (if configured in Supabase dashboard):
-  //   redirect = afkaf://auth/callback#access_token=...   ← Implicit
-  // We handle both so the code works regardless of dashboard setting.
-  async function handleRedirectUrl(url: string) {
-    if (!url.startsWith('afkaf://auth/callback')) return;
+  // Момент, до которого принимается auth-редирект. Ноль = флоу не запускался
+  // или уже завершён, и тогда любой входящий afkaf://auth/callback — чужой.
+  const oauthDeadlineRef = useRef(0);
 
-    // ── PKCE: code in query string ──
+  // ── Redirect → сессия ─────────────────────────────────────────────────────
+  // Принимается РОВНО ОДНА вещь: одноразовый PKCE-code из query. Он бесполезен
+  // без code_verifier, который supabase-js сгенерировал при signInWithOAuth и
+  // держит в локальном storage, — подсунутый снаружи code не обменяется.
+  //
+  // Ветка implicit-флоу (токены во фрагменте → setSession) удалена намеренно и
+  // не должна возвращаться: она принимала готовую пару токенов из любой
+  // ссылки, то есть логинила пользователя в аккаунт того, кто эту ссылку
+  // прислал. Клиент прибит к flowType:'pkce' (lib/supabase.ts), так что
+  // фрагмент с токенами в легитимном флоу не появляется в принципе.
+  async function completeOAuthRedirect(url: string) {
+    if (!url.startsWith(REDIRECT_URI)) return;
+
     const query = url.includes('?') ? url.split('?')[1].split('#')[0] : '';
-    const code  = new URLSearchParams(query).get('code');
-    if (code) {
-      console.log('[Auth] PKCE code received, exchanging…');
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-      if (error) {
-        console.warn('[Auth] exchangeCodeForSession error:', error.message);
-        setLoadingProvider(null);
-      }
-      // onAuthStateChange fires on success → navigation handled there
+    const code = new URLSearchParams(query).get('code');
+    if (!code) {
+      console.warn('[Auth] redirect URL carried no authorization code');
+      setLoadingProvider(null);
       return;
     }
 
-    // ── Implicit: tokens in hash fragment ──
-    const hash         = url.includes('#') ? url.split('#')[1] : '';
-    const hashParams   = new URLSearchParams(hash);
-    const accessToken  = hashParams.get('access_token');
-    const refreshToken = hashParams.get('refresh_token');
-    if (accessToken && refreshToken) {
-      console.log('[Auth] Implicit tokens received, setting session…');
-      await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) {
+      console.warn('[Auth] exchangeCodeForSession error:', error.message);
+      setLoadingProvider(null);
       return;
     }
-
-    console.warn('[Auth] redirect URL contained neither code nor tokens');
-    setLoadingProvider(null);
+    // Успех: onAuthStateChange навигирует. Окно закрываем сразу — второй
+    // редирект по этому же флоу нам уже не нужен.
+    oauthDeadlineRef.current = 0;
   }
 
-  // ── Linking fallback (Android / browser escaping the session) ─────────────
+  // ── Linking-фолбэк, только внутри своего флоу ─────────────────────────────
+  // Нужен для Android: Custom Tab иногда закрывается, а ссылку доставляет ОС
+  // мимо промиса openAuthSessionAsync. Слушатель ЖИВ только пока идёт флоу,
+  // начатый в этом приложении, и умеет лишь обменять code — setSession отсюда
+  // недостижим. getInitialURL сознательно не используется: холодный старт по
+  // ссылке никогда не бывает продолжением нашего флоу.
   useEffect(() => {
     const sub = Linking.addEventListener('url', ({ url }) => {
-      handleRedirectUrl(url);
-    });
-    Linking.getInitialURL().then((url) => {
-      if (url) {
-        handleRedirectUrl(url);
-      }
+      if (Date.now() > oauthDeadlineRef.current) return; // чужой вызов схемы
+      completeOAuthRedirect(url);
     });
     return () => sub.remove();
   }, []);
@@ -107,6 +112,8 @@ export function AuthScreen({ navigation }: Props) {
   async function signInWith(provider: 'google' | 'apple') {
     if (loadingProvider) return;
     setLoadingProvider(provider);
+    // Окно открывается только здесь — из обработчика нажатия.
+    oauthDeadlineRef.current = Date.now() + OAUTH_ACCEPT_MS;
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
@@ -117,6 +124,7 @@ export function AuthScreen({ navigation }: Props) {
       });
       if (error || !data.url) {
         console.warn('[Auth] signInWithOAuth error:', error?.message);
+        oauthDeadlineRef.current = 0;
         setLoadingProvider(null);
         return;
       }
@@ -126,7 +134,7 @@ export function AuthScreen({ navigation }: Props) {
       const result = await WebBrowser.openAuthSessionAsync(data.url, REDIRECT_URI);
 
       if (result.type === 'success') {
-        await handleRedirectUrl(result.url);
+        await completeOAuthRedirect(result.url);
       } else {
         // type === 'cancel' or 'dismiss' — Linking listener may still fire if OS handled the deep link
         console.warn('[Auth] WebBrowser did not return success — waiting for Linking listener');
@@ -134,6 +142,7 @@ export function AuthScreen({ navigation }: Props) {
       }
     } catch (e) {
       console.warn('[Auth] signInWith exception:', e);
+      oauthDeadlineRef.current = 0;
       setLoadingProvider(null);
     }
   }
