@@ -9,14 +9,16 @@ import {
 } from 'react-native';
 import { useApp } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
-import { isDevUser } from '../constants/dev';
+import { isDevUser, isDevListConfigured } from '../constants/dev';
 import { DevPanel } from '../components/DevPanel';
 
 // Keep in sync with app.json → expo.version
 const APP_VERSION = '1.0.0';
-// Hidden dev entry: 5 quick taps on the version line within this window
+// Hidden dev entry: 5 taps on the version line, each within this gap of the
+// previous one. The gap is measured tap-to-tap, not as one budget from the
+// first tap — see handleVersionTap.
 const DEV_TAP_COUNT = 5;
-const DEV_TAP_WINDOW_MS = 2000;
+const DEV_TAP_GAP_MS = 1000;
 
 const STRINGS = {
   ru: {
@@ -233,7 +235,7 @@ export default function AboutScreen() {
   const [devPanelVisible, setDevPanelVisible] = useState(false);
   const currentUserId = useRef<string | null>(null);
   const tapCount = useRef(0);
-  const firstTapAt = useRef(0);
+  const lastTapAt = useRef(0);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -241,18 +243,47 @@ export default function AboutScreen() {
     });
   }, []);
 
-  function handleVersionTap() {
+  async function handleVersionTap() {
     const now = Date.now();
-    if (now - firstTapAt.current > DEV_TAP_WINDOW_MS) {
-      firstTapAt.current = now;
-      tapCount.current = 1;
-      return;
+    const gap = now - lastTapAt.current;
+    lastTapAt.current = now;
+    // The window is the gap between consecutive taps, not one budget spent
+    // from the first tap. With a budget, a steady ~600 ms cadence reset the
+    // counter on every fifth tap, so the panel could never open however long
+    // you kept tapping.
+    tapCount.current = gap > DEV_TAP_GAP_MS ? 1 : tapCount.current + 1;
+
+    // TODO remove — temporary dev-entry diagnostics
+    console.log(
+      `[dev-entry] tap ${tapCount.current}/${DEV_TAP_COUNT} (gap ${gap}ms)`,
+      '| cachedUserId:', currentUserId.current,
+      '| listConfigured:', isDevListConfigured(),
+      '| gate:', isDevUser(currentUserId.current),
+    );
+
+    if (tapCount.current < DEV_TAP_COUNT) return;
+
+    // getSession() is async and the session can be refreshed while this screen
+    // is open, so the cached id may still be null on the deciding tap. Resolve
+    // it for real rather than failing the gate on a stale null.
+    let userId = currentUserId.current;
+    if (userId == null) {
+      const { data: { session } } = await supabase.auth.getSession();
+      userId = session?.user?.id ?? null;
+      currentUserId.current = userId;
     }
-    tapCount.current += 1;
-    if (tapCount.current >= DEV_TAP_COUNT && isDevUser(currentUserId.current)) {
-      tapCount.current = 0;
-      setDevPanelVisible(true);
-    }
+
+    // TODO remove — temporary dev-entry diagnostics
+    console.log(
+      '[dev-entry] threshold reached | resolvedUserId:', userId,
+      '| listConfigured:', isDevListConfigured(),
+      '| isDevUser:', isDevUser(userId),
+    );
+
+    // Gate unchanged: not on DEV_USER_IDS → nothing happens, no UI trace.
+    if (!isDevUser(userId)) return;
+    tapCount.current = 0;
+    setDevPanelVisible(true);
   }
 
   return (

@@ -9,11 +9,31 @@ import { supabase } from '../lib/supabase';
 //
 // UUID — это auth.users.id из Supabase (Dashboard → Authentication → Users).
 export const DEV_USER_IDS: string[] = [
-  'PUT_VLAD_UUID_HERE',
+  'e57637d6-7b83-465c-8263-6ca0fa822ab4', // Vlad
 ];
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+// Нормализованный список. Supabase отдаёт canonical lowercase UUID, но
+// значение, скопированное из дашборда, легко приезжает с хвостовым пробелом
+// или в верхнем регистре — раньше такая строка молча не совпадала. Всё, что
+// вообще не UUID (опечатка, незаполненный плейсхолдер), отсеивается здесь и
+// не может совпасть ни с чьим id.
+const DEV_USER_ID_SET = new Set(
+  DEV_USER_IDS.map((id) => id.trim().toLowerCase()).filter((id) => UUID_RE.test(id)),
+);
+
+// Гейт остаётся точным allow-list по auth.users.id: совпадение — только с
+// UUID, явно вписанным в DEV_USER_IDS.
 export function isDevUser(userId: string | null | undefined): boolean {
-  return userId != null && DEV_USER_IDS.includes(userId);
+  if (userId == null) return false;
+  return DEV_USER_ID_SET.has(userId.trim().toLowerCase());
+}
+
+// Есть ли в списке хотя бы один валидный UUID. Нужно только диагностике
+// dev-входа в AboutScreen: отличает «гейт сказал нет» от «список не заполнен».
+export function isDevListConfigured(): boolean {
+  return DEV_USER_ID_SET.size > 0;
 }
 
 // AsyncStorage-ключи dev-оверрайдов
