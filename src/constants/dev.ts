@@ -30,6 +30,24 @@ export function isDevUser(userId: string | null | undefined): boolean {
   return DEV_USER_ID_SET.has(userId.trim().toLowerCase());
 }
 
+// Есть ли в списке хотя бы один валидный UUID.
+export function isDevListConfigured(): boolean {
+  return DEV_USER_ID_SET.size > 0;
+}
+
+// Страховка от повторения истории с незаполненным плейсхолдером: список без
+// единого валидного UUID молча выключает dev-режим для всех, и снаружи это
+// неотличимо от «гейт просто не пускает» — 5 тапов по версии не делают ничего,
+// без ошибок. Один раз при старте говорим об этом вслух. Только в dev-сборке:
+// у обычного пользователя список и должен быть пустым, если UUID не вписан.
+if (__DEV__ && !isDevListConfigured()) {
+  console.warn(
+    '[dev] DEV_USER_IDS не содержит ни одного валидного UUID — dev-режим ' +
+    'выключен для всех. Впиши auth.users.id (Supabase → Authentication → ' +
+    'Users) в src/constants/dev.ts.',
+  );
+}
+
 // AsyncStorage-ключи dev-оверрайдов
 export const DEV_ASPHALT_OVERRIDE_KEY = 'dev_asphalt_temp_override';
 export const DEV_VOTE_OWN_KEY = 'dev_vote_own_markers';
