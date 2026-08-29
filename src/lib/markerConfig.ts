@@ -14,7 +14,7 @@ export interface MapMarker {
   lng: number;
   description: string | null;
   user_id: string | null;  // author — used for "own marker" check in voting
-  created_at?: string | null; // freshness label in MarkerDetailSheet
+  created_at?: string | null; // freshness label in MarkerCallout
 }
 
 export interface WaterSource {

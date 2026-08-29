@@ -10,19 +10,20 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import MapView, { PROVIDER_DEFAULT, MarkerAnimated } from 'react-native-maps';
+import MapView, { PROVIDER_DEFAULT, MarkerAnimated, MapPressEvent } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Menu, Bell, SlidersHorizontal, Locate } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { colors, radii, shadows, heatVis } from '../theme/tokens';
 import { WalkSlider } from '../components/WalkSlider';
 import { MarkerFilterSheet, RadiusFilter } from '../components/MarkerFilterSheet';
-import { MarkerDetailSheet } from '../components/MarkerDetailSheet';
+import { MarkerCallout } from '../components/MarkerCallout';
 import { UserLocationMarker } from '../components/UserLocationMarker';
 import { MapMarkerIcon } from '../components/MapMarkerIcon';
 import { useMapMarkers } from '../hooks/useMapMarkers';
 import { useHeading } from '../hooks/useHeading';
 import { useSmoothedPosition } from '../hooks/useSmoothedPosition';
+import { useCalloutAnchor } from '../hooks/useCalloutAnchor';
 import { useNearbyDogs } from '../hooks/useNearbyDogs';
 import NearbyDogsSheet from '../components/NearbyDogsSheet';
 import { CoverageBanner } from '../components/CoverageBanner';
@@ -70,6 +71,20 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   const [nearbySheetHeight, setNearbySheetHeight] = useState(SHEET_HEIGHT_FALLBACK);
   const widgetsBottom = useRef(new Animated.Value(WIDGETS_BASE_BOTTOM)).current;
   const mapRef = useRef<MapView | null>(null);
+  // Screen position of the open marker's pin, so the callout can sit on it.
+  // refresh() is wired to the map's region events below — the bubble has to
+  // follow its pin while the map moves under it.
+  const { point: calloutAnchor, refresh: refreshCalloutAnchor } = useCalloutAnchor(
+    mapRef,
+    detailMarker ? { latitude: detailMarker.lat, longitude: detailMarker.lng } : null
+  );
+
+  function handleMapPress(e: MapPressEvent) {
+    // Android delivers a marker tap through the map's onPress as well. That
+    // gesture is what opened the callout — it must not close it again.
+    if (e.nativeEvent.action === 'marker-press') return;
+    setDetailMarker(null);
+  }
 
   useEffect(() => {
     // Open: sit just above the sheet's top edge. Closed: rest at the base offset.
@@ -301,6 +316,11 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         showsMyLocationButton={false}
         showsCompass={false}
         toolbarEnabled={false}
+        onPress={handleMapPress}
+        // During the gesture the anchor is recomputed as fast as the bridge
+        // keeps up; the Complete event guarantees a final exact placement.
+        onRegionChange={refreshCalloutAnchor}
+        onRegionChangeComplete={refreshCalloutAnchor}
       >
         {hasUserFix && (
           <MarkerAnimated
@@ -465,9 +485,9 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         t={t}
       />
 
-      <MarkerDetailSheet
+      <MarkerCallout
         marker={detailMarker}
-        visible={detailMarker != null}
+        anchor={calloutAnchor}
         onClose={() => setDetailMarker(null)}
       />
 

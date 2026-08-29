@@ -247,7 +247,7 @@ export function DevPanel({ visible, onClose }: Props) {
               />
             </View>
             <Text style={styles.note}>
-              Убирает клиентский гейт isOwnMarker в MarkerDetailSheet (только
+              Убирает клиентский гейт isOwnMarker в MarkerCallout (только
               для DEV_USER_IDS). Серверная логика не тронута.
             </Text>
           </View>

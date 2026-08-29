@@ -5,7 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import MapView, { PROVIDER_DEFAULT, Polyline, MarkerAnimated } from 'react-native-maps';
+import MapView, { PROVIDER_DEFAULT, Polyline, MarkerAnimated, MapPressEvent } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -19,11 +19,12 @@ import { useMapMarkers } from '../hooks/useMapMarkers';
 import { useNearbyDogs } from '../hooks/useNearbyDogs';
 import { useHeading } from '../hooks/useHeading';
 import { useSmoothedPosition } from '../hooks/useSmoothedPosition';
+import { useCalloutAnchor } from '../hooks/useCalloutAnchor';
 import { isAccurateFix, createGlitchFilter } from '../lib/gpsQuality';
 import { filterMarkersAndWater } from '../lib/markerFilter';
 import { MARKER_CONFIG } from '../lib/markerConfig';
 import { MarkerFilterSheet, RadiusFilter } from '../components/MarkerFilterSheet';
-import { MarkerDetailSheet } from '../components/MarkerDetailSheet';
+import { MarkerCallout } from '../components/MarkerCallout';
 import { UserLocationMarker } from '../components/UserLocationMarker';
 import { MapMarkerIcon } from '../components/MapMarkerIcon';
 import { FirstWalkTipCard } from '../components/FirstWalkTipCard';
@@ -55,6 +56,19 @@ export function WalkScreen({ navigation }: Props) {
   const nearbyTotal = nearbyDogs.length + nearbyHiddenCount;
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [detailMarker, setDetailMarker] = useState<import('../lib/markerConfig').MapMarker | null>(null);
+  // Screen position of the open marker's pin — the callout is placed on it.
+  const mapRef = useRef<MapView | null>(null);
+  const { point: calloutAnchor, refresh: refreshCalloutAnchor } = useCalloutAnchor(
+    mapRef,
+    detailMarker ? { latitude: detailMarker.lat, longitude: detailMarker.lng } : null
+  );
+
+  function handleMapPress(e: MapPressEvent) {
+    // Android delivers a marker tap through the map's onPress as well. That
+    // gesture is what opened the callout — it must not close it again.
+    if (e.nativeEvent.action === 'marker-press') return;
+    setDetailMarker(null);
+  }
   const hiddenCount = Object.values(activeCategories).filter((v) => !v).length;
   const { filteredMarkers, filteredWaterSources } = filterMarkersAndWater(
     markers, waterSources, radius, activeCategories, userLocation,
@@ -365,12 +379,18 @@ export function WalkScreen({ navigation }: Props) {
       {/* ── Map (flex: 1, not absoluteFill) ── */}
       <View style={styles.mapContainer}>
         <MapView
+          ref={mapRef}
           style={StyleSheet.absoluteFill}
           provider={PROVIDER_DEFAULT}
           region={region}
           showsMyLocationButton={false}
           showsCompass={false}
           toolbarEnabled={false}
+          onPress={handleMapPress}
+          // During the gesture the anchor is recomputed as fast as the bridge
+          // keeps up; the Complete event guarantees a final exact placement.
+          onRegionChange={refreshCalloutAnchor}
+          onRegionChangeComplete={refreshCalloutAnchor}
         >
           {route.length > 1 && (
             <Polyline coordinates={route} strokeColor={colors.primary} strokeWidth={4} />
@@ -468,6 +488,14 @@ export function WalkScreen({ navigation }: Props) {
             <Text style={styles.fabIcon}>+</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Inside mapContainer on purpose: pointForCoordinate answers in the
+            map view's own coordinate space, which this container shares. */}
+        <MarkerCallout
+          marker={detailMarker}
+          anchor={calloutAnchor}
+          onClose={() => setDetailMarker(null)}
+        />
       </View>
 
       {/* ── Bottom sheet (natural height, always visible) ── */}
@@ -528,12 +556,6 @@ export function WalkScreen({ navigation }: Props) {
         onToggleCategory={toggleCategory}
         markerConfig={MARKER_CONFIG}
         t={t}
-      />
-
-      <MarkerDetailSheet
-        marker={detailMarker}
-        visible={detailMarker != null}
-        onClose={() => setDetailMarker(null)}
       />
 
       <FirstWalkTipCard onSetupPrivacy={() => navigation.navigate('PrivacyRadius')} />
