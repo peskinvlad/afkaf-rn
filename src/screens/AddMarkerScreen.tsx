@@ -23,7 +23,8 @@ import { ensureLocationPermission } from '../lib/locationPermission';
 import { LocationRequiredCard } from '../components/LocationRequiredCard';
 import { haversine } from '../lib/geo';
 import { isAccurateFix, GPS_ACCURACY_MAX_M } from '../lib/gpsQuality';
-import { MARKER_CONFIG } from '../lib/markerConfig';
+import { addLocalMarker } from '../hooks/useMapMarkers';
+import { MapMarker, MARKER_CONFIG } from '../lib/markerConfig';
 import { colors, radii, shadows } from '../theme/tokens';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -248,16 +249,25 @@ export function AddMarkerScreen({ navigation }: Props) {
     setSaving(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const { error } = await supabase.from('markers').insert({
-        type:       selectedType,
-        description: description.trim() || null,
-        lat:        markerCoords.latitude,
-        lng:        markerCoords.longitude,
-        user_id:    session?.user?.id ?? null,
-        created_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      });
+      // .select() so the row comes back as it was stored — the author's own
+      // marker goes onto the map right away instead of waiting for the next
+      // poll, and it carries the coordinate the database actually holds rather
+      // than a second copy of it assembled here.
+      const { data, error } = await supabase
+        .from('markers')
+        .insert({
+          type:       selectedType,
+          description: description.trim() || null,
+          lat:        markerCoords.latitude,
+          lng:        markerCoords.longitude,
+          user_id:    session?.user?.id ?? null,
+          created_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        })
+        .select('id, type, lat, lng, description, user_id, created_at')
+        .single();
       if (error) throw error;
+      if (data) addLocalMarker(data as MapMarker);
       navigation.goBack();
     } catch (_) {
       // Keep the screen open so the typed description isn't lost.
