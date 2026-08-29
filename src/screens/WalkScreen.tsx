@@ -19,7 +19,7 @@ import { useMapMarkers } from '../hooks/useMapMarkers';
 import { useNearbyDogs } from '../hooks/useNearbyDogs';
 import { useHeading } from '../hooks/useHeading';
 import { useSmoothedPosition } from '../hooks/useSmoothedPosition';
-import { isAccurateFix } from '../lib/gpsQuality';
+import { isAccurateFix, createGlitchFilter } from '../lib/gpsQuality';
 import { filterMarkersAndWater } from '../lib/markerFilter';
 import { MARKER_CONFIG } from '../lib/markerConfig';
 import { MarkerFilterSheet, RadiusFilter } from '../components/MarkerFilterSheet';
@@ -97,6 +97,10 @@ export function WalkScreen({ navigation }: Props) {
   // The marker slides to each new fix instead of teleporting there.
   const { coord: userCoord, hasFix: hasUserFix, moveTo: moveUserMarker } = useSmoothedPosition();
   const [accuracy, setAccuracy] = useState<number | undefined>(undefined);
+  // Second gate, after accuracy: a fix that reports good accuracy but lands
+  // somewhere unreachable is held back, and only recorded if the next fix
+  // confirms it. Holds this stream's reference position.
+  const glitchFilter = useRef(createGlitchFilter<Location.LocationObjectCoords>()).current;
   // Heading drives the marker via Animated.Value — no per-tick re-renders.
   // Enabled once the GPS effect below confirms permission; that same effect
   // feeds it every accepted fix so it can switch to GPS course while moving.
@@ -306,31 +310,35 @@ export function WalkScreen({ navigation }: Props) {
         (loc) => {
           // Everything below this line — marker, recorded track, distance,
           // the published presence row — is fed only by fixes that pass the
-          // accuracy gate. A bad fix used to add tens of metres of phantom
-          // distance to the walk and drag the route line with it.
+          // accuracy gate and then the plausibility gate. A bad fix used to
+          // add tens of metres of phantom distance to the walk and drag the
+          // route line with it; the reflection glitches that lie about their
+          // accuracy did the same until the second gate went in.
           if (!isAccurateFix(loc.coords.accuracy)) return;
-          const pt = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-          moveUserMarker(pt);
-          reportGpsFix(loc.coords);
-          setAccuracy(loc.coords.accuracy ?? undefined);
-          setRoute((prev) => {
-            if (prev.length > 0) {
-              const inc = haversine(prev[prev.length - 1], pt);
-              setDistanceKm((d) => {
-                const next = d + inc;
-                distanceKmRef.current = next;
-                return next;
-              });
-            }
-            return [...prev, pt];
-          });
-          setRegion((r) => ({ ...r, ...pt }));
-          setUserLocation(pt);
+          for (const coords of glitchFilter.accept(loc.coords, loc.timestamp)) {
+            const pt = { latitude: coords.latitude, longitude: coords.longitude };
+            moveUserMarker(pt);
+            reportGpsFix(coords);
+            setAccuracy(coords.accuracy ?? undefined);
+            setRoute((prev) => {
+              if (prev.length > 0) {
+                const inc = haversine(prev[prev.length - 1], pt);
+                setDistanceKm((d) => {
+                  const next = d + inc;
+                  distanceKmRef.current = next;
+                  return next;
+                });
+              }
+              return [...prev, pt];
+            });
+            setRegion((r) => ({ ...r, ...pt }));
+            setUserLocation(pt);
 
-          latestPos.current = pt;
-          if (!activeWalkStartAttempted.current) {
-            activeWalkStartAttempted.current = true;
-            startActiveWalkRow(pt);
+            latestPos.current = pt;
+            if (!activeWalkStartAttempted.current) {
+              activeWalkStartAttempted.current = true;
+              startActiveWalkRow(pt);
+            }
           }
         }
       );

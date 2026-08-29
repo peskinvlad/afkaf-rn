@@ -30,7 +30,7 @@ import { LocationRequiredCard } from '../components/LocationRequiredCard';
 import { filterMarkersAndWater } from '../lib/markerFilter';
 import { MARKER_CONFIG } from '../lib/markerConfig';
 import { ensureLocationPermission } from '../lib/locationPermission';
-import { isAccurateFix } from '../lib/gpsQuality';
+import { isAccurateFix, createGlitchFilter } from '../lib/gpsQuality';
 import { supabase } from '../lib/supabase';
 
 // Florentin, Tel Aviv
@@ -92,6 +92,10 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   // unmount cleanup. Caller is responsible for permission being granted.
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
   const locationUnmountedRef = useRef(false);
+  // Second gate, after accuracy: drops fixes that report a healthy accuracy
+  // but land somewhere no walker could have reached. Holds the stream's
+  // reference position, so it lives as long as the screen, not the watcher.
+  const glitchFilter = useRef(createGlitchFilter<Location.LocationObjectCoords>()).current;
 
   // Compass: Animated.Value straight into the marker — a heading tick never
   // re-renders this screen. Enabled once location permission is confirmed
@@ -112,13 +116,17 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
       (loc) => {
         // A fix worse than the gate is dropped whole: it moves neither the
         // marker nor the position everything else (radius filter, nearby
-        // dogs, heading source) reads from.
+        // dogs, heading source) reads from. What survives that goes through
+        // the plausibility filter, which may hold a fix back for one tick
+        // and then release it together with the fix that confirmed it.
         if (!isAccurateFix(loc.coords.accuracy)) return;
-        const pt = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-        moveUserMarker(pt);
-        setUserLocation(pt);
-        setAccuracy(loc.coords.accuracy ?? undefined);
-        reportGpsFix(loc.coords);
+        for (const coords of glitchFilter.accept(loc.coords, loc.timestamp)) {
+          const pt = { latitude: coords.latitude, longitude: coords.longitude };
+          moveUserMarker(pt);
+          setUserLocation(pt);
+          setAccuracy(coords.accuracy ?? undefined);
+          reportGpsFix(coords);
+        }
       }
     );
     // While we awaited: a concurrent start may have won, the screen unmounted,
@@ -138,6 +146,9 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     if (isWalking) {
       locationSubRef.current?.remove();
       locationSubRef.current = null;
+      // WalkScreen's watcher owns the position now; whatever we last saw is
+      // no longer the previous fix of a continuous stream.
+      glitchFilter.reset();
     } else if (locationGranted) {
       startLocationWatcher();
     }
