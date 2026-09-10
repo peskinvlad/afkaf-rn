@@ -22,6 +22,8 @@ import { colors, radii, shadows } from '../theme/tokens';
 interface Profile {
   id: string;
   display_name: string | null;
+  // Virtual field — NOT a column in the DB `profiles` table. Synthesized at
+  // runtime from the OAuth session's user_metadata; never selected or written.
   google_avatar_url: string | null;
   created_at: string;
 }

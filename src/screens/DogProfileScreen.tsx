@@ -119,6 +119,20 @@ export function DogProfileScreen({ navigation, route }: Props) {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
 
+      // ── Validation (before any write) ──
+      // owner_id and name are NOT NULL in the DB — don't fire a doomed INSERT.
+      if (!userId) {
+        // No session → nothing to own the record. Bail without hitting the DB.
+        Alert.alert(t('common.save_error'));
+        return;
+      }
+      const trimmedName = dogName.trim();
+      if (!trimmedName) {
+        // Ask nicely instead of failing on the NOT NULL constraint.
+        Alert.alert(t('dogProfile.nameRequired'));
+        return;
+      }
+
       // ── Derive owner_name from profiles.display_name (first word only) ──
       let ownerFirstName: string | null = null;
       if (userId) {
@@ -162,9 +176,9 @@ export function DogProfileScreen({ navigation, route }: Props) {
 
       // ── Dog record payload ──
       const payload = {
-        owner_id:   userId ?? null,
+        owner_id:   userId,
         owner_name: ownerFirstName,
-        name:       dogName.trim() || null,
+        name:       trimmedName,
         breed:      breed.trim() || null,
         age:        age.trim() || null,
         weight:     weight.trim() || null,

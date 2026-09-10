@@ -315,6 +315,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'dogProfile.sociability.neutral': 'ניטרלי',
     'dogProfile.sociability.reactive': 'תגובתי',
     'dogProfile.save': 'שמור והמשך',
+    'dogProfile.nameRequired': 'איך קוראים לכלב? הזינו שם כדי להמשיך.',
 
     'auth.subtitle': 'מדריך הטיולים של השכונה שלך',
     'auth.continueGoogle': 'המשך עם Google',
@@ -718,6 +719,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'dogProfile.sociability.neutral': 'Neutral',
     'dogProfile.sociability.reactive': 'Reactive',
     'dogProfile.save': 'Save and continue',
+    'dogProfile.nameRequired': "What's your dog's name? Add it to continue.",
 
     'auth.subtitle': 'Your neighborhood walk guide',
     'auth.continueGoogle': 'Continue with Google',
@@ -1121,6 +1123,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'dogProfile.sociability.neutral': 'Нейтральный',
     'dogProfile.sociability.reactive': 'Реактивный',
     'dogProfile.save': 'Сохранить и продолжить',
+    'dogProfile.nameRequired': 'Как зовут собаку? Впиши имя, чтобы продолжить.',
 
     'auth.subtitle': 'Твой гид по прогулкам в районе',
     'auth.continueGoogle': 'Продолжить с Google',

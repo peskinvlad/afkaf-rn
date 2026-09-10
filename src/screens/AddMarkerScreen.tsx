@@ -249,6 +249,12 @@ export function AddMarkerScreen({ navigation }: Props) {
     setSaving(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      // markers.user_id is NOT NULL — without a session there's nothing to write.
+      if (!userId) {
+        Alert.alert(t('common.save_error'));
+        return;
+      }
       // .select() so the row comes back as it was stored — the author's own
       // marker goes onto the map right away instead of waiting for the next
       // poll, and it carries the coordinate the database actually holds rather
@@ -260,7 +266,7 @@ export function AddMarkerScreen({ navigation }: Props) {
           description: description.trim() || null,
           lat:        markerCoords.latitude,
           lng:        markerCoords.longitude,
-          user_id:    session?.user?.id ?? null,
+          user_id:    userId,
           created_at: new Date().toISOString(),
           expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         })
