@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -56,6 +56,11 @@ export function WalkScreen({ navigation }: Props) {
   const nearbyTotal = nearbyDogs.length + nearbyHiddenCount;
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [detailMarker, setDetailMarker] = useState<import('../lib/markerConfig').MapMarker | null>(null);
+  // Finish is a one-way action (saves the walk, awards badges, then replaces
+  // the screen). The ref is the hard guard against a double-tap firing two
+  // saves; the state just greys the button out.
+  const finishingRef = useRef(false);
+  const [finishing, setFinishing] = useState(false);
   // Screen position of the open marker's pin — the callout is placed on it.
   const mapRef = useRef<MapView | null>(null);
   const { point: calloutAnchor, refresh: refreshCalloutAnchor } = useCalloutAnchor(
@@ -70,8 +75,11 @@ export function WalkScreen({ navigation }: Props) {
     setDetailMarker(null);
   }
   const hiddenCount = Object.values(activeCategories).filter((v) => !v).length;
-  const { filteredMarkers, filteredWaterSources } = filterMarkersAndWater(
-    markers, waterSources, radius, activeCategories, userLocation,
+  // Memoised so a re-render that doesn't move the walker (e.g. the 1s timer
+  // tick) doesn't re-run the haversine filter over every marker.
+  const { filteredMarkers, filteredWaterSources } = useMemo(
+    () => filterMarkersAndWater(markers, waterSources, radius, activeCategories, userLocation),
+    [markers, waterSources, radius, activeCategories, userLocation],
   );
 
   // Radius change — no extra location request here: the GPS watcher below
@@ -235,6 +243,9 @@ export function WalkScreen({ navigation }: Props) {
   // A walk only "counts" (walk_history + badges) past a minimum bar, so an
   // accidental swipe doesn't pollute streaks/totals.
   async function handleFinish() {
+    if (finishingRef.current) return; // double-tap: the first tap owns the save
+    finishingRef.current = true;
+    setFinishing(true);
     stopActiveWalkRow();
 
     const isValidWalk = distanceKm >= MIN_VALID_DISTANCE_KM && seconds >= MIN_VALID_DURATION_SEC;
@@ -539,9 +550,10 @@ export function WalkScreen({ navigation }: Props) {
 
         {/* Finish button */}
         <TouchableOpacity
-          style={[styles.finishBtn, shadows.sm]}
+          style={[styles.finishBtn, shadows.sm, finishing && { opacity: 0.6 }]}
           onPress={handleFinish}
           activeOpacity={0.85}
+          disabled={finishing}
         >
           <Text style={styles.finishTxt}>{t('walk.active.finish')}</Text>
         </TouchableOpacity>

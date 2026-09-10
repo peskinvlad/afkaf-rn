@@ -248,12 +248,19 @@ function CalloutBubble({
     if (!currentUserId || voting) return;
     setVoting(true);
     try {
-      await supabase
+      const { error } = await supabase
         .from('marker_votes')
         .upsert(
           { marker_id: marker.id, user_id: currentUserId, vote },
           { onConflict: 'marker_id,user_id' }
         );
+      if (error) {
+        // supabase-js returns the error rather than throwing — without this
+        // check a failed/offline vote still showed the optimistic ✓ and
+        // auto-closed, so the user thought it landed. Leave the UI untouched.
+        console.warn('[MarkerCallout] vote failed:', error.message);
+        return;
+      }
       // Optimistic update
       setCounts((prev) => {
         const next = { ...prev };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -239,8 +239,11 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     if (blocked) setLocationCardVisible(true);
   }
 
-  const { filteredMarkers, filteredWaterSources } = filterMarkersAndWater(
-    markers, waterSources, radius, activeCategories, userLocation,
+  // Memoised so unrelated re-renders don't re-run the haversine filter over
+  // every marker and water source.
+  const { filteredMarkers, filteredWaterSources } = useMemo(
+    () => filterMarkersAndWater(markers, waterSources, radius, activeCategories, userLocation),
+    [markers, waterSources, radius, activeCategories, userLocation],
   );
 
   async function handleStartWalk() {

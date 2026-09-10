@@ -23,7 +23,7 @@ import { ensureLocationPermission } from '../lib/locationPermission';
 import { LocationRequiredCard } from '../components/LocationRequiredCard';
 import { haversine } from '../lib/geo';
 import { isAccurateFix, GPS_ACCURACY_MAX_M } from '../lib/gpsQuality';
-import { addLocalMarker } from '../hooks/useMapMarkers';
+import { addLocalMarker, MARKER_COLUMNS } from '../hooks/useMapMarkers';
 import { MapMarker, MARKER_CONFIG } from '../lib/markerConfig';
 import { colors, radii, shadows } from '../theme/tokens';
 
@@ -270,7 +270,7 @@ export function AddMarkerScreen({ navigation }: Props) {
           created_at: new Date().toISOString(),
           expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         })
-        .select('id, type, lat, lng, description, user_id, created_at')
+        .select(MARKER_COLUMNS)
         .single();
       if (error) throw error;
       if (data) addLocalMarker(data as MapMarker);
