@@ -14,6 +14,9 @@ import { DevPanel } from '../components/DevPanel';
 
 // Keep in sync with app.json → expo.version
 const APP_VERSION = '1.0.0';
+// Public privacy policy (web/privacy.html once deployed). Update if the
+// hosting URL changes.
+const PRIVACY_URL = 'https://afkaf.netlify.app/privacy.html';
 // Hidden dev entry: 5 taps on the version line, each within this gap of the
 // previous one. The gap is measured tap-to-tap, not as one budget from the
 // first tap — see handleVersionTap.
@@ -75,6 +78,7 @@ const STRINGS = {
     contactTitle: 'Связь',
     contactText: 'Вопросы, баги, идеи — пиши нам',
     contactEmail: 'peskin.vlad@gmail.com',
+    privacy: 'Политика конфиденциальности',
     madeWith: 'Сделано с ❤️ для Шерлока и всех собак Яфо',
   },
   en: {
@@ -131,6 +135,7 @@ const STRINGS = {
     contactTitle: 'Contact',
     contactText: 'Questions, bugs, ideas — reach out',
     contactEmail: 'peskin.vlad@gmail.com',
+    privacy: 'Privacy Policy',
     madeWith: 'Made with ❤️ for Sherlock and all the dogs of Jaffa',
   },
   he: {
@@ -187,6 +192,7 @@ const STRINGS = {
     contactTitle: 'יצירת קשר',
     contactText: 'שאלות, באגים, רעיונות — כתוב לנו',
     contactEmail: 'peskin.vlad@gmail.com',
+    privacy: 'מדיניות פרטיות',
     madeWith: '❤️ נעשה מתוך אהבה לשרלוק ולכל כלבי יפו',
   },
 };
@@ -318,6 +324,9 @@ export default function AboutScreen() {
       </View>
 
       <View style={styles.footer}>
+        <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_URL)} activeOpacity={0.7}>
+          <Text style={styles.privacyLink}>{t.privacy}</Text>
+        </TouchableOpacity>
         <Text style={styles.footerText}>{t.madeWith}</Text>
         <Text style={styles.versionText} onPress={handleVersionTap} suppressHighlighting>
           v{APP_VERSION}
@@ -365,6 +374,7 @@ const styles = StyleSheet.create({
   donateBtnTextSecondary: { color: PRIMARY },
   emailLink: { fontFamily: 'Nunito-SemiBold', fontSize: 15, color: PRIMARY_MID, marginTop: 8, textDecorationLine: 'underline' },
   footer: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 8, alignItems: 'center' },
+  privacyLink: { fontFamily: 'Nunito-SemiBold', fontSize: 13, color: PRIMARY_MID, marginBottom: 10, textDecorationLine: 'underline' },
   footerText: { fontFamily: 'Nunito-Regular', fontSize: 13, color: TEXT_LIGHT, textAlign: 'center' },
   versionText: { fontFamily: 'Nunito-Regular', fontSize: 12, color: TEXT_LIGHT, marginTop: 6, paddingVertical: 8, paddingHorizontal: 16 },
   textRight: { textAlign: 'right' },
