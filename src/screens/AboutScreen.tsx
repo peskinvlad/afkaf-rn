@@ -21,7 +21,7 @@ const PRIVACY_URL = 'https://afkaf.netlify.app/privacy.html';
 
 // Beta feedback shortcut. Fill in the number in international format — digits
 // only, no "+" or spaces, e.g. 972501234567.
-const DEV_WHATSAPP_PHONE = '__PHONE_E164__';
+const DEV_WHATSAPP_PHONE = '972542887955';
 const DEV_EMAIL = 'peskin.vlad@gmail.com';
 
 // Prefilled diagnostic line so bug reports arrive with the build already

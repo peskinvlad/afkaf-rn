@@ -45,3 +45,6 @@ HANDOFF*.md
 
 # local dev scripts (puppet.sql etc.)
 dev/
+
+# supabase CLI local state (project link, etc.)
+supabase/.temp/
