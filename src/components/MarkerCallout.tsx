@@ -383,19 +383,17 @@ function CalloutBubble({
         // A tap inside the bubble is not a tap on the map behind it.
         onStartShouldSetResponder={() => true}
       >
-        {/* Header: type icon in a colored circle + name + freshness */}
+        {/* Header: type icon in a colored circle + name. Freshness used to sit
+            here and stole width from the title ("Агрессивная собака" →
+            "Агресс…"); it now lives on the meta line below, and the title gets
+            up to two full lines. */}
         <View style={[styles.header, rtl && styles.rowReverse]}>
           <View style={[styles.iconCircle, { backgroundColor: cfg.pinColor }]}>
             <Text style={styles.iconEmoji}>{cfg.emoji}</Text>
           </View>
-          <Text style={[styles.typeLabel, rtl && styles.txtRight]} numberOfLines={1}>
+          <Text style={[styles.typeLabel, rtl && styles.txtRight]} numberOfLines={2}>
             {typeLabel}
           </Text>
-          {fresh && (
-            <Text style={[styles.freshness, fresh.stale && styles.freshnessStale]} numberOfLines={1}>
-              {fresh.label}
-            </Text>
-          )}
         </View>
 
         {/* Author comment — quote style, absent when empty */}
@@ -407,10 +405,16 @@ function CalloutBubble({
           </View>
         ) : null}
 
-        {/* Trust line: confirmations + distance from the user */}
-        {trustLine.length > 0 && (
-          <Text style={[styles.trustLine, rtl && styles.txtRight]} numberOfLines={1}>
+        {/* Meta line: confirmations · distance · freshness ("48 м · только
+            что"). Freshness keeps its own muted color when stale via a nested
+            Text; wraps to two lines rather than truncating. */}
+        {(trustLine.length > 0 || fresh) && (
+          <Text style={[styles.trustLine, rtl && styles.txtRight]} numberOfLines={2}>
             {trustLine}
+            {trustLine.length > 0 && fresh ? ' · ' : ''}
+            {fresh && (
+              <Text style={fresh.stale ? styles.freshnessStale : undefined}>{fresh.label}</Text>
+            )}
           </Text>
         )}
 
@@ -556,11 +560,8 @@ const styles = StyleSheet.create({
     ...typography.h2,
     color: colors.ink,
   },
-  freshness: {
-    ...typography.xs,
-    fontFamily: 'Nunito_600SemiBold',
-    color: colors.textSecondary,
-  },
+  // Stale (>24h) freshness: muted, rendered as a nested Text on the meta line
+  // so it keeps this color while the rest of the line stays default.
   freshnessStale: {
     color: colors.textSoft,
   },
@@ -602,11 +603,16 @@ const styles = StyleSheet.create({
   },
   voteBtn: {
     flex: 1,
+    // Floor so the longest label fits with its ✓ prefix ("✓ Ещё здесь", and
+    // Hebrew is wider still): two of these + gap + bubble padding push the
+    // bubble out to ~268pt, under MAX_WIDTH, so nothing truncates. flex:1 keeps
+    // the pair equal-width when other content makes the bubble wider.
+    minWidth: 116,
     height: 42,
     borderRadius: radii.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
   },
   voteBtnPrimary: {
     backgroundColor: colors.primaryDark,
