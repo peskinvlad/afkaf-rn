@@ -1,0 +1,29 @@
+diff --git a/node_modules/react-native-maps/ios/AirMaps/AIRMapMarker.m b/node_modules/react-native-maps/ios/AirMaps/AIRMapMarker.m
+index 8c17ac7..ced7c5d 100644
+--- a/node_modules/react-native-maps/ios/AirMaps/AIRMapMarker.m
++++ b/node_modules/react-native-maps/ios/AirMaps/AIRMapMarker.m
+@@ -63,6 +63,24 @@ - (void)reactSetFrame:(CGRect)frame
+     self.bounds = bounds;
+ }
+ 
++// afkaf patch (patch-package): under the New Architecture this view is mounted
++// through the legacy-interop layer, which never calls reactSetFrame above —
++// whenever the marker's layout metrics change it assigns
++// `contentView.frame = {0, 0, w, h}` directly. Once MapKit owns this view
++// (`map` is set in viewForAnnotation) that throws away the centre MapKit put
++// it at, and the marker jumps across the map until MapKit next lays it out.
++// Route that zero-origin assignment through reactSetFrame, which keeps the
++// centre and adopts only the size — the same behaviour as on Paper. MapKit
++// itself positions annotation views through `center`, so it never lands here.
++- (void)setFrame:(CGRect)frame
++{
++    if (self.map != nil && CGPointEqualToPoint(frame.origin, CGPointZero)) {
++        [self reactSetFrame:frame];
++        return;
++    }
++    [super setFrame:frame];
++}
++
+ - (void)insertReactSubview:(id<RCTComponent>)subview atIndex:(NSInteger)atIndex {
+     if ([subview isKindOfClass:[AIRMapCallout class]]) {
+         self.calloutView = (AIRMapCallout *)subview;

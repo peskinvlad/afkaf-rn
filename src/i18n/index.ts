@@ -1251,9 +1251,18 @@ export async function saveLang(lang: Lang): Promise<void> {
   await AsyncStorage.setItem('afkaf_lang', lang);
 }
 
-export function applyRTL(lang: Lang): void {
-  const rtl = isRTL(lang);
-  if (I18nManager.isRTL !== rtl) {
-    I18nManager.forceRTL(rtl);
-  }
+// Beta: the native layout is always LTR, whatever the app or system language.
+// Screens are not RTL-adapted yet (backlog); Hebrew gets only the manual
+// mirroring driven by the context's `rtl` flag.
+//
+// forceRTL/allowRTL are persisted natively and only take effect on the next
+// launch. The old per-language forceRTL(true) — fired on every fresh install,
+// since the default language is 'he' — therefore survived switching to
+// English: I18nManager.isRTL was still false in that session, the guard saw
+// nothing to change, and the next launch came up RTL. So both flags are reset
+// unconditionally on every start, which also clears a stale value already
+// written on a device.
+export function lockLayoutLTR(): void {
+  I18nManager.allowRTL(false);
+  I18nManager.forceRTL(false);
 }

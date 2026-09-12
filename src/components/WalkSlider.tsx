@@ -135,7 +135,7 @@ export function WalkSlider({ asphaltTemp, onWalkStart }: Props) {
           return (
             <Image
               key={i}
-              source={require('../../assets/Images/Paw PNG.png')}
+              source={require('../../assets/images/paw.png')}
               style={[
                 styles.paw,
                 {

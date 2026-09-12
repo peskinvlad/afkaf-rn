@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { I18nManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Lang, t as translate, isRTL, loadSavedLang, saveLang, applyRTL } from '../i18n';
+import { Lang, t as translate, isRTL, loadSavedLang, saveLang } from '../i18n';
 import { supabase } from '../lib/supabase';
 import { LatLng } from '../lib/geo';
 import { RadiusFilter } from '../components/MarkerFilterSheet';
@@ -146,7 +146,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     loadSavedLang().then((savedLang) => {
       setLangState(savedLang);
-      applyRTL(savedLang);
     });
   }, []);
 
@@ -187,7 +186,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setLang = useCallback((newLang: Lang) => {
     setLangState(newLang);
     saveLang(newLang);
-    applyRTL(newLang);
   }, []);
 
   const tFn = useCallback(

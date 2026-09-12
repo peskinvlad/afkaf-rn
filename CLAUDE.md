@@ -1,5 +1,10 @@
 # afkaf-rn
 
+- **Бета iOS-first:** фоновая геолокация на Android (foreground service,
+  `ACCESS_BACKGROUND_LOCATION`) вне скоупа — не делать без отдельного решения.
+- **Лейаут всегда LTR** (`lockLayoutLTR` в `src/i18n`): `forceRTL` не
+  возвращать, пока экраны не прошли RTL-адаптацию (бэклог).
+
 ## Работа с БД (Supabase)
 
 - **Снапшот схемы — каталог `supabase/`, это источник правды.** Снимки по

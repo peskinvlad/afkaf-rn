@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AppState,
   View,
   Text,
   TouchableOpacity,
@@ -18,7 +19,7 @@ import { loadHomeZone, isInsideHomeZone, HomeZone } from '../lib/privacyZone';
 import { useMapMarkers } from '../hooks/useMapMarkers';
 import { useNearbyDogs } from '../hooks/useNearbyDogs';
 import { useHeading } from '../hooks/useHeading';
-import { useSmoothedPosition } from '../hooks/useSmoothedPosition';
+import { useSmoothedPosition, MOVE_MS } from '../hooks/useSmoothedPosition';
 import { useCalloutAnchor } from '../hooks/useCalloutAnchor';
 import { isAccurateFix, createGlitchFilter } from '../lib/gpsQuality';
 import { filterMarkersAndWater } from '../lib/markerFilter';
@@ -32,8 +33,10 @@ import { supabase } from '../lib/supabase';
 import { Visibility } from './SettingsScreen';
 import { checkAndAwardBadges } from '../lib/badges';
 import { saveWalkHistory, toWalkPath, getPreviousBestDistanceKm } from '../lib/walkHistory';
+import { subscribeWalkLocations, startWalkTracking, stopWalkTracking } from '../lib/walkTracking';
 
 const FLORENTIN_COORD = { latitude: 32.0559, longitude: 34.7722 };
+const INITIAL_REGION = { ...FLORENTIN_COORD, latitudeDelta: 0.01, longitudeDelta: 0.01 };
 const ACTIVE_WALK_PING_MS = 60000;
 const MIN_VALID_DISTANCE_KM = 0.3;
 const MIN_VALID_DURATION_SEC = 300;
@@ -90,11 +93,23 @@ export function WalkScreen({ navigation }: Props) {
 
   // ── Timer ──────────────────────────────────────────────────────────────
   const [seconds, setSeconds] = useState(0);
-  const walkStartedAt = useRef(new Date().toISOString()).current;
+  const walkStartedAtMs = useRef(Date.now()).current;
+  const walkStartedAt = useMemo(() => new Date(walkStartedAtMs).toISOString(), [walkStartedAtMs]);
+  // Derived from the wall clock, not counted tick by tick: a tick counter
+  // loses every second the JS thread is suspended (app in background), and
+  // the duration feeds the validity bar and walk_history.
   useEffect(() => {
-    const id = setInterval(() => setSeconds((s) => s + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
+    const tick = () => setSeconds(Math.floor((Date.now() - walkStartedAtMs) / 1000));
+    const id = setInterval(tick, 1000);
+    // Coming back to the foreground: catch up now, not on the next tick.
+    const appStateSub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') tick();
+    });
+    return () => {
+      clearInterval(id);
+      appStateSub.remove();
+    };
+  }, [walkStartedAtMs]);
   const timeStr = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 
   // ── Steps — Pedometer (real, 0 if unavailable) ─────────────────────────
@@ -111,13 +126,20 @@ export function WalkScreen({ navigation }: Props) {
   // ── GPS route + Haversine distance ────────────────────────────────────
   const [route, setRoute] = useState<{ latitude: number; longitude: number }[]>([]);
   const [distanceKm, setDistanceKm] = useState(0);
-  const [region, setRegion] = useState({
-    ...FLORENTIN_COORD,
-    latitudeDelta: 0.01,
-    longitudeDelta: 0.01,
-  });
   // The marker slides to each new fix instead of teleporting there.
   const { coord: userCoord, hasFix: hasUserFix, moveTo: moveUserMarker } = useSmoothedPosition();
+  // The map follows the walker by gliding the camera alongside the marker
+  // slide. It used to be a controlled `region` re-set on every fix, which
+  // MapKit applies without animation: the whole map jumped each fix while the
+  // marker was still sliding, and any pinch-zoom was undone by the next fix.
+  const cameraHasFix = useRef(false);
+  function followWith(pt: LatLng) {
+    // First fix jumps straight there — gliding from the default centre would
+    // fly across the city.
+    const duration = cameraHasFix.current ? MOVE_MS : 0;
+    cameraHasFix.current = true;
+    mapRef.current?.animateCamera({ center: pt }, { duration });
+  }
   const [accuracy, setAccuracy] = useState<number | undefined>(undefined);
   // Second gate, after accuracy: a fix that reports good accuracy but lands
   // somewhere unreachable is held back, and only recorded if the next fix
@@ -247,6 +269,9 @@ export function WalkScreen({ navigation }: Props) {
     finishingRef.current = true;
     setFinishing(true);
     stopActiveWalkRow();
+    // The walk is over from this tap on — no fix may extend the route or the
+    // distance while the save below is in flight.
+    stopWalkTracking();
 
     const isValidWalk = distanceKm >= MIN_VALID_DISTANCE_KM && seconds >= MIN_VALID_DURATION_SEC;
     let newBadgeIds: string[] = [];
@@ -324,53 +349,68 @@ export function WalkScreen({ navigation }: Props) {
     return () => { stopActiveWalkRow(); };
   }, []);
 
+  // Route tracking runs through walkTracking, which keeps recording with the
+  // app in the background. Fixes arrive in batches (several at once after a
+  // stretch in the background), each carrying its own timestamp — handled in
+  // order, exactly as if they had come one by one.
   useEffect(() => {
-    let sub: Location.LocationSubscription | null = null;
+    let cancelled = false;
+    const unsubscribe = subscribeWalkLocations((locations) => {
+      for (const loc of locations) handleFix(loc);
+    });
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
+      if (status !== 'granted' || cancelled) return;
       setLocationGranted(true);
-      sub = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 5 },
-        (loc) => {
-          // Everything below this line — marker, recorded track, distance,
-          // the published presence row — is fed only by fixes that pass the
-          // accuracy gate and then the plausibility gate. A bad fix used to
-          // add tens of metres of phantom distance to the walk and drag the
-          // route line with it; the reflection glitches that lie about their
-          // accuracy did the same until the second gate went in.
-          if (!isAccurateFix(loc.coords.accuracy)) return;
-          for (const coords of glitchFilter.accept(loc.coords, loc.timestamp)) {
-            const pt = { latitude: coords.latitude, longitude: coords.longitude };
-            moveUserMarker(pt);
-            reportGpsFix(coords);
-            setAccuracy(coords.accuracy ?? undefined);
-            setRoute((prev) => {
-              if (prev.length > 0) {
-                const inc = haversine(prev[prev.length - 1], pt);
-                setDistanceKm((d) => {
-                  const next = d + inc;
-                  distanceKmRef.current = next;
-                  return next;
-                });
-              }
-              return [...prev, pt];
-            });
-            setRegion((r) => ({ ...r, ...pt }));
-            setUserLocation(pt);
-
-            latestPos.current = pt;
-            if (!activeWalkStartAttempted.current) {
-              activeWalkStartAttempted.current = true;
-              startActiveWalkRow(pt);
-            }
-          }
-        }
-      );
+      try {
+        await startWalkTracking();
+      } catch (e) {
+        console.warn('[WalkScreen] startWalkTracking failed:', e);
+      }
+      // Left the screen while the start was in flight — the cleanup's stop ran
+      // before there was anything to stop.
+      if (cancelled) stopWalkTracking();
     })();
     return () => {
-      sub?.remove();
+      cancelled = true;
+      unsubscribe();
+      stopWalkTracking();
     };
+
+    function handleFix(loc: Location.LocationObject) {
+      // Everything below this line — marker, recorded track, distance,
+      // the published presence row — is fed only by fixes that pass the
+      // accuracy gate and then the plausibility gate. A bad fix used to
+      // add tens of metres of phantom distance to the walk and drag the
+      // route line with it; the reflection glitches that lie about their
+      // accuracy did the same until the second gate went in.
+      if (!isAccurateFix(loc.coords.accuracy)) return;
+      for (const coords of glitchFilter.accept(loc.coords, loc.timestamp)) {
+        const pt = { latitude: coords.latitude, longitude: coords.longitude };
+        moveUserMarker(pt);
+        reportGpsFix(coords);
+        setAccuracy(coords.accuracy ?? undefined);
+        setRoute((prev) => {
+          if (prev.length > 0) {
+            const inc = haversine(prev[prev.length - 1], pt);
+            setDistanceKm((d) => {
+              const next = d + inc;
+              distanceKmRef.current = next;
+              return next;
+            });
+          }
+          return [...prev, pt];
+        });
+        followWith(pt);
+        setUserLocation(pt);
+
+        latestPos.current = pt;
+        if (!activeWalkStartAttempted.current) {
+          activeWalkStartAttempted.current = true;
+          startActiveWalkRow(pt);
+        }
+      }
+    }
   }, []);
 
   // ── Guest banner ───────────────────────────────────────────────────────
@@ -393,7 +433,7 @@ export function WalkScreen({ navigation }: Props) {
           ref={mapRef}
           style={StyleSheet.absoluteFill}
           provider={PROVIDER_DEFAULT}
-          region={region}
+          initialRegion={INITIAL_REGION}
           showsMyLocationButton={false}
           showsCompass={false}
           toolbarEnabled={false}

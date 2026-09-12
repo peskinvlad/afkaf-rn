@@ -6,7 +6,7 @@ import { LatLng } from '../lib/geo';
 // A fix lands roughly once a second. Sliding the marker over most of that
 // window reads as walking; anything much shorter still reads as a teleport,
 // and anything longer leaves the marker visibly behind the walker.
-const MOVE_MS = 400;
+export const MOVE_MS = 400;
 
 export interface SmoothedPosition {
   // Feed straight into <Marker.Animated coordinate={...} /> — the marker

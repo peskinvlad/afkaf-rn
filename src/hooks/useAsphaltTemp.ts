@@ -124,7 +124,12 @@ export function useAsphaltTemp(): AsphaltTempResult {
         let coords = FLORENTIN_FALLBACK;
         let usedFallback = true;
         if (status === 'granted') {
-          const locPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, timeInterval: 3000 });
+          // A failed fix (kCLErrorLocationUnknown — routine indoors) means the
+          // Florentin fallback, same as a timeout. Letting it reject threw the
+          // whole update, twice with the retry, and `loading` stayed true —
+          // the heat chip hides while loading, so it vanished for 30 minutes.
+          const locPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, timeInterval: 3000 })
+            .catch(() => null);
           const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000));
           const loc = await Promise.race([locPromise, timeoutPromise]);
           if (loc !== null) {

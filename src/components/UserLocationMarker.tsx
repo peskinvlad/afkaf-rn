@@ -83,6 +83,15 @@ const styles = StyleSheet.create({
     height: SIZE,
     alignItems: 'center',
     justifyContent: 'center',
+    // The rotating shell's bounding box grows with the angle (~68pt at 45°).
+    // With overflow visible, Fabric folds that into the marker's
+    // overflowInset, so every heading commit changes the marker's layout
+    // metrics — and the legacy-interop wrapper answers that by assigning
+    // AIRMapMarker.frame directly, which throws away the centre MapKit
+    // placed it at: the marker jumps across the map on every turn.
+    // Hidden pins the metrics. Nothing is clipped: the drawing reaches at
+    // most 23.25pt from the centre (tip + stroke), inside the 24pt half-size.
+    overflow: 'hidden',
   },
   accuracyRing: {
     position: 'absolute',
