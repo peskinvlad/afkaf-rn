@@ -7,6 +7,7 @@ import {
   Linking,
   StyleSheet,
 } from 'react-native';
+import Constants from 'expo-constants';
 import { useApp } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
 import { isDevUser } from '../constants/dev';
@@ -17,6 +18,34 @@ const APP_VERSION = '1.0.0';
 // Public privacy policy (web/privacy.html once deployed). Update if the
 // hosting URL changes.
 const PRIVACY_URL = 'https://afkaf.netlify.app/privacy.html';
+
+// Beta feedback shortcut. Fill in the number in international format — digits
+// only, no "+" or spaces, e.g. 972501234567.
+const DEV_WHATSAPP_PHONE = '__PHONE_E164__';
+const DEV_EMAIL = 'peskin.vlad@gmail.com';
+
+// Prefilled diagnostic line so bug reports arrive with the build already
+// stamped. expo-device is not installed, so this carries the app version (and
+// build, when the native runtime provides one) only — no device model / OS.
+function betaMessage(): string {
+  const version = Constants.nativeAppVersion ?? Constants.expoConfig?.version ?? APP_VERSION;
+  const build = Constants.nativeBuildVersion;
+  const head = `afkaf beta ${version}${build ? ` (${build})` : ''}`;
+  return `${head}\n\n`; // blank line for the user to type under
+}
+
+// Open WhatsApp with the number and prefilled text; if WhatsApp is not
+// installed the whatsapp:// scheme fails to open and we fall back to email.
+async function contactDeveloper(): Promise<void> {
+  const body = encodeURIComponent(betaMessage());
+  const wa = `whatsapp://send?phone=${DEV_WHATSAPP_PHONE}&text=${body}`;
+  const mail = `mailto:${DEV_EMAIL}?subject=${encodeURIComponent('afkaf beta')}&body=${body}`;
+  try {
+    await Linking.openURL(wa);
+  } catch {
+    try { await Linking.openURL(mail); } catch { /* no handler for either */ }
+  }
+}
 // Hidden dev entry: 5 taps on the version line, each within this gap of the
 // previous one. The gap is measured tap-to-tap, not as one budget from the
 // first tap — see handleVersionTap.
@@ -78,6 +107,7 @@ const STRINGS = {
     contactTitle: 'Связь',
     contactText: 'Вопросы, баги, идеи — пиши нам',
     contactEmail: 'peskin.vlad@gmail.com',
+    contactDev: 'Написать разработчику',
     privacy: 'Политика конфиденциальности',
     madeWith: 'Сделано с ❤️ для Шерлока и всех собак Яфо',
   },
@@ -135,6 +165,7 @@ const STRINGS = {
     contactTitle: 'Contact',
     contactText: 'Questions, bugs, ideas — reach out',
     contactEmail: 'peskin.vlad@gmail.com',
+    contactDev: 'Message the developer',
     privacy: 'Privacy Policy',
     madeWith: 'Made with ❤️ for Sherlock and all the dogs of Jaffa',
   },
@@ -192,6 +223,7 @@ const STRINGS = {
     contactTitle: 'יצירת קשר',
     contactText: 'שאלות, באגים, רעיונות — כתוב לנו',
     contactEmail: 'peskin.vlad@gmail.com',
+    contactDev: 'כתוב למפתח',
     privacy: 'מדיניות פרטיות',
     madeWith: '❤️ נעשה מתוך אהבה לשרלוק ולכל כלבי יפו',
   },
@@ -324,6 +356,9 @@ export default function AboutScreen() {
       </View>
 
       <View style={styles.footer}>
+        <TouchableOpacity style={styles.contactDevBtn} onPress={contactDeveloper} activeOpacity={0.85}>
+          <Text style={styles.contactDevTxt}>{t.contactDev}</Text>
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_URL)} activeOpacity={0.7}>
           <Text style={styles.privacyLink}>{t.privacy}</Text>
         </TouchableOpacity>
@@ -374,6 +409,8 @@ const styles = StyleSheet.create({
   donateBtnTextSecondary: { color: PRIMARY },
   emailLink: { fontFamily: 'Nunito-SemiBold', fontSize: 15, color: PRIMARY_MID, marginTop: 8, textDecorationLine: 'underline' },
   footer: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 8, alignItems: 'center' },
+  contactDevBtn: { alignSelf: 'stretch', backgroundColor: PRIMARY, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginBottom: 14 },
+  contactDevTxt: { fontFamily: 'Nunito-Bold', fontSize: 15, color: WHITE },
   privacyLink: { fontFamily: 'Nunito-SemiBold', fontSize: 13, color: PRIMARY_MID, marginBottom: 10, textDecorationLine: 'underline' },
   footerText: { fontFamily: 'Nunito-Regular', fontSize: 13, color: TEXT_LIGHT, textAlign: 'center' },
   versionText: { fontFamily: 'Nunito-Regular', fontSize: 12, color: TEXT_LIGHT, marginTop: 6, paddingVertical: 8, paddingHorizontal: 16 },
