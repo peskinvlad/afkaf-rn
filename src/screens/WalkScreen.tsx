@@ -12,7 +12,7 @@ import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Bell, SlidersHorizontal } from 'lucide-react-native';
+import { Bell, SlidersHorizontal, Locate } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { colors, radii, shadows, heatVis } from '../theme/tokens';
 import { haversine, LatLng } from '../lib/geo';
@@ -140,12 +140,37 @@ export function WalkScreen({ navigation }: Props) {
   // MapKit applies without animation: the whole map jumped each fix while the
   // marker was still sliding, and any pinch-zoom was undone by the next fix.
   const cameraHasFix = useRef(false);
+  // Follow mode: the camera tracks the walker until they pan the map by hand,
+  // then it lets go (and the locate button appears) until they tap it to
+  // re-centre. followUserRef is the copy read inside the fix handler's closure;
+  // followUser drives the button's visibility. Kept in step by setFollow.
+  const [followUser, setFollowUser] = useState(true);
+  const followUserRef = useRef(true);
+  function setFollow(next: boolean) {
+    followUserRef.current = next;
+    setFollowUser(next);
+  }
   function followWith(pt: LatLng) {
+    // Hand panned away → don't yank the camera back on the next fix.
+    if (!followUserRef.current) return;
     // First fix jumps straight there — gliding from the default centre would
     // fly across the city.
     const duration = cameraHasFix.current ? MOVE_MS : 0;
     cameraHasFix.current = true;
     mapRef.current?.animateCamera({ center: pt }, { duration });
+  }
+  // A manual pan drops follow mode. onPanDrag fires only on user gestures —
+  // programmatic animateCamera (followWith) never triggers it — so this can't
+  // fight the camera it just moved. Fires continuously mid-drag; the guard
+  // keeps it to one state change.
+  function handlePanDrag() {
+    if (followUserRef.current) setFollow(false);
+  }
+  // Locate button: re-centre on the last fix and resume following.
+  function handleCenterOnMe() {
+    setFollow(true);
+    const pt = latestPos.current;
+    if (pt) mapRef.current?.animateCamera({ center: pt }, { duration: 350 });
   }
   const [accuracy, setAccuracy] = useState<number | undefined>(undefined);
   // Second gate, after accuracy: a fix that reports good accuracy but lands
@@ -457,6 +482,8 @@ export function WalkScreen({ navigation }: Props) {
               : undefined
           }
           onPress={handleMapPress}
+          // A hand pan drops follow mode and reveals the locate button.
+          onPanDrag={handlePanDrag}
           // During the gesture the anchor is recomputed as fast as the bridge
           // keeps up; the Complete event guarantees a final exact placement.
           onRegionChange={refreshCalloutAnchor}
@@ -553,13 +580,27 @@ export function WalkScreen({ navigation }: Props) {
               <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity
-            style={[styles.fab, shadows.lg]}
-            onPress={() => navigation.navigate('MarkerCreate')}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.fabIcon}>+</Text>
-          </TouchableOpacity>
+          {/* Right column: locate-me above the add-marker FAB. Locate shows
+              only once the user has panned away from themselves. */}
+          <View style={styles.mapControlsCol}>
+            {!followUser && (
+              <TouchableOpacity
+                style={[styles.locateBtn, shadows.sm]}
+                onPress={handleCenterOnMe}
+                activeOpacity={0.85}
+                hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
+              >
+                <Locate size={20} color={colors.ink} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.fab, shadows.lg]}
+              onPress={() => navigation.navigate('MarkerCreate')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.fabIcon}>+</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Inside mapContainer on purpose: pointForCoordinate answers in the
@@ -730,6 +771,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingBottom: 12,
     zIndex: 30,
+  },
+
+  // Right-hand map controls column (locate-me + FAB)
+  mapControlsCol: {
+    alignItems: 'flex-end',
+    gap: 12,
+  },
+  // Locate-me: round, white card + ink icon — same visual family as the
+  // filter/bell buttons, sits above the FAB.
+  locateBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // FAB
