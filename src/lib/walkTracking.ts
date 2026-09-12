@@ -28,6 +28,34 @@ type Listener = (locations: Location.LocationObject[]) => void;
 // with nobody subscribed belong to no walk and are dropped.
 let listener: Listener | null = null;
 
+// Field diagnostics only (surfaced in DevPanel behind DEV_USER_IDS, never in
+// normal UI). Answers the question the blue-pill symptom raises: is the
+// background TaskManager session actually the source of fixes, or did we
+// silently fall back to the foreground-only watcher?
+export type TrackDiagnostics = {
+  moduleAvailable: boolean;      // ExpoTaskManager present in this build
+  taskStarted: boolean | null;   // null = start not attempted yet
+  lastStartError: string | null; // message if startLocationUpdatesAsync threw
+  taskFixCount: number;          // fixes delivered via the background task
+  taskLastAt: number | null;
+  watchFixCount: number;         // fixes delivered via watchPositionAsync fallback
+  watchLastAt: number | null;
+};
+
+const diag: TrackDiagnostics = {
+  moduleAvailable: isBackgroundTrackingAvailable,
+  taskStarted: null,
+  lastStartError: null,
+  taskFixCount: 0,
+  taskLastAt: null,
+  watchFixCount: 0,
+  watchLastAt: null,
+};
+
+export function getTrackDiagnostics(): TrackDiagnostics {
+  return { ...diag };
+}
+
 // Must run when the JS bundle loads — this module is imported from index.ts —
 // so the task is defined before iOS delivers the first batch to it.
 if (isBackgroundTrackingAvailable) {
@@ -41,7 +69,11 @@ if (isBackgroundTrackingAvailable) {
         return;
       }
       const locations = data?.locations ?? [];
-      if (locations.length > 0) listener?.(locations);
+      if (locations.length > 0) {
+        diag.taskFixCount += locations.length;
+        diag.taskLastAt = Date.now();
+        listener?.(locations);
+      }
     }
   );
 }
@@ -61,20 +93,39 @@ export async function startWalkTracking(): Promise<void> {
     fallbackSub?.remove();
     fallbackSub = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 5 },
-      (loc) => listener?.([loc])
+      (loc) => {
+        diag.watchFixCount += 1;
+        diag.watchLastAt = Date.now();
+        listener?.([loc]);
+      }
     );
     return;
   }
-  await Location.startLocationUpdatesAsync(WALK_LOCATION_TASK, {
-    accuracy: Location.Accuracy.BestForNavigation,
-    distanceInterval: 5,
-    activityType: Location.ActivityType.Fitness,
-    // iOS default is to pause when the walker stands still (a dog sniffing a
-    // lamppost). A paused session can't resume in the background without
-    // Always permission — the rest of the walk would be lost.
-    pausesUpdatesAutomatically: false,
-    showsBackgroundLocationIndicator: true,
-  });
+  try {
+    await Location.startLocationUpdatesAsync(WALK_LOCATION_TASK, {
+      accuracy: Location.Accuracy.BestForNavigation,
+      distanceInterval: 5,
+      activityType: Location.ActivityType.Fitness,
+      // iOS default is to pause when the walker stands still (a dog sniffing a
+      // lamppost). A paused session can't resume in the background without
+      // Always permission — the rest of the walk would be lost.
+      pausesUpdatesAutomatically: false,
+      showsBackgroundLocationIndicator: true,
+    });
+    // startLocationUpdatesAsync can resolve while the native task fails to
+    // attach (e.g. UIBackgroundModes missing in the built Info.plist throws
+    // LocationUpdatesUnavailable — caught below — but other paths could leave
+    // it un-started silently). Verify and record so the field build can tell,
+    // via DevPanel, whether fixes should be coming from the background task.
+    diag.taskStarted = await Location.hasStartedLocationUpdatesAsync(WALK_LOCATION_TASK);
+    diag.lastStartError = null;
+    console.log('[walkTracking] startLocationUpdatesAsync ok — hasStarted =', diag.taskStarted);
+  } catch (e) {
+    diag.taskStarted = false;
+    diag.lastStartError = e instanceof Error ? e.message : String(e);
+    console.warn('[walkTracking] startLocationUpdatesAsync failed:', diag.lastStartError);
+    throw e; // preserve WalkScreen's existing catch
+  }
 }
 
 // Safe to call whether or not tracking is running — also used at startup to

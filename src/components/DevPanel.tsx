@@ -8,6 +8,8 @@ import {
   Modal,
   ScrollView,
   Switch,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -20,6 +22,11 @@ import {
   emitDevSettingsChange,
 } from '../constants/dev';
 import { useApp } from '../hooks/useApp';
+import {
+  getTrackDiagnostics,
+  isBackgroundTrackingAvailable,
+  TrackDiagnostics,
+} from '../lib/walkTracking';
 import { colors, radii, shadows, typography } from '../theme/tokens';
 
 // Панель только для DEV_USER_IDS (гейт — в AboutScreen, сюда без него не
@@ -48,6 +55,11 @@ export function DevPanel({ visible, onClose }: Props) {
   const [voteOwn, setVoteOwn] = useState(false);
   // Короткие подтверждения «сброшено/применено» по ключу строки
   const [flash, setFlash] = useState<Record<string, string>>({});
+  // Трек-диагностика: снимок обновляем по таймеру, пока панель открыта, чтобы
+  // в поле видеть, как капают точки от задачи и от watchPosition.
+  const [track, setTrack] = useState<TrackDiagnostics>(getTrackDiagnostics());
+  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
+  const [nowTick, setNowTick] = useState(Date.now());
 
   useEffect(() => {
     if (!visible) return;
@@ -77,6 +89,22 @@ export function DevPanel({ visible, onClose }: Props) {
       // Та же функция, что использует гейт active_walks (privacyZone.ts)
       setHomeZone(await loadHomeZone());
     })();
+  }, [visible]);
+
+  // Живой опрос трек-диагностики, только пока панель открыта.
+  useEffect(() => {
+    if (!visible) return;
+    setTrack(getTrackDiagnostics());
+    setAppState(AppState.currentState);
+    const id = setInterval(() => {
+      setTrack(getTrackDiagnostics());
+      setNowTick(Date.now());
+    }, 1000);
+    const sub = AppState.addEventListener('change', setAppState);
+    return () => {
+      clearInterval(id);
+      sub.remove();
+    };
   }, [visible]);
 
   function showFlash(key: string, text: string) {
@@ -190,6 +218,49 @@ export function DevPanel({ visible, onClose }: Props) {
             <InfoRow label="СЕЙЧАС" value={zoneStatus} highlight />
           </View>
 
+          {/* ── Трек-диагностика ── */}
+          <Text style={styles.sectionTitle}>Трек-диагностика</Text>
+          <View style={styles.card}>
+            <InfoRow
+              label="ExpoTaskManager в билде"
+              value={isBackgroundTrackingAvailable ? 'да' : 'НЕТ (fallback watchPosition)'}
+              highlight={!isBackgroundTrackingAvailable}
+            />
+            <InfoRow
+              label="Фоновая задача запущена"
+              value={
+                track.taskStarted == null
+                  ? '— (прогулка не начата)'
+                  : track.taskStarted
+                    ? 'да'
+                    : 'НЕТ'
+              }
+              highlight={track.taskStarted === false}
+            />
+            {track.lastStartError != null && (
+              <InfoRow label="Ошибка старта" value={track.lastStartError} highlight />
+            )}
+            <InfoRow
+              label="Точек от задачи / от watchPosition"
+              value={`${track.taskFixCount} / ${track.watchFixCount}`}
+              highlight
+            />
+            <InfoRow
+              label="Последняя от задачи"
+              value={formatAgo(track.taskLastAt, nowTick)}
+            />
+            <InfoRow
+              label="Последняя от watchPosition"
+              value={formatAgo(track.watchLastAt, nowTick)}
+            />
+            <InfoRow label="AppState" value={appState} />
+            <Text style={styles.note}>
+              Синяя плашка iOS = фон реально пишет через задачу. Если точки идут
+              только от watchPosition — фон не работает, трек рвётся при
+              сворачивании и остановке на месте.
+            </Text>
+          </View>
+
           {/* ── Оверрайды ── */}
           <Text style={styles.sectionTitle}>Оверрайды</Text>
           <View style={styles.card}>
@@ -255,6 +326,12 @@ export function DevPanel({ visible, onClose }: Props) {
       </View>
     </Modal>
   );
+}
+
+function formatAgo(at: number | null, now: number): string {
+  if (at == null) return '—';
+  const sec = Math.max(0, Math.round((now - at) / 1000));
+  return sec < 1 ? 'только что' : `${sec} с назад`;
 }
 
 function InfoRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
