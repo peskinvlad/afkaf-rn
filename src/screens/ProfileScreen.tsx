@@ -195,6 +195,60 @@ export function ProfileScreen({ navigation }: Props) {
     );
   }
 
+  // ── Delete account (Apple 5.1.1(v)) ─────────────────────────────────────────
+  // Two-step confirm → delete-account edge function → sign out. The function
+  // deletes the auth.users row under the service role; everything the user owns
+  // FK-cascades from it.
+  const [deleting, setDeleting] = useState(false);
+
+  function handleDeleteAccount() {
+    Alert.alert(
+      t('profile.deleteConfirmTitle'),
+      t('profile.deleteConfirmBody'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('profile.deleteConfirmCta'), style: 'destructive', onPress: confirmDeleteAccount },
+      ],
+    );
+  }
+
+  function confirmDeleteAccount() {
+    Alert.alert(
+      t('profile.deleteFinalTitle'),
+      t('profile.deleteFinalBody'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('profile.deleteFinalCta'), style: 'destructive', onPress: runDeleteAccount },
+      ],
+    );
+  }
+
+  async function runDeleteAccount() {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase.functions.invoke('delete-account', { method: 'POST' });
+      if (error) {
+        // supabase-js reports a non-2xx as a generic FunctionsHttpError; the
+        // real message is in the Response it carries on .context. Surface it
+        // instead of the generic wrapper — never swallow the failure.
+        let msg = error.message;
+        try {
+          const body = await (error as any).context?.json?.();
+          if (body?.error) msg = body.error;
+        } catch { /* keep the generic message */ }
+        setDeleting(false);
+        Alert.alert(t('profile.deleteError'), msg);
+        return;
+      }
+      await supabase.auth.signOut();
+      navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
+    } catch (e) {
+      setDeleting(false);
+      Alert.alert(t('profile.deleteError'), e instanceof Error ? e.message : String(e));
+    }
+  }
+
   // ── Trust status (from AppContext — single RPC call per session) ────────────
   const trustProgress = Math.min(confirmedCount / 3, 1);
 
@@ -339,6 +393,18 @@ export function ProfileScreen({ navigation }: Props) {
             {/* ── Logout ── */}
             <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
               <Text style={styles.logoutTxt}>{t('profile.logout')}</Text>
+            </TouchableOpacity>
+
+            {/* ── Delete account (Apple requirement) ── */}
+            <TouchableOpacity
+              style={styles.deleteAccountBtn}
+              onPress={handleDeleteAccount}
+              activeOpacity={0.8}
+              disabled={deleting}
+            >
+              {deleting
+                ? <ActivityIndicator color="#9b1c1c" />
+                : <Text style={styles.deleteAccountTxt}>{t('profile.deleteAccount')}</Text>}
             </TouchableOpacity>
           </>
         )}
@@ -614,6 +680,10 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   logoutTxt: { fontSize: 14, fontWeight: '600', color: '#9b1c1c' },
+
+  // Delete account — destructive, set apart from logout
+  deleteAccountBtn: { paddingVertical: 12, alignItems: 'center', marginTop: 2, minHeight: 44, justifyContent: 'center' },
+  deleteAccountTxt: { fontSize: 13, fontWeight: '700', color: '#9b1c1c', textDecorationLine: 'underline' },
 
   // Walk row
   walkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
