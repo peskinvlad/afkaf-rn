@@ -5,6 +5,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
+  Platform,
 } from 'react-native';
 import MapView, { PROVIDER_DEFAULT, Polyline, MarkerAnimated, MapPressEvent } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -59,6 +60,12 @@ export function WalkScreen({ navigation }: Props) {
   const nearbyTotal = nearbyDogs.length + nearbyHiddenCount;
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [detailMarker, setDetailMarker] = useState<import('../lib/markerConfig').MapMarker | null>(null);
+  // Height of the on-map bottom controls row (heat chip + FAB), measured so the
+  // map can reserve exactly that much bottom padding — the Apple logo and the
+  // "Legal" link (MapKit attribution, App-Store-required to stay visible) sit
+  // bottom-left, right under the temperature chip, and must clear it.
+  const [bottomControlsHeight, setBottomControlsHeight] = useState(64);
+  const mapBottomPadding = bottomControlsHeight + 8;
   // Finish is a one-way action (saves the walk, awards badges, then replaces
   // the screen). The ref is the hard guard against a double-tap firing two
   // saves; the state just greys the button out.
@@ -437,6 +444,18 @@ export function WalkScreen({ navigation }: Props) {
           showsMyLocationButton={false}
           showsCompass={false}
           toolbarEnabled={false}
+          // Reserve space at the bottom so MapKit's Apple logo lifts above the
+          // heat chip. layoutMargins-based, so it also recenters animateCamera
+          // (followWith) within the visible area — the user marker stays above
+          // the chip while following, no extra handling needed.
+          mapPadding={{ top: 0, right: 0, bottom: mapBottomPadding, left: 0 }}
+          // iOS only: the "Legal" link is positioned independently of
+          // layoutMargins, so lift it by the same amount to clear the chip too.
+          legalLabelInsets={
+            Platform.OS === 'ios'
+              ? { top: 0, right: 0, bottom: mapBottomPadding, left: 0 }
+              : undefined
+          }
           onPress={handleMapPress}
           // During the gesture the anchor is recomputed as fast as the bridge
           // keeps up; the Complete event guarantees a final exact placement.
@@ -517,7 +536,10 @@ export function WalkScreen({ navigation }: Props) {
         <View style={{ flex: 1 }} />
 
         {/* ── Map bottom controls — flex row, no absolute ── */}
-        <View style={styles.mapBottomRow}>
+        <View
+          style={styles.mapBottomRow}
+          onLayout={(e) => setBottomControlsHeight(e.nativeEvent.layout.height)}
+        >
           {isHeatLoading ? (
             // Spacer keeps the FAB pinned right (mapBottomRow uses space-between)
             <View />
