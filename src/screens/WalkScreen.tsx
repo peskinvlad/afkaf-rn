@@ -5,7 +5,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Platform,
 } from 'react-native';
 import MapView, { PROVIDER_DEFAULT, Polyline, MarkerAnimated, MapPressEvent } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -491,14 +490,15 @@ export function WalkScreen({ navigation }: Props) {
           showsMyLocationButton={false}
           showsCompass={false}
           toolbarEnabled={false}
-          // Apple logo + Legal: one line just above the asphalt chip, aligned to
-          // its left edge. Static — derived from a constant + insets.bottom, and
-          // the map is full-screen (constant height), so neither jitters. Both
-          // are anchored to the map's frame (AIRMap.m); a full-screen map keeps
-          // that frame constant. mapPadding is layoutMargins-based, so it also
-          // recenters animateCamera (followWith) within the visible area.
+          // Apple logo + Legal: positioned by MapKit via layoutMargins
+          // (mapPadding) alone — both ornaments on one line, just above the chip,
+          // left-aligned. legalLabelInsets is deliberately NOT set: AIRMap
+          // re-applies it async inside layoutSubviews (AIRMap.m), so during
+          // follow-mode's per-second animateCamera the label ping-ponged between
+          // MapKit's layoutMargins spot and AIRMap's insets spot (~1px, 1 Hz).
+          // One mechanism = no flicker. Full-screen map keeps mapPadding stable
+          // and recenters animateCamera (followWith) within the visible area.
           mapPadding={walkMapAttribution}
-          legalLabelInsets={Platform.OS === 'ios' ? walkMapAttribution : undefined}
           onPress={handleMapPress}
           // A hand pan (details.isGesture) drops follow mode. Programmatic
           // camera moves (followWith → animateCamera) report isGesture=false, so

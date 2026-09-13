@@ -7,7 +7,6 @@ import {
   Alert,
   Animated,
   Easing,
-  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -345,12 +344,13 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         showsMyLocationButton={false}
         showsCompass={false}
         toolbarEnabled={false}
-        // Apple logo + Legal: one line just above the asphalt chip, aligned to
-        // its left edge, static (computed once from MAP_CHIP). Also lifts the
-        // logo clear of the bottom panel, which otherwise covers it. mapPadding
-        // is layoutMargins-based, so it shifts the visual centre up too.
+        // Apple logo + Legal: positioned by MapKit via layoutMargins (mapPadding)
+        // alone — one line just above the asphalt chip, left-aligned. Also lifts
+        // the logo clear of the bottom panel, which otherwise covers it.
+        // legalLabelInsets is intentionally not set (parity with WalkScreen): it
+        // fights MapKit's layoutMargins placement inside layoutSubviews and
+        // flickers under a moving camera. mapPadding shifts the visual centre up.
         mapPadding={MAP_ATTRIBUTION}
-        legalLabelInsets={Platform.OS === 'ios' ? MAP_ATTRIBUTION : undefined}
         onPress={handleMapPress}
         // During the gesture the anchor is recomputed as fast as the bridge
         // keeps up; the Complete event guarantees a final exact placement.
