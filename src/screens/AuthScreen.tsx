@@ -8,6 +8,7 @@ import {
   Linking,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
@@ -147,6 +148,64 @@ export function AuthScreen({ navigation }: Props) {
     }
   }
 
+  // ── Apple: нативный вход ──────────────────────────────────────────────────
+  // Системный шит Sign in with Apple → identityToken → signInWithIdToken.
+  // Никакого веб-редиректа и PKCE-обмена: провайдер валидирует токен напрямую.
+  // Nonce не передаём осознанно — гайд Supabase для нативного Expo-потока его
+  // не использует; expo-apple-authentication управляет nonce сам, а ручной
+  // привёл бы к рассинхрону при верификации токена. onAuthStateChange навигирует
+  // и сбросит loadingProvider на успехе (как и для веб-флоу).
+  async function signInWithApple() {
+    if (loadingProvider) return;
+    setLoadingProvider('apple');
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (!credential.identityToken) {
+        console.warn('[Auth] Apple credential carried no identityToken');
+        setLoadingProvider(null);
+        return;
+      }
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+      });
+      if (error) {
+        console.warn('[Auth] signInWithIdToken error:', error.message);
+        setLoadingProvider(null);
+        return;
+      }
+
+      // Имя. Apple кладёт его НЕ в identityToken, а в credential.fullName и
+      // отдаёт ТОЛЬКО при первом входе (дальше — null). У Google имя приходит
+      // в user_metadata и попадает в profiles.display_name через триггер
+      // handle_new_user; для Apple метаданных с именем нет, поэтому триггер
+      // пишет плейсхолдер 'User'. Здесь перекрываем его реальным именем —
+      // ровно один раз. При повторном входе fullName == null → не трогаем
+      // существующее имя. Кап 50 симв. повторяет left(...,50) в триггере.
+      const fn = credential.fullName;
+      const name = [fn?.givenName, fn?.familyName].filter(Boolean).join(' ').trim();
+      const uid = data.user?.id;
+      if (name && uid) {
+        const { error: pErr } = await supabase
+          .from('profiles')
+          .update({ display_name: name.slice(0, 50) })
+          .eq('id', uid);
+        if (pErr) console.warn('[Auth] Apple name → profile update failed:', pErr.message);
+      }
+    } catch (e: any) {
+      // Пользователь закрыл системный шит — это не ошибка, молча выходим.
+      if (e?.code !== 'ERR_REQUEST_CANCELED') {
+        console.warn('[Auth] Apple signIn exception:', e);
+      }
+      setLoadingProvider(null);
+    }
+  }
+
   return (
     <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       {/* ── Close — a guest should always have a way out ── */}
@@ -187,22 +246,14 @@ export function AuthScreen({ navigation }: Props) {
           )}
         </TouchableOpacity>
 
-        {/* Apple */}
-        <TouchableOpacity
-          style={[styles.btnApple, shadows.sm]}
-          onPress={() => signInWith('apple')}
-          activeOpacity={0.85}
-          disabled={!!loadingProvider}
-        >
-          {loadingProvider === 'apple' ? (
-            <ActivityIndicator color={colors.white} />
-          ) : (
-            <>
-              <Text style={styles.appleIcon}></Text>
-              <Text style={styles.btnAppleTxt}>{t('auth.continueApple')}</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        {/* Apple — нативная системная кнопка (требование App Review) */}
+        <AppleAuthentication.AppleAuthenticationButton
+          buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+          buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+          cornerRadius={radii.lg}
+          style={styles.btnApple}
+          onPress={signInWithApple}
+        />
 
         {/* Legal */}
         <Text style={styles.legal}>
@@ -300,26 +351,10 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
 
-  // Apple button
+  // Apple button (нативная AppleAuthenticationButton — только размер)
   btnApple: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
     height: 54,
-    borderRadius: radii.lg,
-    backgroundColor: '#000000',
-  },
-  appleIcon: {
-    fontSize: 20,
-    color: colors.white,
-    lineHeight: 24,
-    marginTop: -2,
-  },
-  btnAppleTxt: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.white,
+    alignSelf: 'stretch',
   },
 
   // Legal

@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { supabase } from '../lib/supabase';
 import { loadHomeZone, isInsideHomeZone, HomeZone } from '../lib/privacyZone';
 import {
@@ -60,6 +61,9 @@ export function DevPanel({ visible, onClose }: Props) {
   const [track, setTrack] = useState<TrackDiagnostics>(getTrackDiagnostics());
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   const [nowTick, setNowTick] = useState(Date.now());
+  // Линкован ли нативный модуль Sign in with Apple в этот билд. Если модуля в
+  // бинарнике нет — isAvailableAsync бросает, и мы показываем «НЕТ».
+  const [appleLinked, setAppleLinked] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -88,6 +92,13 @@ export function DevPanel({ visible, onClose }: Props) {
 
       // Та же функция, что использует гейт active_walks (privacyZone.ts)
       setHomeZone(await loadHomeZone());
+
+      // Нативный Apple-модуль: true = линкован и доступен (iOS 13+).
+      try {
+        setAppleLinked(await AppleAuthentication.isAvailableAsync());
+      } catch {
+        setAppleLinked(false);
+      }
     })();
   }, [visible]);
 
@@ -225,6 +236,11 @@ export function DevPanel({ visible, onClose }: Props) {
               label="ExpoTaskManager в билде"
               value={isBackgroundTrackingAvailable ? 'да' : 'НЕТ (fallback watchPosition)'}
               highlight={!isBackgroundTrackingAvailable}
+            />
+            <InfoRow
+              label="AppleAuthentication в билде"
+              value={appleLinked == null ? '…' : appleLinked ? 'да' : 'НЕТ (модуль не в билде)'}
+              highlight={appleLinked === false}
             />
             <InfoRow
               label="Фоновая задача запущена"
