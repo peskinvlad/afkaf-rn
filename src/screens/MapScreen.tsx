@@ -7,12 +7,13 @@ import {
   Alert,
   Animated,
   Easing,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import MapView, { PROVIDER_DEFAULT, MarkerAnimated, MapPressEvent } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { Menu, Bell, SlidersHorizontal, Locate } from 'lucide-react-native';
+import { Menu, Bell, SlidersHorizontal } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { colors, radii, shadows, heatVis } from '../theme/tokens';
 import { WalkSlider } from '../components/WalkSlider';
@@ -27,7 +28,10 @@ import { useCalloutAnchor } from '../hooks/useCalloutAnchor';
 import { useNearbyDogs } from '../hooks/useNearbyDogs';
 import { useFriends } from '../hooks/useFriends';
 import { sendFriendRequest } from '../lib/friendships';
+import { LocateButton } from '../components/LocateButton';
+import { ShareProfileSheet } from '../components/ShareProfileSheet';
 import NearbyDogsSheet from '../components/NearbyDogsSheet';
+import { mapAttributionInsets } from '../lib/mapInsets';
 import { CoverageBanner } from '../components/CoverageBanner';
 import { LocationRequiredCard } from '../components/LocationRequiredCard';
 import { filterMarkersAndWater } from '../lib/markerFilter';
@@ -44,6 +48,14 @@ const FLORENTIN_COORD: [number, number] = [34.7722, 32.0559];
 // move together instead of the sheet covering them.
 const WIDGETS_BASE_BOTTOM = 165;
 const SHEET_HEIGHT_FALLBACK = 220; // real NearbyDogsSheet content is ~200-220px; used until onLayout measures it
+
+// Chip (heatCard) position on MapScreen: left edge, and its RESTING bottom
+// (WIDGETS_BASE_BOTTOM — not the animated value), so the Apple logo / Legal
+// stay static above the chip even while the chip lifts for NearbyDogsSheet.
+// Same constants position the chip and the attribution — edit one, both move.
+const MAP_CHIP = { left: 16, bottom: WIDGETS_BASE_BOTTOM };
+// Static, computed once (stable reference → native side never re-insets).
+const MAP_ATTRIBUTION = mapAttributionInsets(MAP_CHIP);
 
 interface Props {
   navigation: any;
@@ -63,6 +75,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   const nearbyTotal = nearbyDogs.length + nearbyHiddenCount;
   const { statusByUser: friendStatusByUser, refresh: refreshFriends } = useFriends();
   const [sendingFriendId, setSendingFriendId] = useState<string | null>(null);
+  const [shareVisible, setShareVisible] = useState(false);
 
   async function handleAddNearbyFriend(userId: string) {
     if (sendingFriendId) return;
@@ -332,6 +345,12 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         showsMyLocationButton={false}
         showsCompass={false}
         toolbarEnabled={false}
+        // Apple logo + Legal: one line just above the asphalt chip, aligned to
+        // its left edge, static (computed once from MAP_CHIP). Also lifts the
+        // logo clear of the bottom panel, which otherwise covers it. mapPadding
+        // is layoutMargins-based, so it shifts the visual centre up too.
+        mapPadding={MAP_ATTRIBUTION}
+        legalLabelInsets={Platform.OS === 'ios' ? MAP_ATTRIBUTION : undefined}
         onPress={handleMapPress}
         // During the gesture the anchor is recomputed as fast as the bridge
         // keeps up; the Complete event guarantees a final exact placement.
@@ -416,7 +435,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
 
       {/* ── Heat card ── */}
       {!isHeatLoading && (
-        <Animated.View style={{ position: 'absolute', zIndex: 50, bottom: widgetsBottom, left: 16 }}>
+        <Animated.View style={{ position: 'absolute', zIndex: 50, bottom: widgetsBottom, left: MAP_CHIP.left }}>
           <TouchableOpacity
             style={[styles.heatCard, shadows.sm]}
             onPress={() => navigation.navigate('PavementTemp')}
@@ -431,13 +450,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
       {/* ── Right-hand map controls column: locate-me above add-marker FAB.
              Physical right — deliberately not mirrored in RTL, same as the FAB. ── */}
       <Animated.View style={{ position: 'absolute', zIndex: 50, bottom: widgetsBottom, right: 16, gap: 12 }}>
-        <TouchableOpacity
-          style={[styles.mapControlBtn, shadows.lg]}
-          onPress={handleCenterOnMe}
-          activeOpacity={0.85}
-        >
-          <Locate size={24} color={colors.white} />
-        </TouchableOpacity>
+        <LocateButton onPress={handleCenterOnMe} />
         <TouchableOpacity
           style={[styles.mapControlBtn, shadows.lg]}
           onPress={() => {
@@ -472,6 +485,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           statusByUser={friendStatusByUser}
           onAddFriend={handleAddNearbyFriend}
           sendingUserId={sendingFriendId}
+          onInvite={() => setShareVisible(true)}
         />
       </View>
 
@@ -513,6 +527,8 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
       {locationCardVisible && (
         <LocationRequiredCard onDismiss={() => setLocationCardVisible(false)} />
       )}
+
+      {!isGuest && <ShareProfileSheet visible={shareVisible} onClose={() => setShareVisible(false)} />}
 
     </View>
   );

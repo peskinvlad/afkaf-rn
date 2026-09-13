@@ -12,7 +12,7 @@ import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Bell, SlidersHorizontal, Locate } from 'lucide-react-native';
+import { Bell, SlidersHorizontal } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { colors, radii, shadows, heatVis } from '../theme/tokens';
 import { haversine, LatLng } from '../lib/geo';
@@ -30,6 +30,12 @@ import { MarkerCallout } from '../components/MarkerCallout';
 import { UserLocationMarker } from '../components/UserLocationMarker';
 import { MapMarkerIcon } from '../components/MapMarkerIcon';
 import { FirstWalkTipCard } from '../components/FirstWalkTipCard';
+import { LocateButton } from '../components/LocateButton';
+import NearbyDogsSheet from '../components/NearbyDogsSheet';
+import { ShareProfileSheet } from '../components/ShareProfileSheet';
+import { mapAttributionInsets } from '../lib/mapInsets';
+import { useFriends } from '../hooks/useFriends';
+import { sendFriendRequest } from '../lib/friendships';
 import { supabase } from '../lib/supabase';
 import { Visibility } from './SettingsScreen';
 import { checkAndAwardBadges } from '../lib/badges';
@@ -39,11 +45,13 @@ import { subscribeWalkLocations, startWalkTracking, stopWalkTracking } from '../
 const FLORENTIN_COORD = { latitude: 32.0559, longitude: 34.7722 };
 const INITIAL_REGION = { ...FLORENTIN_COORD, latitudeDelta: 0.01, longitudeDelta: 0.01 };
 const ACTIVE_WALK_PING_MS = 60000;
-// Fixed lift for MapKit's "Legal" link. Deliberately a constant, not derived
-// from the measured bottom-controls height: tying it to that height made the
-// link jump a couple of px when the layout settled. Matches the initial
-// bottom-controls height (64) + 8 gap.
-const MAP_LEGAL_BOTTOM_INSET = 72;
+// Position of the asphalt chip (heatCard) on WalkScreen: its left edge = the
+// bottom row's horizontal padding, its bottom = that row's bottom padding. The
+// SAME constants lay out the chip (mapBottomRow) and place the Apple logo /
+// Legal one line above it — edit the chip, the attribution follows.
+const WALK_CHIP = { left: 14, bottom: 12 };
+// Static, computed once — never from onLayout (that was the jitter source).
+const WALK_MAP_ATTRIBUTION = mapAttributionInsets(WALK_CHIP);
 const MIN_VALID_DISTANCE_KM = 0.3;
 const MIN_VALID_DURATION_SEC = 300;
 
@@ -61,16 +69,24 @@ export function WalkScreen({ navigation }: Props) {
 
   // ── Markers + water sources (same shared data as MapScreen) ────────────
   const { markers, waterSources } = useMapMarkers();
-  const { dogs: nearbyDogs, hiddenCount: nearbyHiddenCount } = useNearbyDogs(userLocation);
+  const { dogs: nearbyDogs, hiddenCount: nearbyHiddenCount, locationAvailable: nearbyLocationAvailable } = useNearbyDogs(userLocation);
   const nearbyTotal = nearbyDogs.length + nearbyHiddenCount;
+  const { statusByUser: friendStatusByUser, refresh: refreshFriends } = useFriends();
+  const [nearbySheetVisible, setNearbySheetVisible] = useState(false);
+  const [sendingFriendId, setSendingFriendId] = useState<string | null>(null);
+  const [shareVisible, setShareVisible] = useState(false);
+
+  async function handleAddNearbyFriend(userId: string) {
+    if (sendingFriendId) return;
+    setSendingFriendId(userId);
+    const error = await sendFriendRequest(userId);
+    if (error) console.warn('[WalkScreen] send friend request error:', error);
+    await refreshFriends();
+    setSendingFriendId(null);
+  }
+
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [detailMarker, setDetailMarker] = useState<import('../lib/markerConfig').MapMarker | null>(null);
-  // Height of the on-map bottom controls row (heat chip + FAB), measured so the
-  // map can reserve exactly that much bottom padding — the Apple logo and the
-  // "Legal" link (MapKit attribution, App-Store-required to stay visible) sit
-  // bottom-left, right under the temperature chip, and must clear it.
-  const [bottomControlsHeight, setBottomControlsHeight] = useState(64);
-  const mapBottomPadding = bottomControlsHeight + 8;
   // Finish is a one-way action (saves the walk, awards badges, then replaces
   // the screen). The ref is the hard guard against a double-tap firing two
   // saves; the state just greys the button out.
@@ -146,14 +162,12 @@ export function WalkScreen({ navigation }: Props) {
   // marker was still sliding, and any pinch-zoom was undone by the next fix.
   const cameraHasFix = useRef(false);
   // Follow mode: the camera tracks the walker until they pan the map by hand,
-  // then it lets go (and the locate button appears) until they tap it to
-  // re-centre. followUserRef is the copy read inside the fix handler's closure;
-  // followUser drives the button's visibility. Kept in step by setFollow.
-  const [followUser, setFollowUser] = useState(true);
+  // then it lets go until they tap the locate button to re-centre. The button
+  // is always visible and looks identical to MapScreen's, so no render state is
+  // needed — a ref is enough for the fix handler's closure.
   const followUserRef = useRef(true);
   function setFollow(next: boolean) {
     followUserRef.current = next;
-    setFollowUser(next);
   }
   function followWith(pt: LatLng) {
     // Hand panned away → don't yank the camera back on the next fix.
@@ -467,18 +481,15 @@ export function WalkScreen({ navigation }: Props) {
           showsMyLocationButton={false}
           showsCompass={false}
           toolbarEnabled={false}
-          // Reserve space at the bottom so MapKit's Apple logo lifts above the
-          // heat chip. layoutMargins-based, so it also recenters animateCamera
-          // (followWith) within the visible area — the user marker stays above
-          // the chip while following, no extra handling needed.
-          mapPadding={{ top: 0, right: 0, bottom: mapBottomPadding, left: 0 }}
-          // iOS only: the "Legal" link is positioned independently of
-          // layoutMargins, so lift it by the same amount to clear the chip too.
-          legalLabelInsets={
-            Platform.OS === 'ios'
-              ? { top: 0, right: 0, bottom: MAP_LEGAL_BOTTOM_INSET, left: 0 }
-              : undefined
-          }
+          // Apple logo + Legal: one line just above the asphalt chip, aligned to
+          // its left edge. Static — computed once from WALK_CHIP, never from
+          // onLayout. mapPadding is layoutMargins-based, so it also recenters
+          // animateCamera (followWith) within the visible area, keeping the user
+          // marker above the chip while following.
+          mapPadding={WALK_MAP_ATTRIBUTION}
+          // iOS positions "Legal" independently of layoutMargins — give it the
+          // same insets so it lands on the logo's line.
+          legalLabelInsets={Platform.OS === 'ios' ? WALK_MAP_ATTRIBUTION : undefined}
           onPress={handleMapPress}
           // A hand pan (details.isGesture) drops follow mode. Programmatic
           // camera moves (followWith → animateCamera) report isGesture=false, so
@@ -566,10 +577,7 @@ export function WalkScreen({ navigation }: Props) {
         <View style={{ flex: 1 }} />
 
         {/* ── Map bottom controls — flex row, no absolute ── */}
-        <View
-          style={styles.mapBottomRow}
-          onLayout={(e) => setBottomControlsHeight(e.nativeEvent.layout.height)}
-        >
+        <View style={styles.mapBottomRow}>
           {isHeatLoading ? (
             // Spacer keeps the FAB pinned right (mapBottomRow uses space-between)
             <View />
@@ -583,18 +591,11 @@ export function WalkScreen({ navigation }: Props) {
               <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
             </TouchableOpacity>
           )}
-          {/* Right column: locate-me above the add-marker FAB. Always shown;
-              tapping re-centres and resumes following. Its tint reflects whether
-              follow mode is currently on. */}
+          {/* Right column: locate-me above the add-marker FAB — same shared
+              LocateButton and layout as MapScreen. Tapping re-centres and
+              resumes following. */}
           <View style={styles.mapControlsCol}>
-            <TouchableOpacity
-              style={[styles.locateBtn, shadows.sm]}
-              onPress={handleCenterOnMe}
-              activeOpacity={0.85}
-              hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
-            >
-              <Locate size={20} color={followUser ? colors.primary : colors.ink} />
-            </TouchableOpacity>
+            <LocateButton onPress={handleCenterOnMe} />
             <TouchableOpacity
               style={[styles.fab, shadows.lg]}
               onPress={() => navigation.navigate('MarkerCreate')}
@@ -626,8 +627,8 @@ export function WalkScreen({ navigation }: Props) {
           <StatCol label={t('walk.active.km')} value={distanceKm.toFixed(2)} />
         </View>
 
-        {/* Walkers nearby */}
-        <TouchableOpacity style={styles.nearbyRow} activeOpacity={0.7}>
+        {/* Walkers nearby — opens the same NearbyDogsSheet as MapScreen */}
+        <TouchableOpacity style={styles.nearbyRow} activeOpacity={0.7} onPress={() => setNearbySheetVisible(true)}>
           <Text style={styles.nearbyEmoji}>🐕🐕🦮</Text>
           <Text style={styles.nearbyTxt}>{nearbyTotal}  {t('walk.nearby')}</Text>
           <Text style={styles.nearbyArrow}>▼</Text>
@@ -676,6 +677,26 @@ export function WalkScreen({ navigation }: Props) {
       />
 
       <FirstWalkTipCard onSetupPrivacy={() => navigation.navigate('PrivacyRadius')} />
+
+      {/* Nearby dogs — same sheet as MapScreen, opened from the walkers row.
+          box-none so the closed (off-screen) sheet never blocks the panel. */}
+      <View style={styles.nearbySheetWrap} pointerEvents="box-none">
+        <NearbyDogsSheet
+          visible={nearbySheetVisible}
+          onClose={() => setNearbySheetVisible(false)}
+          bottomOffset={insets.bottom}
+          dogs={nearbyDogs}
+          anonymousCount={nearbyHiddenCount}
+          locationAvailable={nearbyLocationAvailable}
+          onEnableLocation={() => {}}
+          statusByUser={friendStatusByUser}
+          onAddFriend={handleAddNearbyFriend}
+          sendingUserId={sendingFriendId}
+          onInvite={() => setShareVisible(true)}
+        />
+      </View>
+
+      {!isGuest && <ShareProfileSheet visible={shareVisible} onClose={() => setShareVisible(false)} />}
     </View>
   );
 }
@@ -770,8 +791,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    paddingHorizontal: 14,
-    paddingBottom: 12,
+    // Same constants that place the Apple logo / Legal (WALK_CHIP) — the chip's
+    // left edge and bottom gap. Keep in sync via WALK_CHIP.
+    paddingHorizontal: WALK_CHIP.left,
+    paddingBottom: WALK_CHIP.bottom,
     zIndex: 30,
   },
 
@@ -780,17 +803,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 12,
   },
-  // Locate-me: round, white card + ink icon — same visual family as the
-  // filter/bell buttons, sits above the FAB.
-  locateBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
   // FAB
   fab: {
     width: 52,
@@ -805,6 +817,15 @@ const styles = StyleSheet.create({
     color: colors.white,
     lineHeight: 32,
     marginTop: -2,
+  },
+
+  // Nearby sheet overlay — above the walk bottom sheet (zIndex 20) while open.
+  nearbySheetWrap: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 40,
   },
 
   // Bottom sheet

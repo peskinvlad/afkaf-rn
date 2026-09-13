@@ -34,6 +34,8 @@ type Props = {
   statusByUser?: Record<string, FriendshipRpcStatus>;
   onAddFriend?: (userId: string) => void;
   sendingUserId?: string | null;
+  // Opens ShareProfileSheet from the empty state (0 nearby).
+  onInvite?: () => void;
   bottomOffset?: number;
   onHeightChange?: (height: number) => void;
 };
@@ -94,7 +96,7 @@ const AnonymousCard = ({ count }: { count: number }) => {
 
 export default function NearbyDogsSheet({
   visible, onClose, dogs, anonymousCount, locationAvailable, onEnableLocation,
-  statusByUser, onAddFriend, sendingUserId, bottomOffset = 0, onHeightChange,
+  statusByUser, onAddFriend, sendingUserId, onInvite, bottomOffset = 0, onHeightChange,
 }: Props) {
   const { t } = useApp();
   const translateY = useRef(new Animated.Value(300)).current;
@@ -144,7 +146,31 @@ export default function NearbyDogsSheet({
         <View style={styles.handle} />
       </TouchableOpacity>
 
-      {locationAvailable ? (
+      {!locationAvailable ? (
+        <View style={styles.noLocationWrap}>
+          <Text style={styles.noLocationEmoji}>📍</Text>
+          <Text style={styles.noLocationTxt}>{t('nearby.no_location.body')}</Text>
+          <TouchableOpacity
+            style={styles.noLocationBtn}
+            onPress={onEnableLocation}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.noLocationBtnTxt}>{t('nearby.no_location.cta')}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : total === 0 ? (
+        <View style={styles.noLocationWrap}>
+          <Text style={styles.noLocationEmoji}>🐾</Text>
+          <Text style={styles.noLocationTxt}>{t('nearby.empty.body')}</Text>
+          <TouchableOpacity
+            style={styles.noLocationBtn}
+            onPress={onInvite}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.noLocationBtnTxt}>{t('nearby.empty.invite')}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
         <>
           <Text style={styles.title}>{total} {t('map.walkingNearby')}</Text>
 
@@ -165,18 +191,6 @@ export default function NearbyDogsSheet({
             {anonymousCount > 0 && <AnonymousCard count={anonymousCount} />}
           </ScrollView>
         </>
-      ) : (
-        <View style={styles.noLocationWrap}>
-          <Text style={styles.noLocationEmoji}>📍</Text>
-          <Text style={styles.noLocationTxt}>{t('nearby.no_location.body')}</Text>
-          <TouchableOpacity
-            style={styles.noLocationBtn}
-            onPress={onEnableLocation}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.noLocationBtnTxt}>{t('nearby.no_location.cta')}</Text>
-          </TouchableOpacity>
-        </View>
       )}
     </Animated.View>
   );
