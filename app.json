@@ -12,7 +12,8 @@
       "bundleIdentifier": "com.afkaf.app",
       "usesAppleSignIn": true,
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["location"]
       }
     },
     "android": {
