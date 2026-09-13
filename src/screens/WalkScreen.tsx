@@ -45,13 +45,14 @@ import { subscribeWalkLocations, startWalkTracking, stopWalkTracking } from '../
 const FLORENTIN_COORD = { latitude: 32.0559, longitude: 34.7722 };
 const INITIAL_REGION = { ...FLORENTIN_COORD, latitudeDelta: 0.01, longitudeDelta: 0.01 };
 const ACTIVE_WALK_PING_MS = 60000;
-// Position of the asphalt chip (heatCard) on WalkScreen: its left edge = the
-// bottom row's horizontal padding, its bottom = that row's bottom padding. The
-// SAME constants lay out the chip (mapBottomRow) and place the Apple logo /
-// Legal one line above it — edit the chip, the attribution follows.
-const WALK_CHIP = { left: 14, bottom: 12 };
-// Static, computed once — never from onLayout (that was the jitter source).
-const WALK_MAP_ATTRIBUTION = mapAttributionInsets(WALK_CHIP);
+// WalkScreen bottom-panel height ABOVE the safe-area inset (stats + nearby row +
+// finish button + paddings; the guest banner is ignored — base height only).
+// The map is full-screen (like MapScreen), and the panel, the chip row, and the
+// Apple logo / Legal are all positioned from this constant + insets.bottom — no
+// onLayout. That was the jitter source: legalLabelInsets/mapPadding anchor to
+// the map view's frame (AIRMap.m), so a map that resized with the panel moved
+// the Legal label on every relayout.
+const WALK_PANEL_CONTENT = 188;
 const MIN_VALID_DISTANCE_KM = 0.3;
 const MIN_VALID_DURATION_SEC = 300;
 
@@ -66,6 +67,15 @@ export function WalkScreen({ navigation }: Props) {
     radius, setRadius, activeCategories, toggleCategory, userLocation, setUserLocation,
   } = useApp();
   const heatVis_ = heatVis[heatData.status];
+
+  // Chip row sits just above the panel; Apple logo / Legal one line above the
+  // chip. Memoized so the object identity is stable (insets.bottom doesn't
+  // change across renders) — the native map never gets re-inset on a relayout.
+  const walkChip = useMemo(
+    () => ({ left: 14, bottom: WALK_PANEL_CONTENT + insets.bottom }),
+    [insets.bottom],
+  );
+  const walkMapAttribution = useMemo(() => mapAttributionInsets(walkChip), [walkChip]);
 
   // ── Markers + water sources (same shared data as MapScreen) ────────────
   const { markers, waterSources } = useMapMarkers();
@@ -482,14 +492,13 @@ export function WalkScreen({ navigation }: Props) {
           showsCompass={false}
           toolbarEnabled={false}
           // Apple logo + Legal: one line just above the asphalt chip, aligned to
-          // its left edge. Static — computed once from WALK_CHIP, never from
-          // onLayout. mapPadding is layoutMargins-based, so it also recenters
-          // animateCamera (followWith) within the visible area, keeping the user
-          // marker above the chip while following.
-          mapPadding={WALK_MAP_ATTRIBUTION}
-          // iOS positions "Legal" independently of layoutMargins — give it the
-          // same insets so it lands on the logo's line.
-          legalLabelInsets={Platform.OS === 'ios' ? WALK_MAP_ATTRIBUTION : undefined}
+          // its left edge. Static — derived from a constant + insets.bottom, and
+          // the map is full-screen (constant height), so neither jitters. Both
+          // are anchored to the map's frame (AIRMap.m); a full-screen map keeps
+          // that frame constant. mapPadding is layoutMargins-based, so it also
+          // recenters animateCamera (followWith) within the visible area.
+          mapPadding={walkMapAttribution}
+          legalLabelInsets={Platform.OS === 'ios' ? walkMapAttribution : undefined}
           onPress={handleMapPress}
           // A hand pan (details.isGesture) drops follow mode. Programmatic
           // camera moves (followWith → animateCamera) report isGesture=false, so
@@ -573,41 +582,10 @@ export function WalkScreen({ navigation }: Props) {
           <Bell size={20} color={colors.ink} />
         </TouchableOpacity>
 
-        {/* Spacer pushes bottom row to the bottom of the map */}
-        <View style={{ flex: 1 }} />
-
-        {/* ── Map bottom controls — flex row, no absolute ── */}
-        <View style={styles.mapBottomRow}>
-          {isHeatLoading ? (
-            // Spacer keeps the FAB pinned right (mapBottomRow uses space-between)
-            <View />
-          ) : (
-            <TouchableOpacity
-              style={[styles.heatCard, shadows.sm]}
-              onPress={() => navigation.navigate('PavementTemp')}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.heatTemp, { color: heatVis_.color }]}>{heatData.surface_est_c}°</Text>
-              <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
-            </TouchableOpacity>
-          )}
-          {/* Right column: locate-me above the add-marker FAB — same shared
-              LocateButton and layout as MapScreen. Tapping re-centres and
-              resumes following. */}
-          <View style={styles.mapControlsCol}>
-            <LocateButton onPress={handleCenterOnMe} />
-            <TouchableOpacity
-              style={[styles.fab, shadows.lg]}
-              onPress={() => navigation.navigate('MarkerCreate')}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.fabIcon}>+</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
         {/* Inside mapContainer on purpose: pointForCoordinate answers in the
-            map view's own coordinate space, which this container shares. */}
+            map view's own coordinate space, which this full-screen container
+            shares. Restructure keeps the map full-screen so the callout tail's
+            anchor math is unchanged. */}
         <MarkerCallout
           marker={detailMarker}
           anchor={calloutAnchor}
@@ -665,6 +643,38 @@ export function WalkScreen({ navigation }: Props) {
         </TouchableOpacity>
       </View>
 
+      {/* ── On-map bottom controls (heat chip + locate/FAB) — absolute above the
+          panel. Sibling of the panel (not the full-screen map) so its zIndex can
+          sit above the panel; bottom tracks the panel via the same constant that
+          places the Apple logo/Legal. ── */}
+      <View style={[styles.mapBottomRow, { bottom: walkChip.bottom }]} pointerEvents="box-none">
+        {isHeatLoading ? (
+          // Spacer keeps the FAB pinned right (mapBottomRow uses space-between)
+          <View />
+        ) : (
+          <TouchableOpacity
+            style={[styles.heatCard, shadows.sm]}
+            onPress={() => navigation.navigate('PavementTemp')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.heatTemp, { color: heatVis_.color }]}>{heatData.surface_est_c}°</Text>
+            <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
+          </TouchableOpacity>
+        )}
+        {/* Right column: locate-me above the add-marker FAB — same shared
+            LocateButton and layout as MapScreen. */}
+        <View style={styles.mapControlsCol}>
+          <LocateButton onPress={handleCenterOnMe} />
+          <TouchableOpacity
+            style={[styles.fab, shadows.lg]}
+            onPress={() => navigation.navigate('MarkerCreate')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.fabIcon}>+</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <MarkerFilterSheet
         visible={filterSheetOpen}
         onClose={() => setFilterSheetOpen(false)}
@@ -714,7 +724,9 @@ function StatCol({ label, value }: { label: string; value: string }) {
 // ── Styles ─────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
-  mapContainer: { flex: 1, position: 'relative' },
+  // Full-screen, like MapScreen: the map's frame stays constant so the Apple
+  // logo / Legal (anchored to that frame) don't move when the panel resizes.
+  mapContainer: { ...StyleSheet.absoluteFillObject },
 
   // Top-right icon buttons (Bell, Filter) — same style as MapScreen
   iconBtn: {
@@ -787,14 +799,17 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 
+  // Absolute, above the panel (zIndex 30 > panel's 20). `bottom` is set inline
+  // from walkChip.bottom; paddingHorizontal (14) is the chip's left edge, kept
+  // in step with walkChip.left.
   mapBottomRow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    // Same constants that place the Apple logo / Legal (WALK_CHIP) — the chip's
-    // left edge and bottom gap. Keep in sync via WALK_CHIP.
-    paddingHorizontal: WALK_CHIP.left,
-    paddingBottom: WALK_CHIP.bottom,
+    paddingHorizontal: 14,
     zIndex: 30,
   },
 
@@ -828,8 +843,13 @@ const styles = StyleSheet.create({
     zIndex: 40,
   },
 
-  // Bottom sheet
+  // Bottom sheet — absolute at the screen bottom; the full-screen map sits
+  // behind it (like MapScreen's bottomPanel).
   bottomSheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     backgroundColor: colors.card,
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
