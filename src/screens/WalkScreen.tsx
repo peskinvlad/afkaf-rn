@@ -44,14 +44,18 @@ import { subscribeWalkLocations, startWalkTracking, stopWalkTracking } from '../
 const FLORENTIN_COORD = { latitude: 32.0559, longitude: 34.7722 };
 const INITIAL_REGION = { ...FLORENTIN_COORD, latitudeDelta: 0.01, longitudeDelta: 0.01 };
 const ACTIVE_WALK_PING_MS = 60000;
-// WalkScreen bottom-panel height ABOVE the safe-area inset (stats + nearby row +
-// finish button + paddings; the guest banner is ignored — base height only).
-// The map is full-screen (like MapScreen), and the panel, the chip row, and the
-// Apple logo / Legal are all positioned from this constant + insets.bottom — no
-// onLayout. That was the jitter source: legalLabelInsets/mapPadding anchor to
-// the map view's frame (AIRMap.m), so a map that resized with the panel moved
-// the Legal label on every relayout.
-const WALK_PANEL_CONTENT = 188;
+// WalkScreen bottom-panel height ABOVE the safe-area inset (measured from the
+// styles: paddingTop 16 + stats ~46 + gap 10 + nearby row 48 + gap 10 + finish
+// ~59 + paddingBottom-non-safe 8 ≈ 198). The guest banner is intentionally NOT
+// included — when it shows, the panel is taller and the logo just sits a bit
+// higher above the chip, which is fine.
+// Used ONLY for the constant map attribution (mapPadding / Apple logo+Legal),
+// which must stay static — never from onLayout: the logo/Legal are native map
+// ornaments and MapKit re-lays them out under a moving camera (AIRMap.m). The
+// chip ROW, by contrast, is an RN element and is pinned to the panel's REAL
+// measured height (panelHeight + WALK_CHIP_GAP) so it can't drift off the panel.
+const WALK_PANEL_CONTENT = 198;
+const WALK_CHIP_GAP = 12; // gap between the panel's top edge and the chip row
 const MIN_VALID_DISTANCE_KM = 0.3;
 const MIN_VALID_DURATION_SEC = 300;
 
@@ -67,11 +71,17 @@ export function WalkScreen({ navigation }: Props) {
   } = useApp();
   const heatVis_ = heatVis[heatData.status];
 
-  // Chip row sits just above the panel; Apple logo / Legal one line above the
-  // chip. Memoized so the object identity is stable (insets.bottom doesn't
-  // change across renders) — the native map never gets re-inset on a relayout.
+  // Real panel height, measured via onLayout — drives the chip row's bottom so
+  // it always sits WALK_CHIP_GAP above the actual panel (incl. guest banner).
+  // Init from the constant estimate so the first frame is already close.
+  const [panelHeight, setPanelHeight] = useState(WALK_PANEL_CONTENT + insets.bottom);
+
+  // Apple logo / Legal: one line above the chip. Anchored to the CONSTANT panel
+  // estimate (not panelHeight) so mapPadding stays static — memoized so its
+  // identity is stable (insets.bottom doesn't change across renders) and the
+  // native map is never re-inset on a relayout.
   const walkChip = useMemo(
-    () => ({ left: 14, bottom: WALK_PANEL_CONTENT + insets.bottom }),
+    () => ({ left: 14, bottom: WALK_PANEL_CONTENT + insets.bottom + WALK_CHIP_GAP }),
     [insets.bottom],
   );
   const walkMapAttribution = useMemo(() => mapAttributionInsets(walkChip), [walkChip]);
@@ -594,7 +604,10 @@ export function WalkScreen({ navigation }: Props) {
       </View>
 
       {/* ── Bottom sheet (natural height, always visible) ── */}
-      <View style={[styles.bottomSheet, { paddingBottom: insets.bottom + 8 }]}>
+      <View
+        style={[styles.bottomSheet, { paddingBottom: insets.bottom + 8 }]}
+        onLayout={(e) => setPanelHeight(e.nativeEvent.layout.height)}
+      >
 
         {/* Stats row */}
         <View style={styles.statsRow}>
@@ -645,9 +658,10 @@ export function WalkScreen({ navigation }: Props) {
 
       {/* ── On-map bottom controls (heat chip + locate/FAB) — absolute above the
           panel. Sibling of the panel (not the full-screen map) so its zIndex can
-          sit above the panel; bottom tracks the panel via the same constant that
-          places the Apple logo/Legal. ── */}
-      <View style={[styles.mapBottomRow, { bottom: walkChip.bottom }]} pointerEvents="box-none">
+          sit above it; bottom tracks the panel's REAL measured height
+          (panelHeight + WALK_CHIP_GAP), so the chip never drifts onto the panel
+          regardless of the constant's accuracy or the guest banner. ── */}
+      <View style={[styles.mapBottomRow, { bottom: panelHeight + WALK_CHIP_GAP }]} pointerEvents="box-none">
         {isHeatLoading ? (
           // Spacer keeps the FAB pinned right (mapBottomRow uses space-between)
           <View />
