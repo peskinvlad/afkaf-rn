@@ -25,6 +25,8 @@ import { useHeading } from '../hooks/useHeading';
 import { useSmoothedPosition } from '../hooks/useSmoothedPosition';
 import { useCalloutAnchor } from '../hooks/useCalloutAnchor';
 import { useNearbyDogs } from '../hooks/useNearbyDogs';
+import { useFriends } from '../hooks/useFriends';
+import { sendFriendRequest } from '../lib/friendships';
 import NearbyDogsSheet from '../components/NearbyDogsSheet';
 import { CoverageBanner } from '../components/CoverageBanner';
 import { LocationRequiredCard } from '../components/LocationRequiredCard';
@@ -59,6 +61,17 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   const { markers, waterSources } = useMapMarkers();
   const { dogs: nearbyDogs, hiddenCount: nearbyHiddenCount, locationAvailable: nearbyLocationAvailable } = useNearbyDogs(userLocation);
   const nearbyTotal = nearbyDogs.length + nearbyHiddenCount;
+  const { statusByUser: friendStatusByUser, refresh: refreshFriends } = useFriends();
+  const [sendingFriendId, setSendingFriendId] = useState<string | null>(null);
+
+  async function handleAddNearbyFriend(userId: string) {
+    if (sendingFriendId) return;
+    setSendingFriendId(userId);
+    const error = await sendFriendRequest(userId);
+    if (error) console.warn('[MapScreen] send friend request error:', error);
+    await refreshFriends();
+    setSendingFriendId(null);
+  }
 
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [nearbySheetVisible, setNearbySheetVisible] = useState(false);
@@ -456,6 +469,9 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           anonymousCount={nearbyHiddenCount}
           locationAvailable={nearbyLocationAvailable}
           onEnableLocation={handleEnableLocation}
+          statusByUser={friendStatusByUser}
+          onAddFriend={handleAddNearbyFriend}
+          sendingUserId={sendingFriendId}
         />
       </View>
 

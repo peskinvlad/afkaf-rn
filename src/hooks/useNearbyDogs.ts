@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { fetchUserPreviews } from '../lib/userPreviews';
 import { haversine, LatLng } from '../lib/geo';
 import { NearbyDog } from '../components/NearbyDogsSheet';
 
@@ -10,13 +11,17 @@ interface WalkRow {
   user_id: string;
   lat: number;
   lng: number;
-  dogs: { id: string; name: string; breed: string | null; icon: string | null } | null;
 }
 
 // Nearby dogs within RADIUS_KM, filtered client-side (row count is small).
 // RLS on active_walks already restricts what comes back to: your own walk,
 // 'everyone' walks, and 'friends' walks from accepted friends — so no extra
 // privacy filtering is needed here, just distance.
+//
+// Names/dog come from get_user_previews (SECURITY DEFINER), because profiles
+// and dogs are owner-only under RLS; a client can only read them for users it
+// is already connected to or who are visibly walking nearby — which is exactly
+// this set.
 export function useNearbyDogs(userLocation: LatLng | null) {
   const [dogs, setDogs] = useState<NearbyDog[]>([]);
   const [hiddenCount, setHiddenCount] = useState(0);
@@ -43,22 +48,27 @@ export function useNearbyDogs(userLocation: LatLng | null) {
     }
 
     const [{ data: walks }, { data: hidden }] = await Promise.all([
-      supabase.from('active_walks').select('user_id, lat, lng, dogs(id, name, breed, icon)'),
+      supabase.from('active_walks').select('user_id, lat, lng'),
       supabase.rpc('get_hidden_walks_count', { user_lat: loc.latitude, user_lng: loc.longitude }),
     ]);
 
-    const nearby = ((walks ?? []) as unknown as WalkRow[])
+    const nearby = ((walks ?? []) as WalkRow[])
       .filter((w) => w.user_id !== myUserId)
-      .filter((w) => haversine(loc, { latitude: w.lat, longitude: w.lng }) <= RADIUS_KM)
-      .filter((w): w is WalkRow & { dogs: NonNullable<WalkRow['dogs']> } => w.dogs != null)
-      .map((w) => ({
-        id: w.dogs.id,
-        name: w.dogs.name,
-        breed: w.dogs.breed ?? '',
-        emoji: w.dogs.icon ?? '🐕',
-      }));
+      .filter((w) => haversine(loc, { latitude: w.lat, longitude: w.lng }) <= RADIUS_KM);
 
-    setDogs(nearby);
+    const previews = await fetchUserPreviews(nearby.map((w) => w.user_id));
+
+    const entries: NearbyDog[] = nearby.map((w) => {
+      const p = previews[w.user_id];
+      return {
+        userId: w.user_id,
+        dogName: p?.dog_name ?? '',
+        ownerName: p?.display_name ?? '',
+        avatar: p?.dog_avatar ?? '🐕',
+      };
+    });
+
+    setDogs(entries);
     setHiddenCount(typeof hidden === 'number' ? hidden : 0);
   }, []);
 

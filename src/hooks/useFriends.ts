@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { fetchUserPreviews } from '../lib/userPreviews';
 
 const POLL_INTERVAL_MS = 30000;
 
 export type FriendshipStatus = 'pending' | 'accepted' | 'declined';
+
+// Relationship of the current user TO another user, as get_friendship_status /
+// AddFriendSheet phrase it. Derived here from the loaded friendship rows so the
+// nearby list can label a card without an extra per-user RPC.
+export type FriendshipRpcStatus = 'friends' | 'pending_sent' | 'pending_received' | 'none';
 
 export interface FriendEntry {
   friendship_id: string;
@@ -23,23 +29,13 @@ interface FriendshipRow {
   status: FriendshipStatus;
 }
 
-interface ProfileRow {
-  id: string;
-  display_name: string | null;
-}
-
-interface DogRow {
-  owner_id: string;
-  name: string | null;
-  breed: string | null;
-  icon: string | null;
-}
-
 export interface UseFriendsResult {
   friends: FriendEntry[];
   incoming: FriendEntry[];
   outgoing: FriendEntry[];
   incomingCount: number;
+  // other_user_id → my relationship to them. Absent = 'none'.
+  statusByUser: Record<string, FriendshipRpcStatus>;
   loading: boolean;
   refresh: () => void;
 }
@@ -48,6 +44,7 @@ export function useFriends(): UseFriendsResult {
   const [friends, setFriends] = useState<FriendEntry[]>([]);
   const [incoming, setIncoming] = useState<FriendEntry[]>([]);
   const [outgoing, setOutgoing] = useState<FriendEntry[]>([]);
+  const [statusByUser, setStatusByUser] = useState<Record<string, FriendshipRpcStatus>>({});
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
 
@@ -58,6 +55,7 @@ export function useFriends(): UseFriendsResult {
         setFriends([]);
         setIncoming([]);
         setOutgoing([]);
+        setStatusByUser({});
         setLoading(false);
       }
       return;
@@ -80,52 +78,46 @@ export function useFriends(): UseFriendsResult {
       new Set(friendshipRows.map((r) => (r.requester_id === userId ? r.addressee_id : r.requester_id)))
     );
 
-    const profilesById: Record<string, ProfileRow> = {};
-    const dogsById: Record<string, DogRow> = {};
-
-    if (otherIds.length > 0) {
-      const [{ data: profiles, error: profilesError }, { data: dogs, error: dogsError }] = await Promise.all([
-        supabase.from('profiles').select('id, display_name').in('id', otherIds),
-        supabase.from('dogs').select('owner_id, name, breed, icon').in('owner_id', otherIds),
-      ]);
-
-      if (profilesError) console.warn('[useFriends] profiles fetch error:', profilesError.message);
-      if (dogsError) console.warn('[useFriends] dogs fetch error:', dogsError.message);
-
-      for (const p of (profiles ?? []) as ProfileRow[]) profilesById[p.id] = p;
-      for (const d of (dogs ?? []) as DogRow[]) {
-        if (!dogsById[d.owner_id]) dogsById[d.owner_id] = d;
-      }
-    }
+    // Names + dog come from get_user_previews (SECURITY DEFINER): profiles/dogs
+    // are owner-only under RLS, so a direct client read returns null here.
+    const previews = await fetchUserPreviews(otherIds);
 
     function toEntry(row: FriendshipRow): FriendEntry {
       const otherId = row.requester_id === userId ? row.addressee_id : row.requester_id;
-      const dog = dogsById[otherId];
+      const preview = previews[otherId];
       return {
         friendship_id: row.id,
         other_user_id: otherId,
         status: row.status,
-        display_name: profilesById[otherId]?.display_name ?? null,
+        display_name: preview?.display_name ?? null,
         // auth.users metadata isn't readable for other users from the client;
         // populate this later via an edge function if avatars are needed here.
         avatar_url: null,
-        dog_name: dog?.name ?? null,
-        dog_breed: dog?.breed ?? null,
-        dog_icon: dog?.icon ?? null,
+        dog_name: preview?.dog_name ?? null,
+        // get_user_previews doesn't return breed; the card falls back gracefully.
+        dog_breed: null,
+        dog_icon: preview?.dog_avatar ?? null,
       };
     }
 
     const nextFriends: FriendEntry[] = [];
     const nextIncoming: FriendEntry[] = [];
     const nextOutgoing: FriendEntry[] = [];
+    const nextStatus: Record<string, FriendshipRpcStatus> = {};
 
     for (const row of friendshipRows) {
       const entry = toEntry(row);
       if (row.status === 'accepted') {
         nextFriends.push(entry);
+        nextStatus[entry.other_user_id] = 'friends';
       } else if (row.status === 'pending') {
-        if (row.addressee_id === userId) nextIncoming.push(entry);
-        else nextOutgoing.push(entry);
+        if (row.addressee_id === userId) {
+          nextIncoming.push(entry);
+          nextStatus[entry.other_user_id] = 'pending_received';
+        } else {
+          nextOutgoing.push(entry);
+          nextStatus[entry.other_user_id] = 'pending_sent';
+        }
       }
     }
 
@@ -133,6 +125,7 @@ export function useFriends(): UseFriendsResult {
       setFriends(nextFriends);
       setIncoming(nextIncoming);
       setOutgoing(nextOutgoing);
+      setStatusByUser(nextStatus);
       setLoading(false);
     }
   }, []);
@@ -152,6 +145,7 @@ export function useFriends(): UseFriendsResult {
     incoming,
     outgoing,
     incomingCount: incoming.length,
+    statusByUser,
     loading,
     refresh: load,
   };

@@ -8,9 +8,11 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { UserPlus, Users } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { useFriends } from '../hooks/useFriends';
 import { FriendCard } from '../components/FriendCard';
+import { ShareProfileSheet } from '../components/ShareProfileSheet';
 import { acceptRequest, declineRequest } from '../lib/friendships';
 import { supabase } from '../lib/supabase';
 import { BADGES } from '../constants/badges';
@@ -107,6 +109,7 @@ export function NotificationsScreen({ navigation }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [events, setEvents] = useState<EventEntry[]>([]);
   const [eventsLoading, setEventsLoading] = useState(!isGuest);
+  const [shareVisible, setShareVisible] = useState(false);
 
   const loadEventsCb = useCallback(async () => {
     const next = await loadEvents(t);
@@ -142,7 +145,26 @@ export function NotificationsScreen({ navigation }: Props) {
           <Text style={styles.backArrow}>{rtl ? '→' : '←'}</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('notifications.title')}</Text>
-        <View style={styles.headerBtn} />
+        {isGuest ? (
+          <View style={styles.headerBtn} />
+        ) : (
+          <View style={[styles.headerActions, rtl && styles.rowReverse]}>
+            <TouchableOpacity
+              onPress={() => setShareVisible(true)}
+              style={styles.headerBtn}
+              hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+            >
+              <UserPlus size={20} color={colors.ink} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Friends')}
+              style={styles.headerBtn}
+              hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+            >
+              <Users size={20} color={colors.ink} />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {isGuest ? (
@@ -203,6 +225,8 @@ export function NotificationsScreen({ navigation }: Props) {
           )}
         </ScrollView>
       )}
+
+      {!isGuest && <ShareProfileSheet visible={shareVisible} onClose={() => setShareVisible(false)} />}
     </View>
   );
 }
@@ -219,6 +243,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   rowReverse: { flexDirection: 'row-reverse' },
+  headerActions: { flexDirection: 'row', alignItems: 'center' },
   headerBtn: { width: 36, alignItems: 'center', justifyContent: 'center' },
   backArrow: { fontSize: 20, color: colors.ink },
   headerTitle: { ...typography.h2, color: colors.ink, flex: 1, textAlign: 'center' },

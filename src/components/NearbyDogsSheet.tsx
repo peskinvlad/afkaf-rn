@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   Easing,
   PanResponder,
@@ -10,14 +11,16 @@ import {
   View,
 } from 'react-native';
 import { useApp } from '../hooks/useApp';
+import { FriendshipRpcStatus } from '../hooks/useFriends';
+import { colors } from '../theme/tokens';
 
 const SWIPE_THRESHOLD = 50;
 
 export type NearbyDog = {
-  id: string;
-  name: string;
-  breed: string;
-  emoji: string;
+  userId: string;      // owner — used for the friend request
+  dogName: string;
+  ownerName: string;
+  avatar: string;      // emoji
 };
 
 type Props = {
@@ -27,22 +30,52 @@ type Props = {
   anonymousCount: number;
   locationAvailable: boolean;
   onEnableLocation: () => void;
+  // Friend state per owner id, and the send handler. Absent status = 'none'.
+  statusByUser?: Record<string, FriendshipRpcStatus>;
+  onAddFriend?: (userId: string) => void;
+  sendingUserId?: string | null;
   bottomOffset?: number;
   onHeightChange?: (height: number) => void;
 };
 
-const DogCard = ({ dog }: { dog: NearbyDog }) => (
-  <View style={styles.card}>
-    <View style={styles.avatarWrap}>
-      <View style={styles.avatar}>
-        <Text style={styles.avatarEmoji}>{dog.emoji}</Text>
+const DogCard = ({
+  dog, status, sending, onAdd,
+}: {
+  dog: NearbyDog;
+  status: FriendshipRpcStatus;
+  sending: boolean;
+  onAdd?: (userId: string) => void;
+}) => {
+  const { t } = useApp();
+  return (
+    <View style={styles.card}>
+      <View style={styles.avatarWrap}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarEmoji}>{dog.avatar}</Text>
+        </View>
+        <View style={styles.onlineDot} />
       </View>
-      <View style={styles.onlineDot} />
+      <Text style={styles.cardName} numberOfLines={1}>{dog.dogName || dog.ownerName || t('profile.anonymous')}</Text>
+
+      {sending ? (
+        <ActivityIndicator size="small" color={colors.primary} style={styles.cardAction} />
+      ) : status === 'friends' ? (
+        <Text style={[styles.cardStatus, styles.cardAction]} numberOfLines={1}>{t('friends.already_friends')}</Text>
+      ) : status === 'pending_sent' || status === 'pending_received' ? (
+        <Text style={[styles.cardStatus, styles.cardAction]} numberOfLines={1}>{t('friends.request_pending')}</Text>
+      ) : (
+        <TouchableOpacity
+          style={[styles.addPill, styles.cardAction]}
+          onPress={() => onAdd?.(dog.userId)}
+          activeOpacity={0.8}
+          hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}
+        >
+          <Text style={styles.addPillTxt} numberOfLines={1}>+ {t('friends.add_friend')}</Text>
+        </TouchableOpacity>
+      )}
     </View>
-    <Text style={styles.cardName} numberOfLines={1}>{dog.name}</Text>
-    <Text style={styles.cardBreed} numberOfLines={1}>{dog.breed}</Text>
-  </View>
-);
+  );
+};
 
 const AnonymousCard = ({ count }: { count: number }) => {
   const { t } = useApp();
@@ -61,7 +94,7 @@ const AnonymousCard = ({ count }: { count: number }) => {
 
 export default function NearbyDogsSheet({
   visible, onClose, dogs, anonymousCount, locationAvailable, onEnableLocation,
-  bottomOffset = 0, onHeightChange,
+  statusByUser, onAddFriend, sendingUserId, bottomOffset = 0, onHeightChange,
 }: Props) {
   const { t } = useApp();
   const translateY = useRef(new Animated.Value(300)).current;
@@ -120,7 +153,15 @@ export default function NearbyDogsSheet({
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
           >
-            {dogs.map(dog => <DogCard key={dog.id} dog={dog} />)}
+            {dogs.map(dog => (
+              <DogCard
+                key={dog.userId}
+                dog={dog}
+                status={statusByUser?.[dog.userId] ?? 'none'}
+                sending={sendingUserId === dog.userId}
+                onAdd={onAddFriend}
+              />
+            ))}
             {anonymousCount > 0 && <AnonymousCard count={anonymousCount} />}
           </ScrollView>
         </>
@@ -249,5 +290,28 @@ const styles = StyleSheet.create({
     color: '#888',
     textAlign: 'center',
     marginTop: 2,
+  },
+  cardAction: {
+    marginTop: 6,
+    minHeight: 24,
+  },
+  cardStatus: {
+    fontFamily: 'Nunito-Regular',
+    fontSize: 11,
+    color: '#888',
+    textAlign: 'center',
+  },
+  addPill: {
+    paddingHorizontal: 10,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addPillTxt: {
+    fontFamily: 'Nunito-Bold',
+    fontSize: 11,
+    color: '#fff',
   },
 });

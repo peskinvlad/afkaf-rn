@@ -39,6 +39,11 @@ import { subscribeWalkLocations, startWalkTracking, stopWalkTracking } from '../
 const FLORENTIN_COORD = { latitude: 32.0559, longitude: 34.7722 };
 const INITIAL_REGION = { ...FLORENTIN_COORD, latitudeDelta: 0.01, longitudeDelta: 0.01 };
 const ACTIVE_WALK_PING_MS = 60000;
+// Fixed lift for MapKit's "Legal" link. Deliberately a constant, not derived
+// from the measured bottom-controls height: tying it to that height made the
+// link jump a couple of px when the layout settled. Matches the initial
+// bottom-controls height (64) + 8 gap.
+const MAP_LEGAL_BOTTOM_INSET = 72;
 const MIN_VALID_DISTANCE_KM = 0.3;
 const MIN_VALID_DURATION_SEC = 300;
 
@@ -158,13 +163,6 @@ export function WalkScreen({ navigation }: Props) {
     const duration = cameraHasFix.current ? MOVE_MS : 0;
     cameraHasFix.current = true;
     mapRef.current?.animateCamera({ center: pt }, { duration });
-  }
-  // A manual pan drops follow mode. onPanDrag fires only on user gestures —
-  // programmatic animateCamera (followWith) never triggers it — so this can't
-  // fight the camera it just moved. Fires continuously mid-drag; the guard
-  // keeps it to one state change.
-  function handlePanDrag() {
-    if (followUserRef.current) setFollow(false);
   }
   // Locate button: re-centre on the last fix and resume following.
   function handleCenterOnMe() {
@@ -478,15 +476,20 @@ export function WalkScreen({ navigation }: Props) {
           // layoutMargins, so lift it by the same amount to clear the chip too.
           legalLabelInsets={
             Platform.OS === 'ios'
-              ? { top: 0, right: 0, bottom: mapBottomPadding, left: 0 }
+              ? { top: 0, right: 0, bottom: MAP_LEGAL_BOTTOM_INSET, left: 0 }
               : undefined
           }
           onPress={handleMapPress}
-          // A hand pan drops follow mode and reveals the locate button.
-          onPanDrag={handlePanDrag}
-          // During the gesture the anchor is recomputed as fast as the bridge
-          // keeps up; the Complete event guarantees a final exact placement.
-          onRegionChange={refreshCalloutAnchor}
+          // A hand pan (details.isGesture) drops follow mode. Programmatic
+          // camera moves (followWith → animateCamera) report isGesture=false, so
+          // they can't fight the camera they just moved. onPanDrag isn't used:
+          // it never fires on the iOS Apple-Maps provider (PROVIDER_DEFAULT).
+          onRegionChange={(_region, details) => {
+            if ((details as any)?.isGesture && followUserRef.current) setFollow(false);
+            // During the gesture the anchor is recomputed as fast as the bridge
+            // keeps up; the Complete event guarantees a final exact placement.
+            refreshCalloutAnchor();
+          }}
           onRegionChangeComplete={refreshCalloutAnchor}
         >
           {route.length > 1 && (
@@ -580,19 +583,18 @@ export function WalkScreen({ navigation }: Props) {
               <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
             </TouchableOpacity>
           )}
-          {/* Right column: locate-me above the add-marker FAB. Locate shows
-              only once the user has panned away from themselves. */}
+          {/* Right column: locate-me above the add-marker FAB. Always shown;
+              tapping re-centres and resumes following. Its tint reflects whether
+              follow mode is currently on. */}
           <View style={styles.mapControlsCol}>
-            {!followUser && (
-              <TouchableOpacity
-                style={[styles.locateBtn, shadows.sm]}
-                onPress={handleCenterOnMe}
-                activeOpacity={0.85}
-                hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
-              >
-                <Locate size={20} color={colors.ink} />
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              style={[styles.locateBtn, shadows.sm]}
+              onPress={handleCenterOnMe}
+              activeOpacity={0.85}
+              hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
+            >
+              <Locate size={20} color={followUser ? colors.primary : colors.ink} />
+            </TouchableOpacity>
             <TouchableOpacity
               style={[styles.fab, shadows.lg]}
               onPress={() => navigation.navigate('MarkerCreate')}

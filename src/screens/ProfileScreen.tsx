@@ -14,6 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Pencil } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { useBadges } from '../hooks/useBadges';
+import { useFriends } from '../hooks/useFriends';
 import { BADGES } from '../constants/badges';
 import { supabase } from '../lib/supabase';
 import { colors, radii, shadows } from '../theme/tokens';
@@ -86,6 +87,7 @@ export function ProfileScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t, isGuest, isTrusted, confirmedCount, refreshTrustStatus } = useApp();
   const { earnedIds: earnedBadgeIds, refresh: refreshBadges } = useBadges();
+  const { friends } = useFriends();
 
   const [loading, setLoading]         = useState(true);
   const [profile, setProfile]         = useState<Profile | null>(null);
@@ -339,8 +341,11 @@ export function ProfileScreen({ navigation }: Props) {
               <View style={styles.statDivider} />
               <StatCol value={String(stats.markers)}      label={t('profile.stats.markers')} />
               <View style={styles.statDivider} />
-              {/* TODO: Friends feature not yet implemented — hardcoded 0 */}
-              <StatCol value="0"                          label={t('profile.stats.friends')} />
+              <StatCol
+                value={String(friends.length)}
+                label={t('profile.stats.friends')}
+                onPress={() => navigation.navigate('Friends')}
+              />
             </View>
 
             {/* ── My dog(s) ── */}
@@ -432,13 +437,21 @@ function SectionHeader({ title }: { title: string }) {
   return <Text style={styles.sectionHeader}>{title}</Text>;
 }
 
-function StatCol({ value, label }: { value: string; label: string }) {
-  return (
-    <View style={styles.statCol}>
+function StatCol({ value, label, onPress }: { value: string; label: string; onPress?: () => void }) {
+  const body = (
+    <>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
-    </View>
+    </>
   );
+  if (onPress) {
+    return (
+      <TouchableOpacity style={styles.statCol} onPress={onPress} activeOpacity={0.7}>
+        {body}
+      </TouchableOpacity>
+    );
+  }
+  return <View style={styles.statCol}>{body}</View>;
 }
 
 function DogCard({ dog, onEdit, t }: { dog: Dog; onEdit: () => void; t: (k: string) => string }) {
