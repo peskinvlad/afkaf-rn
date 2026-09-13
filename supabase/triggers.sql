@@ -12,6 +12,13 @@ CREATE TRIGGER trg_friendships_set_updated_at
   BEFORE UPDATE ON public.friendships
   FOR EACH ROW EXECUTE FUNCTION public.friendships_set_updated_at();
 
+-- Добавлен 2026-09-13. Rate-limit + серверные created_at/expires_at на вставке
+-- меток пользователями приложения (функция — functions/markers_guard_insert.sql).
+DROP TRIGGER IF EXISTS markers_guard_insert ON public.markers;
+CREATE TRIGGER markers_guard_insert
+  BEFORE INSERT ON public.markers
+  FOR EACH ROW EXECUTE FUNCTION public.markers_guard_insert();
+
 -- auth.users — чужая схема, пересоздание может требовать прав supabase_admin.
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
