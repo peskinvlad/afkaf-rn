@@ -1,0 +1,14 @@
+# Static site for afkaf.netlify.app — served from web/. No build step.
+[build]
+  publish = "web"
+
+# Pretty URLs → the actual .html files (200 = rewrite, URL stays clean).
+[[redirects]]
+  from = "/privacy"
+  to = "/privacy.html"
+  status = 200
+
+[[redirects]]
+  from = "/terms"
+  to = "/terms.html"
+  status = 200

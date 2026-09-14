@@ -258,11 +258,11 @@ export function AuthScreen({ navigation }: Props) {
         {/* Legal */}
         <Text style={styles.legal}>
           {t('auth.legalPrefix')}{' '}
-          <Text style={styles.legalLink} onPress={() => Linking.openURL('https://afkaf.app/terms')}>
+          <Text style={styles.legalLink} onPress={() => Linking.openURL('https://afkaf.netlify.app/terms')}>
             {t('auth.terms')}
           </Text>
           {' '}{t('auth.legalAnd')}{' '}
-          <Text style={styles.legalLink} onPress={() => Linking.openURL('https://afkaf.app/privacy')}>
+          <Text style={styles.legalLink} onPress={() => Linking.openURL('https://afkaf.netlify.app/privacy')}>
             {t('auth.privacy')}
           </Text>
         </Text>
