@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState,
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
+  Dimensions,
 } from 'react-native';
 import MapView, { PROVIDER_DEFAULT, Polyline, MarkerAnimated, MapPressEvent } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -32,7 +33,7 @@ import { FirstWalkTipCard } from '../components/FirstWalkTipCard';
 import { LocateButton } from '../components/LocateButton';
 import NearbyDogsSheet from '../components/NearbyDogsSheet';
 import { ShareProfileSheet } from '../components/ShareProfileSheet';
-import { mapAttributionInsets } from '../lib/mapInsets';
+import { mapAttributionInsets, MapAttributionInsets } from '../lib/mapInsets';
 import { useFriends } from '../hooks/useFriends';
 import { sendFriendRequest } from '../lib/friendships';
 import { supabase } from '../lib/supabase';
@@ -56,6 +57,7 @@ const ACTIVE_WALK_PING_MS = 60000;
 // measured height (panelHeight + WALK_CHIP_GAP) so it can't drift off the panel.
 const WALK_PANEL_CONTENT = 198;
 const WALK_CHIP_GAP = 12; // gap between the panel's top edge and the chip row
+const HEAT_CHIP_HEIGHT = 54; // fixed heatCard height (matches styles.heatCard)
 const MIN_VALID_DISTANCE_KM = 0.3;
 const MIN_VALID_DURATION_SEC = 300;
 
@@ -76,15 +78,33 @@ export function WalkScreen({ navigation }: Props) {
   // Init from the constant estimate so the first frame is already close.
   const [panelHeight, setPanelHeight] = useState(WALK_PANEL_CONTENT + insets.bottom);
 
-  // Apple logo / Legal: one line above the chip. Anchored to the CONSTANT panel
-  // estimate (not panelHeight) so mapPadding stays static — memoized so its
-  // identity is stable (insets.bottom doesn't change across renders) and the
-  // native map is never re-inset on a relayout.
-  const walkChip = useMemo(
-    () => ({ left: 14, bottom: WALK_PANEL_CONTENT + insets.bottom + WALK_CHIP_GAP }),
-    [insets.bottom],
-  );
-  const walkMapAttribution = useMemo(() => mapAttributionInsets(walkChip), [walkChip]);
+  // Apple logo / Legal: measured from the REAL chip so the ornaments hug its
+  // top edge (see mapAttributionInsets). measureInWindow gives screen-space
+  // top/left; we re-measure whenever the chip row can move (its onLayout, below —
+  // fires at mount and whenever panelHeight shifts the row). State updates only
+  // when the chip actually moved, so the native map isn't re-inset on unrelated
+  // renders — and we measure the CHIP, never the panel, which is what used to
+  // make the ornaments jitter. Fallback (below) is the old estimate, shown only
+  // until the first measurement lands.
+  const screenH = Dimensions.get('window').height;
+  const heatChipRef = useRef<any>(null);
+  const [walkMapAttribution, setWalkMapAttribution] = useState<MapAttributionInsets>(() => ({
+    // Fallback (first frame only). chip top-from-bottom = panel + gap + chip
+    // height; the safe-area subtraction cancels the +insets.bottom in the panel.
+    top: 0,
+    right: 0,
+    bottom: WALK_PANEL_CONTENT + WALK_CHIP_GAP + HEAT_CHIP_HEIGHT + 4 - 8,
+    left: 14 - 4,
+  }));
+  const measureHeatChip = useCallback(() => {
+    heatChipRef.current?.measureInWindow((x: number, y: number, w: number) => {
+      if (!w) return;
+      const next = mapAttributionInsets({ top: y, left: x }, screenH, insets.bottom);
+      setWalkMapAttribution((prev) =>
+        prev.bottom === next.bottom && prev.left === next.left ? prev : next,
+      );
+    });
+  }, [screenH, insets.bottom]);
 
   // ── Markers + water sources (same shared data as MapScreen) ────────────
   const { markers, waterSources } = useMapMarkers();
@@ -501,8 +521,9 @@ export function WalkScreen({ navigation }: Props) {
           showsCompass={false}
           toolbarEnabled={false}
           // Apple logo + Legal: positioned by MapKit via layoutMargins
-          // (mapPadding) alone — both ornaments on one line, just above the chip,
-          // left-aligned. legalLabelInsets is deliberately NOT set: AIRMap
+          // (mapPadding) alone — both ornaments on one line directly above the
+          // chip, left-aligned and hugging it.
+          // legalLabelInsets is deliberately NOT set: AIRMap
           // re-applies it async inside layoutSubviews (AIRMap.m), so during
           // follow-mode's per-second animateCamera the label ping-ponged between
           // MapKit's layoutMargins spot and AIRMap's insets spot (~1px, 1 Hz).
@@ -661,20 +682,33 @@ export function WalkScreen({ navigation }: Props) {
           sit above it; bottom tracks the panel's REAL measured height
           (panelHeight + WALK_CHIP_GAP), so the chip never drifts onto the panel
           regardless of the constant's accuracy or the guest banner. ── */}
-      <View style={[styles.mapBottomRow, { bottom: panelHeight + WALK_CHIP_GAP }]} pointerEvents="box-none">
-        {isHeatLoading ? (
-          // Spacer keeps the FAB pinned right (mapBottomRow uses space-between)
-          <View />
-        ) : (
-          <TouchableOpacity
-            style={[styles.heatCard, shadows.sm]}
-            onPress={() => navigation.navigate('PavementTemp')}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.heatTemp, { color: heatVis_.color }]}>{heatData.surface_est_c}°</Text>
-            <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
-          </TouchableOpacity>
-        )}
+      <View
+        style={[styles.mapBottomRow, { bottom: panelHeight + WALK_CHIP_GAP }]}
+        onLayout={measureHeatChip}
+        pointerEvents="box-none"
+      >
+        {/* Chip always rendered; plate keeps a constant height across
+            loading / no-data / data states. */}
+        <TouchableOpacity
+          ref={heatChipRef}
+          style={[styles.heatCard, shadows.sm]}
+          onPress={() => navigation.navigate('PavementTemp')}
+          activeOpacity={0.8}
+        >
+          {isHeatLoading ? (
+            <>
+              <Text style={[styles.heatTemp, { color: heatVis_.color }]}>—°</Text>
+              <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
+            </>
+          ) : !heatData.has_data ? (
+            <Text style={styles.heatUnavailable} numberOfLines={2}>{t('map.heatUnavailable')}</Text>
+          ) : (
+            <>
+              <Text style={[styles.heatTemp, { color: heatVis_.color }]}>{heatData.surface_est_c}°</Text>
+              <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
+            </>
+          )}
+        </TouchableOpacity>
         {/* Right column: locate-me above the add-marker FAB — same shared
             LocateButton and layout as MapScreen. */}
         <View style={styles.mapControlsCol}>
@@ -795,12 +829,20 @@ const styles = StyleSheet.create({
   },
 
 
+  // Fixed height so the plate doesn't change size between loading ("—°") /
+  // no-data / data states.
   heatCard: {
     backgroundColor: colors.card,
     borderRadius: radii.sm,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    height: 54,
+    justifyContent: 'center',
     minWidth: 64,
+  },
+  heatUnavailable: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
   },
   heatTemp: {
     fontSize: 18,

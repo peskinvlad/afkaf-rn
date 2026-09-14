@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -52,7 +51,7 @@ const FIRST_FIX_TIMEOUT_MS = 10000;
 // Map block: fixed-height rounded map + the adjust hint below it. The whole
 // block collapses to 0 while the keyboard is up so chips + comment + submit
 // stay visible on one screen.
-const MAP_HEIGHT = 180;
+const MAP_HEIGHT = 204; // taller preview so the Apple logo clears the adjust circle
 const MAP_BLOCK_HEIGHT = MAP_HEIGHT + 32; // + hint line
 const COLLAPSE_MS = 250;
 
@@ -384,15 +383,10 @@ export function AddMarkerScreen({ navigation }: Props) {
 
       {/* ── Form — no vertical scroll: everything fits on one screen ── */}
       <View style={styles.form}>
-        {/* Type chips — horizontal row, icons/colors from MARKER_CONFIG */}
+        {/* Type chips — 2×2 grid, all four visible at once (no scroll).
+            Icons/colors from MARKER_CONFIG. */}
         <Text style={styles.sectionLabel}>{t('addMarker.typeLabel')}</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.typeRowScroll}
-          contentContainerStyle={styles.typeRow}
-          keyboardShouldPersistTaps="handled"
-        >
+        <View style={styles.typeGrid}>
           {MARKER_TYPES.map((mt) => {
             const cfg = MARKER_CONFIG[mt.id];
             const selected = selectedType === mt.id;
@@ -409,13 +403,16 @@ export function AddMarkerScreen({ navigation }: Props) {
                 activeOpacity={0.75}
               >
                 <Text style={styles.typeChipEmoji}>{cfg.emoji}</Text>
-                <Text style={[styles.typeChipTxt, selected && styles.typeChipTxtActive]}>
+                <Text
+                  style={[styles.typeChipTxt, selected && styles.typeChipTxtActive]}
+                  numberOfLines={2}
+                >
                   {t(mt.labelKey)}
                 </Text>
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </View>
 
         {/* Comment */}
         <Text style={styles.sectionLabel}>{t('addMarker.commentLabel')}</Text>
@@ -590,18 +587,26 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
-  // Type chips — horizontal row, ≥48pt touch targets
-  typeRowScroll: { flexGrow: 0, marginHorizontal: -16 },
-  typeRow: {
-    paddingHorizontal: 16,
+  // Type chips — 2×2 grid, all four visible without scrolling
+  typeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   typeChip: {
-    height: 48,
+    // Two per row: grow to fill, wrap after two. Touch target ≥48pt tall
+    // (minHeight); a two-line label (e.g. RU "Агрессивная собака") grows it to
+    // ~56 via paddingVertical 12 + the 2×16pt text lines.
+    flexGrow: 1,
+    flexBasis: '47%',
+    minWidth: 0,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
     paddingHorizontal: 14,
+    paddingVertical: 12,
     borderRadius: radii.full,
     borderWidth: 1.5,
   },
@@ -612,7 +617,10 @@ const styles = StyleSheet.create({
   // includeFontPadding — Android: kill baseline padding that sinks emoji
   typeChipEmoji: { fontSize: 18, lineHeight: 20, textAlign: 'center', includeFontPadding: false },
   typeChipTxt: {
+    flexShrink: 1,
     fontSize: 13,
+    lineHeight: 16,
+    textAlign: 'center',
     fontWeight: '600',
     color: colors.textSecondary,
   },

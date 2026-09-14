@@ -14,6 +14,9 @@ export interface HeatData {
   status: HeatStatus;
   surface_est_c: number;
   air_temp_c: number;
+  // false when the weather source returned nothing (surfaceTempC null) — lets
+  // the chip show "no data" instead of a misleading 0°.
+  has_data: boolean;
 }
 
 export interface AbandonedWalk {
@@ -132,6 +135,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     status: heatStatus,
     surface_est_c: surfaceTempC ?? 0,
     air_temp_c: airTempC ?? 0,
+    has_data: surfaceTempC != null,
   };
 
   // ── Marker filter (shared between MapScreen and WalkScreen) ────────────────

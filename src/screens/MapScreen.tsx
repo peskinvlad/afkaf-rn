@@ -7,6 +7,7 @@ import {
   Alert,
   Animated,
   Easing,
+  Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -30,7 +31,7 @@ import { sendFriendRequest } from '../lib/friendships';
 import { LocateButton } from '../components/LocateButton';
 import { ShareProfileSheet } from '../components/ShareProfileSheet';
 import NearbyDogsSheet from '../components/NearbyDogsSheet';
-import { mapAttributionInsets } from '../lib/mapInsets';
+import { mapAttributionInsets, MapAttributionInsets } from '../lib/mapInsets';
 import { CoverageBanner } from '../components/CoverageBanner';
 import { LocationRequiredCard } from '../components/LocationRequiredCard';
 import { filterMarkersAndWater } from '../lib/markerFilter';
@@ -48,13 +49,13 @@ const FLORENTIN_COORD: [number, number] = [34.7722, 32.0559];
 const WIDGETS_BASE_BOTTOM = 165;
 const SHEET_HEIGHT_FALLBACK = 220; // real NearbyDogsSheet content is ~200-220px; used until onLayout measures it
 
-// Chip (heatCard) position on MapScreen: left edge, and its RESTING bottom
-// (WIDGETS_BASE_BOTTOM — not the animated value), so the Apple logo / Legal
-// stay static above the chip even while the chip lifts for NearbyDogsSheet.
-// Same constants position the chip and the attribution — edit one, both move.
+// Chip (heatCard) left edge and its RESTING bottom (WIDGETS_BASE_BOTTOM — not
+// the animated value). The attribution is measured from the real chip at runtime
+// (measureHeatChip below); the fallback below (built in-component, since it needs
+// the safe-area inset) is used only for the first frame, before measureInWindow
+// reports.
 const MAP_CHIP = { left: 16, bottom: WIDGETS_BASE_BOTTOM };
-// Static, computed once (stable reference → native side never re-insets).
-const MAP_ATTRIBUTION = mapAttributionInsets(MAP_CHIP);
+const HEAT_CHIP_HEIGHT = 54;
 
 interface Props {
   navigation: any;
@@ -96,6 +97,31 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   const [nearbySheetHeight, setNearbySheetHeight] = useState(SHEET_HEIGHT_FALLBACK);
   const widgetsBottom = useRef(new Animated.Value(WIDGETS_BASE_BOTTOM)).current;
   const mapRef = useRef<MapView | null>(null);
+
+  // Apple logo / Legal placement: measure the REAL chip (not a constant) so the
+  // ornaments hug its top edge. measureInWindow gives screen-space top/left; we
+  // only update state when the chip actually moved, so the native map isn't
+  // re-inset on unrelated renders. The chip's onLayout fires at its RESTING
+  // position (an ancestor move — the NearbyDogsSheet lift — doesn't retrigger a
+  // child's onLayout), so the ornaments stay put while the chip animates up.
+  const screenH = Dimensions.get('window').height;
+  const heatChipRef = useRef<any>(null);
+  const [mapAttribution, setMapAttribution] = useState<MapAttributionInsets>(() => ({
+    // Fallback (first frame only): chip's resting top-from-bottom is
+    // WIDGETS_BASE_BOTTOM + chip height; same DESIRED_GAP/margins as the function.
+    top: 0, right: 0,
+    bottom: WIDGETS_BASE_BOTTOM + HEAT_CHIP_HEIGHT + 4 - 8 - insets.bottom,
+    left: MAP_CHIP.left - 4,
+  }));
+  const measureHeatChip = useCallback(() => {
+    heatChipRef.current?.measureInWindow((x: number, y: number, w: number) => {
+      if (!w) return; // not laid out yet
+      const next = mapAttributionInsets({ top: y, left: x }, screenH, insets.bottom);
+      setMapAttribution((prev) =>
+        prev.bottom === next.bottom && prev.left === next.left ? prev : next,
+      );
+    });
+  }, [screenH, insets.bottom]);
   // Screen position of the open marker's pin, so the callout can sit on it.
   // refresh() is wired to the map's region events below — the bubble has to
   // follow its pin while the map moves under it.
@@ -345,12 +371,13 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         showsCompass={false}
         toolbarEnabled={false}
         // Apple logo + Legal: positioned by MapKit via layoutMargins (mapPadding)
-        // alone — one line just above the asphalt chip, left-aligned. Also lifts
-        // the logo clear of the bottom panel, which otherwise covers it.
+        // alone — one line directly above the asphalt chip, left-aligned and
+        // hugging it (see mapAttributionInsets). Also lifts the logo clear of the
+        // bottom panel, which otherwise covers it.
         // legalLabelInsets is intentionally not set (parity with WalkScreen): it
         // fights MapKit's layoutMargins placement inside layoutSubviews and
         // flickers under a moving camera. mapPadding shifts the visual centre up.
-        mapPadding={MAP_ATTRIBUTION}
+        mapPadding={mapAttribution}
         onPress={handleMapPress}
         // During the gesture the anchor is recomputed as fast as the bridge
         // keeps up; the Complete event guarantees a final exact placement.
@@ -433,19 +460,31 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         )}
       </TouchableOpacity>
 
-      {/* ── Heat card ── */}
-      {!isHeatLoading && (
-        <Animated.View style={{ position: 'absolute', zIndex: 50, bottom: widgetsBottom, left: MAP_CHIP.left }}>
-          <TouchableOpacity
-            style={[styles.heatCard, shadows.sm]}
-            onPress={() => navigation.navigate('PavementTemp')}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.heatTemp, { color: heatVis_.color }]}>{heatData.surface_est_c}°</Text>
-            <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      )}
+      {/* ── Heat card — always rendered; plate keeps a constant height across
+             loading / no-data / data states ── */}
+      <Animated.View style={{ position: 'absolute', zIndex: 50, bottom: widgetsBottom, left: MAP_CHIP.left }}>
+        <TouchableOpacity
+          ref={heatChipRef}
+          onLayout={measureHeatChip}
+          style={[styles.heatCard, shadows.sm]}
+          onPress={() => navigation.navigate('PavementTemp')}
+          activeOpacity={0.8}
+        >
+          {isHeatLoading ? (
+            <>
+              <Text style={[styles.heatTemp, { color: heatVis_.color }]}>—°</Text>
+              <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
+            </>
+          ) : !heatData.has_data ? (
+            <Text style={styles.heatUnavailable} numberOfLines={2}>{t('map.heatUnavailable')}</Text>
+          ) : (
+            <>
+              <Text style={[styles.heatTemp, { color: heatVis_.color }]}>{heatData.surface_est_c}°</Text>
+              <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </Animated.View>
 
       {/* ── Right-hand map controls column: locate-me above add-marker FAB.
              Physical right — deliberately not mirrored in RTL, same as the FAB. ── */}
@@ -565,13 +604,20 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
 
-  // Heat card — bottom-left, rectangular
+  // Heat card — bottom-left, rectangular. Fixed height so the plate doesn't
+  // change size between loading ("—°") / no-data / data states.
   heatCard: {
     backgroundColor: colors.card,
     borderRadius: radii.sm,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    height: 54,
+    justifyContent: 'center',
     minWidth: 64,
+  },
+  heatUnavailable: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
   },
   heatTemp: {
     fontSize: 18,
