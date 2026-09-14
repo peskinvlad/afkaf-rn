@@ -29,6 +29,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'common.delete': 'מחק',
     'common.confirm': 'אישור',
     'common.save_error': 'לא הצלחנו לשמור. נסו שוב.',
+    'common.rate_limit': 'יותר מדי סימונים, המתן קצת.',
 
     'map.search': 'חיפוש פארקים, אנשים, מקומות',
     'map.startWalk': 'התחל טיול',
@@ -443,6 +444,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'common.delete': 'Delete',
     'common.confirm': 'Confirm',
     'common.save_error': "Couldn't save. Please try again.",
+    'common.rate_limit': 'Too many markers, please wait a bit.',
 
     'map.search': 'Search parks, people, places',
     'map.startWalk': 'Start a walk',
@@ -857,6 +859,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'common.delete': 'Удалить',
     'common.confirm': 'Подтвердить',
     'common.save_error': 'Не удалось сохранить. Попробуй ещё раз.',
+    'common.rate_limit': 'Слишком много отметок, подожди немного.',
 
     'map.search': 'Поиск парков, людей, мест',
     'map.startWalk': 'Начать прогулку',

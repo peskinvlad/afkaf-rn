@@ -275,9 +275,13 @@ export function AddMarkerScreen({ navigation }: Props) {
       if (error) throw error;
       if (data) addLocalMarker(data as MapMarker);
       navigation.goBack();
-    } catch (_) {
+    } catch (e) {
       // Keep the screen open so the typed description isn't lost.
-      Alert.alert(t('common.save_error'));
+      // markers_guard_insert raises SQLSTATE 'PT429' when the author has made
+      // >= 20 markers in the last hour — show the rate-limit copy, not the
+      // generic save error.
+      const code = (e as { code?: string })?.code;
+      Alert.alert(t(code === 'PT429' ? 'common.rate_limit' : 'common.save_error'));
     } finally {
       setSaving(false);
     }
