@@ -1,4 +1,7 @@
--- Снимок RLS от 15.07.2026. Идемпотентно.
+-- Снимок RLS. Идемпотентно. Ужесточение INSERT/UPDATE — 2026-09-14
+-- (docs/sql/friendships-guard.sql): INSERT только 'pending', иммутабельность
+-- сторон при UPDATE — триггером friendships_guard_update (см. supabase/triggers.sql
+-- и supabase/functions/friendships_guard_update.sql).
 ALTER TABLE public.friendships ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS friendships_select ON public.friendships;
@@ -11,6 +14,7 @@ CREATE POLICY friendships_insert ON public.friendships
   FOR INSERT TO authenticated
   WITH CHECK (
     auth.uid() = requester_id
+    AND status = 'pending'
     AND NOT EXISTS (
       SELECT 1 FROM friendships f
       WHERE f.requester_id = friendships.addressee_id

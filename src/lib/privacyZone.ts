@@ -7,15 +7,15 @@ export interface HomeZone {
   radiusM: number; // radius in metres
 }
 
+// AsyncStorage keys that hold the home privacy zone. Exported so logout /
+// account deletion can wipe them (see lib/localReset).
+export const HOME_ZONE_KEYS = ['privacy_home_lat', 'privacy_home_lng', 'privacy_home_radius'] as const;
+
 // Reads the user's configured home privacy zone from AsyncStorage.
 // Returns null when it isn't set up (any missing/invalid field) — callers
 // treat null as "no masking", i.e. publish position as usual.
 export async function loadHomeZone(): Promise<HomeZone | null> {
-  const entries = await AsyncStorage.multiGet([
-    'privacy_home_lat',
-    'privacy_home_lng',
-    'privacy_home_radius',
-  ]);
+  const entries = await AsyncStorage.multiGet([...HOME_ZONE_KEYS]);
   const map = Object.fromEntries(entries) as Record<string, string | null>;
   const lat = Number(map.privacy_home_lat);
   const lng = Number(map.privacy_home_lng);

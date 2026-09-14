@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState,
+  Alert,
   View,
   Text,
   TouchableOpacity,
@@ -160,12 +161,17 @@ export function WalkScreen({ navigation }: Props) {
 
   // ── Timer ──────────────────────────────────────────────────────────────
   const [seconds, setSeconds] = useState(0);
+  // The timer only runs once location tracking has actually started — if GPS
+  // permission or the background task fails, the GPS effect below alerts and
+  // leaves this false, so the clock never ticks on a walk that isn't recording.
+  const [trackingStarted, setTrackingStarted] = useState(false);
   const walkStartedAtMs = useRef(Date.now()).current;
   const walkStartedAt = useMemo(() => new Date(walkStartedAtMs).toISOString(), [walkStartedAtMs]);
   // Derived from the wall clock, not counted tick by tick: a tick counter
   // loses every second the JS thread is suspended (app in background), and
   // the duration feeds the validity bar and walk_history.
   useEffect(() => {
+    if (!trackingStarted) return; // no live tracking → no timer
     const tick = () => setSeconds(Math.floor((Date.now() - walkStartedAtMs) / 1000));
     const id = setInterval(tick, 1000);
     // Coming back to the foreground: catch up now, not on the next tick.
@@ -176,7 +182,7 @@ export function WalkScreen({ navigation }: Props) {
       clearInterval(id);
       appStateSub.remove();
     };
-  }, [walkStartedAtMs]);
+  }, [walkStartedAtMs, trackingStarted]);
   const timeStr = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 
   // ── Steps — Pedometer (real, 0 if unavailable) ─────────────────────────
@@ -443,16 +449,26 @@ export function WalkScreen({ navigation }: Props) {
     });
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted' || cancelled) return;
+      if (cancelled) return;
+      if (status !== 'granted') {
+        Alert.alert(t('walk.geoError')); // permission denied → no tracking, no timer
+        return;
+      }
       setLocationGranted(true);
       try {
         await startWalkTracking();
       } catch (e) {
         console.warn('[WalkScreen] startWalkTracking failed:', e);
+        if (!cancelled) Alert.alert(t('walk.geoError')); // task failed → no timer
+        return;
       }
       // Left the screen while the start was in flight — the cleanup's stop ran
       // before there was anything to stop.
-      if (cancelled) stopWalkTracking();
+      if (cancelled) {
+        stopWalkTracking();
+        return;
+      }
+      setTrackingStarted(true); // tracking is live → the timer may run
     })();
     return () => {
       cancelled = true;

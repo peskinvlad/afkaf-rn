@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 
-const PENDING_KEY = 'pending_walk_history';
+// Exported so logout / account deletion can wipe queued walks (lib/localReset).
+export const PENDING_KEY = 'pending_walk_history';
 const RETRY_DELAY_MS = 3000;
 
 export interface WalkPathPoint {

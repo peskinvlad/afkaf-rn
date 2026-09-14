@@ -12,6 +12,13 @@ CREATE TRIGGER trg_friendships_set_updated_at
   BEFORE UPDATE ON public.friendships
   FOR EACH ROW EXECUTE FUNCTION public.friendships_set_updated_at();
 
+-- Добавлен 2026-09-14 (docs/sql/friendships-guard.sql). Пинит иммутабельность
+-- requester_id/addressee_id при UPDATE (функция — functions/friendships_guard_update.sql).
+DROP TRIGGER IF EXISTS friendships_guard_update ON public.friendships;
+CREATE TRIGGER friendships_guard_update
+  BEFORE UPDATE ON public.friendships
+  FOR EACH ROW EXECUTE FUNCTION public.friendships_guard_update();
+
 -- Добавлен 2026-09-13. Rate-limit + серверные created_at/expires_at на вставке
 -- меток пользователями приложения (функция — functions/markers_guard_insert.sql).
 DROP TRIGGER IF EXISTS markers_guard_insert ON public.markers;

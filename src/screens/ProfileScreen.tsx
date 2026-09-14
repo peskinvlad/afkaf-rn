@@ -17,6 +17,7 @@ import { useBadges } from '../hooks/useBadges';
 import { useFriends } from '../hooks/useFriends';
 import { BADGES } from '../constants/badges';
 import { supabase } from '../lib/supabase';
+import { clearLocalUserData } from '../lib/localReset';
 import { colors, radii, shadows } from '../theme/tokens';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -190,6 +191,7 @@ export function ProfileScreen({ navigation }: Props) {
           style: 'destructive',
           onPress: async () => {
             await supabase.auth.signOut();
+            await clearLocalUserData(); // home zone / queued walks / dev overrides
             navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
           },
         },
@@ -244,6 +246,7 @@ export function ProfileScreen({ navigation }: Props) {
         return;
       }
       await supabase.auth.signOut();
+      await clearLocalUserData(); // home zone / queued walks / dev overrides
       navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
     } catch (e) {
       setDeleting(false);
