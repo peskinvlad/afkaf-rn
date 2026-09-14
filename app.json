@@ -1,19 +1,21 @@
 {
   "expo": {
-    "name": "afkaf-rn",
+    "name": "afkaf",
     "slug": "afkaf-rn",
     "scheme": "afkaf",
-    "version": "1.0.0",
+    "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.afkaf.app",
       "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": ["location"]
+        "UIBackgroundModes": ["location"],
+        "NSMotionUsageDescription": "afkaf uses motion activity to count the steps you take during a walk.",
+        "NSPhotoLibraryUsageDescription": "afkaf needs access to your photos so you can set a photo for your dog's profile."
       }
     },
     "android": {
