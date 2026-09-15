@@ -57,6 +57,13 @@
 - **Убрать `EXPO_PUBLIC_MAPBOX_TOKEN` из `.env`** — в коде не используется
   (в бандл не инлайнится), но токен лежит в локальном `.env`.
 
+## Performance backlog (post-beta)
+
+- **`markers` и `water_sources` грузятся целиком без bbox** (`src/hooks/useMapMarkers.ts`),
+  лимит держится настройкой Max rows в Supabase; перейти на bbox-запрос вместе
+  с кластерами. После OSM-импорта Гуш-Дана — ~825 постоянных markers + 835
+  water_sources на старте.
+
 ## Cosmetic backlog (post-beta)
 
 - **Apple logo / Legal:** увеличить зазор до чипа (8→12–16), вычесть внутренний
