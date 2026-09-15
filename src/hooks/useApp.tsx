@@ -58,7 +58,7 @@ export interface AppState {
 }
 
 const DEFAULT_CATEGORIES: Record<string, boolean> = {
-  park: true, water: true, danger: true, hazard: true, aggressive_dog: true, forbidden: true,
+  park: true, dog_park: true, water: true, danger: true, hazard: true, aggressive_dog: true, forbidden: true,
 };
 
 const AppContext = createContext<AppState | null>(null);

@@ -1,5 +1,6 @@
 export const MARKER_CONFIG: Record<string, { emoji: string; pinColor: string }> = {
   park:           { emoji: '🌳', pinColor: '#2c5f25' },
+  dog_park:       { emoji: '🎾', pinColor: '#2c5f25' },
   water:          { emoji: '💧', pinColor: '#3b82f6' },
   danger:         { emoji: '⚠️', pinColor: '#92580a' },
   hazard:         { emoji: '☠️', pinColor: '#9b1c1c' },
