@@ -21,6 +21,8 @@ CREATE TRIGGER friendships_guard_update
 
 -- Добавлен 2026-09-13. Rate-limit + серверные created_at/expires_at на вставке
 -- меток пользователями приложения (функция — functions/markers_guard_insert.sql).
+-- Тело функции обновлено 2026-09-15: добавлен infra-guard (water/park/dog_park
+-- только под service_role/SQL, иначе PT403). Сам триггер не менялся.
 DROP TRIGGER IF EXISTS markers_guard_insert ON public.markers;
 CREATE TRIGGER markers_guard_insert
   BEFORE INSERT ON public.markers

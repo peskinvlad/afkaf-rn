@@ -65,7 +65,7 @@ CREATE TABLE public.markers (
   CONSTRAINT markers_pkey PRIMARY KEY (id),
   CONSTRAINT markers_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE,
   CONSTRAINT markers_description_len CHECK (description IS NULL OR length(description) <= 500),
-  CONSTRAINT markers_type_check CHECK (type = ANY (ARRAY['park'::text, 'water'::text, 'danger'::text, 'hazard'::text, 'aggressive_dog'::text, 'forbidden'::text]))
+  CONSTRAINT markers_type_check CHECK (type = ANY (ARRAY['park'::text, 'water'::text, 'danger'::text, 'hazard'::text, 'aggressive_dog'::text, 'forbidden'::text, 'dog_park'::text, 'food'::text]))
 );
 
 -- ============================================================
@@ -168,6 +168,9 @@ CREATE TABLE public.water_sources (
   created_at  timestamptz NULL DEFAULT now(),
   CONSTRAINT water_sources_pkey PRIMARY KEY (id)
 );
+-- NB: есть отдельный UNIQUE INDEX water_sources_osm_id_key (osm_id) — добавлен
+-- 2026-09-15 для дедупа OSM-импорта (ON CONFLICT (osm_id)). Индексы этот файл
+-- не фиксирует; источник правды — supabase/migrations/2026-09-15_dog_park_food_osm.sql.
 
 -- ============================================================
 -- waitlist
