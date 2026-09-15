@@ -35,7 +35,7 @@ import { mapAttributionInsets, MapAttributionInsets } from '../lib/mapInsets';
 import { CoverageBanner } from '../components/CoverageBanner';
 import { LocationRequiredCard } from '../components/LocationRequiredCard';
 import { filterMarkersAndWater } from '../lib/markerFilter';
-import { MARKER_CONFIG } from '../lib/markerConfig';
+import { MARKER_CONFIG, INFRA_MARKER_TYPES, INFRA_HIDE_ZOOM_DELTA } from '../lib/markerConfig';
 import { ensureLocationPermission } from '../lib/locationPermission';
 import { isAccurateFix, createGlitchFilter } from '../lib/gpsQuality';
 import { supabase } from '../lib/supabase';
@@ -297,6 +297,17 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     [markers, waterSources, radius, activeCategories, userLocation],
   );
 
+  // Zoom gate: сильно отдалили → не рендерим постоянную инфраструктуру
+  // (water/park/dog_park + точки воды). Это НЕ фильтр категорий — просто убираем
+  // их из списка на рендер. latitudeDelta берём из onRegionChangeComplete.
+  const [regionLatDelta, setRegionLatDelta] = useState(0.018); // = initialRegion
+  const infraHidden = regionLatDelta > INFRA_HIDE_ZOOM_DELTA;
+  const markersToRender = useMemo(
+    () => (infraHidden ? filteredMarkers.filter((m) => !INFRA_MARKER_TYPES.includes(m.type)) : filteredMarkers),
+    [filteredMarkers, infraHidden],
+  );
+  const waterToRender = infraHidden ? [] : filteredWaterSources;
+
   async function handleStartWalk() {
     // Location gate strictly before the heat intercept — without it the
     // walk can start but never actually get tracked/saved (WalkScreen's
@@ -382,7 +393,10 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         // During the gesture the anchor is recomputed as fast as the bridge
         // keeps up; the Complete event guarantees a final exact placement.
         onRegionChange={refreshCalloutAnchor}
-        onRegionChangeComplete={refreshCalloutAnchor}
+        onRegionChangeComplete={(region) => {
+          setRegionLatDelta(region.latitudeDelta);
+          refreshCalloutAnchor();
+        }}
       >
         {hasUserFix && (
           <MarkerAnimated
@@ -397,7 +411,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           </MarkerAnimated>
         )}
 
-        {filteredMarkers.map((m) => (
+        {markersToRender.map((m) => (
           <MapMarkerIcon
             key={m.id}
             coordinate={{ latitude: m.lat, longitude: m.lng }}
@@ -407,7 +421,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           />
         ))}
 
-        {filteredWaterSources.map((w) => (
+        {waterToRender.map((w) => (
           <MapMarkerIcon
             key={`water-${w.id}`}
             coordinate={{ latitude: w.lat, longitude: w.lng }}

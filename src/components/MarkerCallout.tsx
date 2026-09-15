@@ -11,7 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '../lib/supabase';
-import { MapMarker, MARKER_CONFIG } from '../lib/markerConfig';
+import { MapMarker, MARKER_CONFIG, INFRA_MARKER_TYPES } from '../lib/markerConfig';
 import { haversine } from '../lib/geo';
 import { navigationRef } from '../lib/navigationRef';
 import { getDevVoteOwnMarkers } from '../constants/dev';
@@ -204,6 +204,12 @@ function CalloutBubble({
     getDevVoteOwnMarkers().then(setDevVoteOwn);
   }, []);
 
+  // Постоянная инфраструктура из OSM (вода/парки/собачьи парки): expires_at NULL,
+  // ставит только куратор (юзеру триггер отдаёт PT403), поэтому членство в
+  // INFRA_MARKER_TYPES = «постоянное место». У таких меток нет свежести и
+  // голосования — только имя и мелкая мета-строка с типом.
+  const isPermanentPlace = INFRA_MARKER_TYPES.includes(marker.type);
+
   // Resolve current user once
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -212,6 +218,7 @@ function CalloutBubble({
   }, []);
 
   const loadVotes = useCallback(async () => {
+    if (isPermanentPlace) return; // у постоянных мест голосования нет — не дёргаем marker_votes
     setLoading(true);
     try {
       const { data } = await supabase
@@ -232,7 +239,7 @@ function CalloutBubble({
     } finally {
       setLoading(false);
     }
-  }, [marker.id, currentUserId]);
+  }, [marker.id, currentUserId, isPermanentPlace]);
 
   useEffect(() => {
     loadVotes();
@@ -302,6 +309,12 @@ function CalloutBubble({
   if (counts.still_there > 0) trustParts.push(`✓ ${t('detail.confirmedTimes', { n: counts.still_there })}`);
   if (distanceM != null) trustParts.push(distanceLabel(distanceM, t));
   const trustLine = trustParts.join(' · ');
+
+  // Постоянное место: мета-строка — emoji + лейбл типа (мелко), плюс расстояние,
+  // если известно. Без свежести. Заголовок при этом = имя места (description).
+  const placeMetaParts: string[] = [`${cfg.emoji} ${typeLabel}`];
+  if (distanceM != null) placeMetaParts.push(distanceLabel(distanceM, t));
+  const placeMeta = placeMetaParts.join(' · ');
 
   const layout =
     anchor && container && bubbleSize
@@ -383,21 +396,23 @@ function CalloutBubble({
         // A tap inside the bubble is not a tap on the map behind it.
         onStartShouldSetResponder={() => true}
       >
-        {/* Header: type icon in a colored circle + name. Freshness used to sit
+        {/* Header: type icon in a colored circle + title. Freshness used to sit
             here and stole width from the title ("Агрессивная собака" →
             "Агресс…"); it now lives on the meta line below, and the title gets
-            up to two full lines. */}
+            up to two full lines. Постоянное место — заголовок = имя из OSM
+            (description), а при пустом имени падаем на лейбл типа. */}
         <View style={[styles.header, rtl && styles.rowReverse]}>
           <View style={[styles.iconCircle, { backgroundColor: cfg.pinColor }]}>
             <Text style={styles.iconEmoji}>{cfg.emoji}</Text>
           </View>
           <Text style={[styles.typeLabel, rtl && styles.txtRight]} numberOfLines={2}>
-            {typeLabel}
+            {isPermanentPlace ? (marker.description || typeLabel) : typeLabel}
           </Text>
         </View>
 
-        {/* Author comment — quote style, absent when empty */}
-        {marker.description ? (
+        {/* Author comment — quote style, absent when empty. Для постоянных мест
+            имя уже в заголовке, второй раз цитатой не показываем. */}
+        {!isPermanentPlace && marker.description ? (
           <View style={styles.quote}>
             <Text style={[styles.quoteTxt, rtl && styles.txtRight]} numberOfLines={4}>
               {marker.description}
@@ -405,10 +420,13 @@ function CalloutBubble({
           </View>
         ) : null}
 
-        {/* Meta line: confirmations · distance · freshness ("48 м · только
-            что"). Freshness keeps its own muted color when stale via a nested
-            Text; wraps to two lines rather than truncating. */}
-        {(trustLine.length > 0 || fresh) && (
+        {/* Meta line. Постоянное место: emoji + лейбл типа (+ расстояние), без
+            свежести. Временная метка: confirmations · distance · freshness. */}
+        {isPermanentPlace ? (
+          <Text style={[styles.trustLine, rtl && styles.txtRight]} numberOfLines={2}>
+            {placeMeta}
+          </Text>
+        ) : (trustLine.length > 0 || fresh) ? (
           <Text style={[styles.trustLine, rtl && styles.txtRight]} numberOfLines={2}>
             {trustLine}
             {trustLine.length > 0 && fresh ? ' · ' : ''}
@@ -416,10 +434,11 @@ function CalloutBubble({
               <Text style={fresh.stale ? styles.freshnessStale : undefined}>{fresh.label}</Text>
             )}
           </Text>
-        )}
+        ) : null}
 
-        {/* Voting */}
-        {loading ? (
+        {/* Voting — только для временных меток. У постоянных мест голосования и
+            заметки «Твоя метка» нет: вместо них ничего. */}
+        {isPermanentPlace ? null : loading ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator color={colors.primary} />
           </View>

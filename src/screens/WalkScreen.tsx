@@ -25,7 +25,7 @@ import { useSmoothedPosition, MOVE_MS } from '../hooks/useSmoothedPosition';
 import { useCalloutAnchor } from '../hooks/useCalloutAnchor';
 import { isAccurateFix, createGlitchFilter } from '../lib/gpsQuality';
 import { filterMarkersAndWater } from '../lib/markerFilter';
-import { MARKER_CONFIG } from '../lib/markerConfig';
+import { MARKER_CONFIG, INFRA_MARKER_TYPES, INFRA_HIDE_ZOOM_DELTA } from '../lib/markerConfig';
 import { MarkerFilterSheet, RadiusFilter } from '../components/MarkerFilterSheet';
 import { MarkerCallout } from '../components/MarkerCallout';
 import { UserLocationMarker } from '../components/UserLocationMarker';
@@ -152,6 +152,17 @@ export function WalkScreen({ navigation }: Props) {
     () => filterMarkersAndWater(markers, waterSources, radius, activeCategories, userLocation),
     [markers, waterSources, radius, activeCategories, userLocation],
   );
+
+  // Zoom gate: сильно отдалили → не рендерим постоянную инфраструктуру
+  // (water/park/dog_park + точки воды). Это НЕ фильтр категорий — просто убираем
+  // их из списка на рендер. latitudeDelta берём из onRegionChangeComplete.
+  const [regionLatDelta, setRegionLatDelta] = useState(INITIAL_REGION.latitudeDelta);
+  const infraHidden = regionLatDelta > INFRA_HIDE_ZOOM_DELTA;
+  const markersToRender = useMemo(
+    () => (infraHidden ? filteredMarkers.filter((m) => !INFRA_MARKER_TYPES.includes(m.type)) : filteredMarkers),
+    [filteredMarkers, infraHidden],
+  );
+  const waterToRender = infraHidden ? [] : filteredWaterSources;
 
   // Radius change — no extra location request here: the GPS watcher below
   // (already running for route tracking) keeps userLocation fresh in context.
@@ -557,7 +568,10 @@ export function WalkScreen({ navigation }: Props) {
             // keeps up; the Complete event guarantees a final exact placement.
             refreshCalloutAnchor();
           }}
-          onRegionChangeComplete={refreshCalloutAnchor}
+          onRegionChangeComplete={(region) => {
+            setRegionLatDelta(region.latitudeDelta);
+            refreshCalloutAnchor();
+          }}
         >
           {route.length > 1 && (
             <Polyline coordinates={route} strokeColor={colors.primary} strokeWidth={4} />
@@ -576,7 +590,7 @@ export function WalkScreen({ navigation }: Props) {
             </MarkerAnimated>
           )}
 
-          {filteredMarkers.map((m) => (
+          {markersToRender.map((m) => (
             <MapMarkerIcon
               key={m.id}
               coordinate={{ latitude: m.lat, longitude: m.lng }}
@@ -586,7 +600,7 @@ export function WalkScreen({ navigation }: Props) {
             />
           ))}
 
-          {filteredWaterSources.map((w) => (
+          {waterToRender.map((w) => (
             <MapMarkerIcon
               key={`water-${w.id}`}
               coordinate={{ latitude: w.lat, longitude: w.lng }}
