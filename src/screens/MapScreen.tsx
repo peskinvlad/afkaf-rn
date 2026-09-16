@@ -326,12 +326,19 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     [markers, waterSources, radius, activeCategories, userLocation],
   );
 
-  // Zoom gate: сильно отдалили → прячем постоянную инфраструктуру (water/park/
-  // dog_park + точки воды). Это НЕ фильтр категорий и НЕ размонтирование —
-  // пины остаются в наборе, меняется только их opacity (см. рендер ниже),
-  // поэтому пересечение порога не пересобирает ~1600 нативных аннотаций.
-  // Состояние держим напрямую и двигаем по гистерезису из onRegionChangeComplete.
+  // Zoom gate: сильно отдалили → инфраструктуру (water/park/dog_park + точки
+  // воды) НЕ монтируем вовсе — их ~1600, и на широком зуме они дают лаг 10-15 с
+  // при панорамировании. Это перф-мера, а не фильтр категорий; опасные
+  // пользовательские метки (hazard/danger/…) рисуются всегда. Ремоунт пинов
+  // безопасен: «океан» был из-за нестабильной ссылки initialRegion (уже
+  // исправлено), а не из-за пересборки аннотаций. Состояние — по гистерезису
+  // из onRegionChangeComplete.
   const [infraHidden, setInfraHidden] = useState(false); // старт = городской зум, показываем
+  const markersToRender = useMemo(
+    () => (infraHidden ? filteredMarkers.filter((m) => !INFRA_MARKER_TYPES.includes(m.type)) : filteredMarkers),
+    [filteredMarkers, infraHidden],
+  );
+  const waterToRender = infraHidden ? [] : filteredWaterSources;
 
   async function handleStartWalk() {
     // Location gate strictly before the heat intercept — without it the
@@ -438,27 +445,22 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           </MarkerAnimated>
         )}
 
-        {filteredMarkers.map((m) => {
-          const hidden = infraHidden && INFRA_MARKER_TYPES.includes(m.type);
-          return (
-            <MapMarkerIcon
-              key={m.id}
-              coordinate={{ latitude: m.lat, longitude: m.lng }}
-              emoji={MARKER_CONFIG[m.type]?.emoji ?? '📍'}
-              color={MARKER_CONFIG[m.type]?.pinColor ?? '#6b7280'}
-              opacity={hidden ? 0 : 1}
-              onPress={hidden ? undefined : () => setDetailMarker(m)}
-            />
-          );
-        })}
+        {markersToRender.map((m) => (
+          <MapMarkerIcon
+            key={m.id}
+            coordinate={{ latitude: m.lat, longitude: m.lng }}
+            emoji={MARKER_CONFIG[m.type]?.emoji ?? '📍'}
+            color={MARKER_CONFIG[m.type]?.pinColor ?? '#6b7280'}
+            onPress={() => setDetailMarker(m)}
+          />
+        ))}
 
-        {filteredWaterSources.map((w) => (
+        {waterToRender.map((w) => (
           <MapMarkerIcon
             key={`water-${w.id}`}
             coordinate={{ latitude: w.lat, longitude: w.lng }}
             emoji={MARKER_CONFIG.water.emoji}
             color={MARKER_CONFIG.water.pinColor}
-            opacity={infraHidden ? 0 : 1}
             title={MARKER_CONFIG.water.emoji}
             description={w.amenity ?? undefined}
           />
