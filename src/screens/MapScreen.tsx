@@ -559,7 +559,11 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
       <CoverageBanner />
 
       {/* ── NearbyDogsSheet — абсолютный, bottomOffset = высота нижней панели ── */}
-      <View style={styles.nearbySheetWrap}>
+      {/* box-none: обёртка сама тачи не перехватывает — только контент шторки.
+          Закрытая шторка уехала translateY:300 за экран (хит-область там же),
+          поэтому низ карты снова кликается. Без этого невидимая обёртка
+          (bottom:0, высотой во весь контент шторки) блокировала ~половину экрана. */}
+      <View style={styles.nearbySheetWrap} pointerEvents="box-none">
         <NearbyDogsSheet
           visible={nearbySheetVisible}
           onClose={() => setNearbySheetVisible(false)}
