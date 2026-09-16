@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Linking,
+  Alert,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -26,6 +27,13 @@ const REDIRECT_URI = 'afkaf://auth/callback';
 // а ссылку доставила ОС мимо промиса openAuthSessionAsync. Двух минут хватает
 // на ввод пароля и 2FA; вне окна любой afkaf://auth/callback игнорируется.
 const OAUTH_ACCEPT_MS = 120_000;
+
+// TEMP (бета): любую заминку OAuth-входа показываем Alert'ом с текстом. Иначе
+// флоу гасит ошибку в console.warn и на устройстве видно лишь «мигание» экрана
+// без причины. Убрать, как только причина Google-входа подтвердится на билде.
+function authAlert(stage: string, detail?: string): void {
+  Alert.alert('Google sign-in failed', detail ? `${stage}\n\n${detail}` : stage);
+}
 
 // Detect "new user" — created within last 60 seconds
 function isNewUser(createdAt: string | undefined): boolean {
@@ -80,6 +88,7 @@ export function AuthScreen({ navigation }: Props) {
     const code = new URLSearchParams(query).get('code');
     if (!code) {
       console.warn('[Auth] redirect URL carried no authorization code');
+      authAlert('Redirect без кода авторизации', url);
       setLoadingProvider(null);
       return;
     }
@@ -87,6 +96,7 @@ export function AuthScreen({ navigation }: Props) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
       console.warn('[Auth] exchangeCodeForSession error:', error.message);
+      authAlert('exchangeCodeForSession', error.message);
       setLoadingProvider(null);
       return;
     }
@@ -125,6 +135,7 @@ export function AuthScreen({ navigation }: Props) {
       });
       if (error || !data.url) {
         console.warn('[Auth] signInWithOAuth error:', error?.message);
+        authAlert('signInWithOAuth', error?.message ?? 'провайдер не вернул URL (data.url пуст)');
         oauthDeadlineRef.current = 0;
         setLoadingProvider(null);
         return;
@@ -139,10 +150,16 @@ export function AuthScreen({ navigation }: Props) {
       } else {
         // type === 'cancel' or 'dismiss' — Linking listener may still fire if OS handled the deep link
         console.warn('[Auth] WebBrowser did not return success — waiting for Linking listener');
+        // На iOS (бета-таргет) успешный редирект всегда приходит как 'success';
+        // 'cancel'/'dismiss' здесь = браузер закрылся без редиректа. Показываем,
+        // чтобы отличить это от «URL не вернулся». (Android-фолбэк через Linking
+        // может позже сам довести флоу — тогда onAuthStateChange навигирует.)
+        authAlert('WebBrowser', `браузер закрылся без редиректа (type: ${result.type})`);
         setLoadingProvider(null);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.warn('[Auth] signInWith exception:', e);
+      authAlert('Исключение при входе', String(e?.message ?? e));
       oauthDeadlineRef.current = 0;
       setLoadingProvider(null);
     }
