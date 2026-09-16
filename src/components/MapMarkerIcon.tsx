@@ -12,6 +12,11 @@ type Props = {
   onPress?: () => void;
   title?: string;
   description?: string;
+  // Зум-гейт инфраструктуры переключает видимость через opacity, а не через
+  // размонтирование, — набор нативных аннотаций не меняется, и карта не мигает
+  // при пересечении порога зума. При opacity 0 пин ещё и не ловит тап (иначе
+  // открылся бы callout невидимой точки).
+  opacity?: number;
 };
 
 // Coloured disc + emoji replacing the stock pin. tracksViewChanges stays on
@@ -20,7 +25,7 @@ type Props = {
 // frame — a short timeout is more reliable there than onLayout, which fires
 // before the frame is committed. Then it's switched off so the map doesn't
 // re-rasterise every marker on every frame.
-export function MapMarkerIcon({ coordinate, emoji, color, onPress, title, description }: Props) {
+export function MapMarkerIcon({ coordinate, emoji, color, onPress, title, description, opacity = 1 }: Props) {
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
   useEffect(() => {
@@ -33,7 +38,8 @@ export function MapMarkerIcon({ coordinate, emoji, color, onPress, title, descri
       coordinate={coordinate}
       anchor={{ x: 0.5, y: 0.5 }}
       tracksViewChanges={tracksViewChanges}
-      onPress={onPress}
+      opacity={opacity}
+      onPress={opacity === 0 ? undefined : onPress}
       title={title}
       description={description}
     >

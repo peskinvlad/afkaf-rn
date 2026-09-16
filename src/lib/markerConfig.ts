@@ -13,10 +13,28 @@ export const MARKER_CONFIG: Record<string, { emoji: string; pinColor: string }> 
 // поэтому членство в этом списке = «постоянное место».
 export const INFRA_MARKER_TYPES: string[] = ['water', 'park', 'dog_park'];
 
-// Порог зума: при region.latitudeDelta больше этого значения инфраструктурные
-// пины (типы выше + точки water_sources) не рендерятся вовсе — их ~1600, и на
-// сильном отдалении они подтормаживают карту. Опасные типы рисуются всегда.
-export const INFRA_HIDE_ZOOM_DELTA = 0.05;
+// Порог зума с ГИСТЕРЕЗИСОМ: инфраструктурные пины (типы выше + точки
+// water_sources) прячем, когда сильно отдалили, и возвращаем при приближении.
+// Опасные типы рисуются всегда. Две границы вместо одной — чтобы у самого края
+// один пинч не дёргал состояние туда-сюда (раньше порог стоял на 0.05, прямо на
+// городском зуме, и мигал на каждом жесте). Границы подняты так, чтобы городской
+// зум гарантированно попадал в «показывать»; region.latitudeDelta из
+// onRegionChangeComplete считается по всей вьюхе, включая нижний mapPadding под
+// логотип Apple, поэтому reported-значение крупнее визуального зума.
+export const INFRA_HIDE_ABOVE_DELTA = 0.10; // отдалились сильнее → спрятать
+export const INFRA_SHOW_BELOW_DELTA = 0.06; // приблизились ближе → показать
+
+// Следующее состояние «инфраструктура спрятана» по гистерезису. Между границами
+// состояние не меняется; невалидный delta (NaN/∞) оставляет как было. Пины при
+// этом НЕ размонтируются — переключается только их прозрачность (см.
+// MapMarkerIcon), так что пересечение порога не пересобирает ~1600 нативных
+// аннотаций и не роняет карту в «сплошную воду».
+export function nextInfraHidden(prev: boolean, latitudeDelta: number): boolean {
+  if (!Number.isFinite(latitudeDelta)) return prev;
+  if (latitudeDelta > INFRA_HIDE_ABOVE_DELTA) return true;
+  if (latitudeDelta < INFRA_SHOW_BELOW_DELTA) return false;
+  return prev;
+}
 
 export interface MapMarker {
   id: string;

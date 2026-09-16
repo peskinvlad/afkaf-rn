@@ -35,13 +35,16 @@ import { mapAttributionInsets, MapAttributionInsets } from '../lib/mapInsets';
 import { CoverageBanner } from '../components/CoverageBanner';
 import { LocationRequiredCard } from '../components/LocationRequiredCard';
 import { filterMarkersAndWater } from '../lib/markerFilter';
-import { MARKER_CONFIG, INFRA_MARKER_TYPES, INFRA_HIDE_ZOOM_DELTA } from '../lib/markerConfig';
+import { MARKER_CONFIG, INFRA_MARKER_TYPES, nextInfraHidden } from '../lib/markerConfig';
+import { isValidCoord, START_COORD, START_DELTA } from '../lib/geo';
 import { ensureLocationPermission } from '../lib/locationPermission';
 import { isAccurateFix, createGlitchFilter } from '../lib/gpsQuality';
 import { supabase } from '../lib/supabase';
 
-// Florentin, Tel Aviv
-const FLORENTIN_COORD: [number, number] = [34.7722, 32.0559];
+// Стартовая позиция карты — Бат-Ям (см. START_COORD/START_DELTA в lib/geo).
+// До первого GPS-фикса карта показывает этот регион; на первом фиксе один раз
+// плавно центрируемся на пользователе (если он ещё не двигал карту руками),
+// дальше follow-режима на главном экране нет — только кнопка «найти меня».
 
 // Base resting position of the heat card / FAB, and how far they lift when
 // NearbyDogsSheet is open — kept in sync with its own spring/timing so both
@@ -97,6 +100,12 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   const [nearbySheetHeight, setNearbySheetHeight] = useState(SHEET_HEIGHT_FALLBACK);
   const widgetsBottom = useRef(new Animated.Value(WIDGETS_BASE_BOTTOM)).current;
   const mapRef = useRef<MapView | null>(null);
+
+  // Первый GPS-фикс за открытие экрана → один раз плавно центрируемся на
+  // пользователе. didAutoCenter гасит повтор; userMovedMap отменяет авто-центр,
+  // если человек успел подвигать карту жестом до прихода фикса — не дёргаем.
+  const didAutoCenterRef = useRef(false);
+  const userMovedMapRef = useRef(false);
 
   // Apple logo / Legal placement: measure the REAL chip (not a constant) so the
   // ornaments hug its top edge. measureInWindow gives screen-space top/left; we
@@ -233,6 +242,16 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     };
   }, []);
 
+  // Первый валидный фикс → однократный плавный авто-центр. Нет разрешения /
+  // фикса → userLocation остаётся null, эффект ничего не делает, остаёмся на
+  // START_COORD (Бат-Ям). centerMapOn несёт свой isValidCoord-guard.
+  useEffect(() => {
+    if (didAutoCenterRef.current || userMovedMapRef.current) return;
+    if (!isValidCoord(userLocation)) return;
+    didAutoCenterRef.current = true;
+    centerMapOn(userLocation);
+  }, [userLocation]);
+
   const hiddenCount = Object.values(activeCategories).filter((v) => !v).length;
 
   // Bell badge: pending incoming friend requests. Lightweight head-count on
@@ -297,16 +316,12 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     [markers, waterSources, radius, activeCategories, userLocation],
   );
 
-  // Zoom gate: сильно отдалили → не рендерим постоянную инфраструктуру
-  // (water/park/dog_park + точки воды). Это НЕ фильтр категорий — просто убираем
-  // их из списка на рендер. latitudeDelta берём из onRegionChangeComplete.
-  const [regionLatDelta, setRegionLatDelta] = useState(0.018); // = initialRegion
-  const infraHidden = regionLatDelta > INFRA_HIDE_ZOOM_DELTA;
-  const markersToRender = useMemo(
-    () => (infraHidden ? filteredMarkers.filter((m) => !INFRA_MARKER_TYPES.includes(m.type)) : filteredMarkers),
-    [filteredMarkers, infraHidden],
-  );
-  const waterToRender = infraHidden ? [] : filteredWaterSources;
+  // Zoom gate: сильно отдалили → прячем постоянную инфраструктуру (water/park/
+  // dog_park + точки воды). Это НЕ фильтр категорий и НЕ размонтирование —
+  // пины остаются в наборе, меняется только их opacity (см. рендер ниже),
+  // поэтому пересечение порога не пересобирает ~1600 нативных аннотаций.
+  // Состояние держим напрямую и двигаем по гистерезису из onRegionChangeComplete.
+  const [infraHidden, setInfraHidden] = useState(false); // старт = городской зум, показываем
 
   async function handleStartWalk() {
     // Location gate strictly before the heat intercept — without it the
@@ -327,6 +342,8 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   }
 
   function centerMapOn(coord: { latitude: number; longitude: number }) {
+    // Битая координата (NaN/undefined) увезла бы камеру в 0,0 — сплошная вода.
+    if (!isValidCoord(coord)) return;
     // ~city-block zoom
     mapRef.current?.animateToRegion(
       { ...coord, latitudeDelta: 0.005, longitudeDelta: 0.005 },
@@ -373,10 +390,10 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         style={StyleSheet.absoluteFill}
         provider={PROVIDER_DEFAULT}
         initialRegion={{
-          latitude: FLORENTIN_COORD[1],
-          longitude: FLORENTIN_COORD[0],
-          latitudeDelta: 0.018,
-          longitudeDelta: 0.018,
+          latitude: START_COORD.latitude,
+          longitude: START_COORD.longitude,
+          latitudeDelta: START_DELTA,
+          longitudeDelta: START_DELTA,
         }}
         showsMyLocationButton={false}
         showsCompass={false}
@@ -392,9 +409,17 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         onPress={handleMapPress}
         // During the gesture the anchor is recomputed as fast as the bridge
         // keeps up; the Complete event guarantees a final exact placement.
-        onRegionChange={refreshCalloutAnchor}
+        onRegionChange={(_region, details) => {
+          // Ручной жест до первого фикса отменяет авто-центр (программные
+          // движения камеры приходят с isGesture=false и его не взводят).
+          if ((details as any)?.isGesture) userMovedMapRef.current = true;
+          refreshCalloutAnchor();
+        }}
         onRegionChangeComplete={(region) => {
-          setRegionLatDelta(region.latitudeDelta);
+          // TEMP (убрать после dev-прогона): реальный latitudeDelta на устройстве —
+          // сверяем с порогами гистерезиса INFRA_HIDE_ABOVE/SHOW_BELOW.
+          console.log('[MapScreen] latitudeDelta =', region?.latitudeDelta);
+          setInfraHidden((prev) => nextInfraHidden(prev, region?.latitudeDelta));
           refreshCalloutAnchor();
         }}
       >
@@ -411,22 +436,27 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           </MarkerAnimated>
         )}
 
-        {markersToRender.map((m) => (
-          <MapMarkerIcon
-            key={m.id}
-            coordinate={{ latitude: m.lat, longitude: m.lng }}
-            emoji={MARKER_CONFIG[m.type]?.emoji ?? '📍'}
-            color={MARKER_CONFIG[m.type]?.pinColor ?? '#6b7280'}
-            onPress={() => setDetailMarker(m)}
-          />
-        ))}
+        {filteredMarkers.map((m) => {
+          const hidden = infraHidden && INFRA_MARKER_TYPES.includes(m.type);
+          return (
+            <MapMarkerIcon
+              key={m.id}
+              coordinate={{ latitude: m.lat, longitude: m.lng }}
+              emoji={MARKER_CONFIG[m.type]?.emoji ?? '📍'}
+              color={MARKER_CONFIG[m.type]?.pinColor ?? '#6b7280'}
+              opacity={hidden ? 0 : 1}
+              onPress={hidden ? undefined : () => setDetailMarker(m)}
+            />
+          );
+        })}
 
-        {waterToRender.map((w) => (
+        {filteredWaterSources.map((w) => (
           <MapMarkerIcon
             key={`water-${w.id}`}
             coordinate={{ latitude: w.lat, longitude: w.lng }}
             emoji={MARKER_CONFIG.water.emoji}
             color={MARKER_CONFIG.water.pinColor}
+            opacity={infraHidden ? 0 : 1}
             title={MARKER_CONFIG.water.emoji}
             description={w.amenity ?? undefined}
           />

@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bell, SlidersHorizontal } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { colors, radii, shadows, heatVis } from '../theme/tokens';
-import { haversine, LatLng } from '../lib/geo';
+import { haversine, LatLng, isValidCoord, START_COORD, START_DELTA } from '../lib/geo';
 import { loadHomeZone, isInsideHomeZone, HomeZone } from '../lib/privacyZone';
 import { useMapMarkers } from '../hooks/useMapMarkers';
 import { useNearbyDogs } from '../hooks/useNearbyDogs';
@@ -25,7 +25,7 @@ import { useSmoothedPosition, MOVE_MS } from '../hooks/useSmoothedPosition';
 import { useCalloutAnchor } from '../hooks/useCalloutAnchor';
 import { isAccurateFix, createGlitchFilter } from '../lib/gpsQuality';
 import { filterMarkersAndWater } from '../lib/markerFilter';
-import { MARKER_CONFIG, INFRA_MARKER_TYPES, INFRA_HIDE_ZOOM_DELTA } from '../lib/markerConfig';
+import { MARKER_CONFIG, INFRA_MARKER_TYPES, nextInfraHidden } from '../lib/markerConfig';
 import { MarkerFilterSheet, RadiusFilter } from '../components/MarkerFilterSheet';
 import { MarkerCallout } from '../components/MarkerCallout';
 import { UserLocationMarker } from '../components/UserLocationMarker';
@@ -43,8 +43,9 @@ import { checkAndAwardBadges } from '../lib/badges';
 import { saveWalkHistory, toWalkPath, getPreviousBestDistanceKm } from '../lib/walkHistory';
 import { subscribeWalkLocations, startWalkTracking, stopWalkTracking } from '../lib/walkTracking';
 
-const FLORENTIN_COORD = { latitude: 32.0559, longitude: 34.7722 };
-const INITIAL_REGION = { ...FLORENTIN_COORD, latitudeDelta: 0.01, longitudeDelta: 0.01 };
+// Старт — общий START_COORD (Бат-Ям, см. lib/geo). Во время прогулки камера
+// прыгает на пользователя первым же фиксом, так что этот регион виден лишь миг.
+const INITIAL_REGION = { ...START_COORD, latitudeDelta: START_DELTA, longitudeDelta: START_DELTA };
 const ACTIVE_WALK_PING_MS = 60000;
 // WalkScreen bottom-panel height ABOVE the safe-area inset (measured from the
 // styles: paddingTop 16 + stats ~46 + gap 10 + nearby row 48 + gap 10 + finish
@@ -153,16 +154,11 @@ export function WalkScreen({ navigation }: Props) {
     [markers, waterSources, radius, activeCategories, userLocation],
   );
 
-  // Zoom gate: сильно отдалили → не рендерим постоянную инфраструктуру
-  // (water/park/dog_park + точки воды). Это НЕ фильтр категорий — просто убираем
-  // их из списка на рендер. latitudeDelta берём из onRegionChangeComplete.
-  const [regionLatDelta, setRegionLatDelta] = useState(INITIAL_REGION.latitudeDelta);
-  const infraHidden = regionLatDelta > INFRA_HIDE_ZOOM_DELTA;
-  const markersToRender = useMemo(
-    () => (infraHidden ? filteredMarkers.filter((m) => !INFRA_MARKER_TYPES.includes(m.type)) : filteredMarkers),
-    [filteredMarkers, infraHidden],
-  );
-  const waterToRender = infraHidden ? [] : filteredWaterSources;
+  // Zoom gate: сильно отдалили → прячем постоянную инфраструктуру (water/park/
+  // dog_park + точки воды) через opacity, БЕЗ размонтирования (см. MapScreen —
+  // тот же механизм и та же причина: пересборка ~1600 пинов роняла карту в воду).
+  // Состояние двигаем по гистерезису из onRegionChangeComplete.
+  const [infraHidden, setInfraHidden] = useState(false);
 
   // Radius change — no extra location request here: the GPS watcher below
   // (already running for route tracking) keeps userLocation fresh in context.
@@ -231,6 +227,7 @@ export function WalkScreen({ navigation }: Props) {
     // First fix jumps straight there — gliding from the default centre would
     // fly across the city.
     const duration = cameraHasFix.current ? MOVE_MS : 0;
+    if (!isValidCoord(pt)) return; // битая координата увезла бы камеру в 0,0
     cameraHasFix.current = true;
     mapRef.current?.animateCamera({ center: pt }, { duration });
   }
@@ -238,7 +235,7 @@ export function WalkScreen({ navigation }: Props) {
   function handleCenterOnMe() {
     setFollow(true);
     const pt = latestPos.current;
-    if (pt) mapRef.current?.animateCamera({ center: pt }, { duration: 350 });
+    if (isValidCoord(pt)) mapRef.current?.animateCamera({ center: pt }, { duration: 350 });
   }
   const [accuracy, setAccuracy] = useState<number | undefined>(undefined);
   // Second gate, after accuracy: a fix that reports good accuracy but lands
@@ -569,7 +566,9 @@ export function WalkScreen({ navigation }: Props) {
             refreshCalloutAnchor();
           }}
           onRegionChangeComplete={(region) => {
-            setRegionLatDelta(region.latitudeDelta);
+            // TEMP (убрать после dev-прогона): реальный latitudeDelta на устройстве.
+            console.log('[WalkScreen] latitudeDelta =', region?.latitudeDelta);
+            setInfraHidden((prev) => nextInfraHidden(prev, region?.latitudeDelta));
             refreshCalloutAnchor();
           }}
         >
@@ -590,22 +589,27 @@ export function WalkScreen({ navigation }: Props) {
             </MarkerAnimated>
           )}
 
-          {markersToRender.map((m) => (
-            <MapMarkerIcon
-              key={m.id}
-              coordinate={{ latitude: m.lat, longitude: m.lng }}
-              emoji={MARKER_CONFIG[m.type]?.emoji ?? '📍'}
-              color={MARKER_CONFIG[m.type]?.pinColor ?? '#6b7280'}
-              onPress={() => setDetailMarker(m)}
-            />
-          ))}
+          {filteredMarkers.map((m) => {
+            const hidden = infraHidden && INFRA_MARKER_TYPES.includes(m.type);
+            return (
+              <MapMarkerIcon
+                key={m.id}
+                coordinate={{ latitude: m.lat, longitude: m.lng }}
+                emoji={MARKER_CONFIG[m.type]?.emoji ?? '📍'}
+                color={MARKER_CONFIG[m.type]?.pinColor ?? '#6b7280'}
+                opacity={hidden ? 0 : 1}
+                onPress={hidden ? undefined : () => setDetailMarker(m)}
+              />
+            );
+          })}
 
-          {waterToRender.map((w) => (
+          {filteredWaterSources.map((w) => (
             <MapMarkerIcon
               key={`water-${w.id}`}
               coordinate={{ latitude: w.lat, longitude: w.lng }}
               emoji={MARKER_CONFIG.water.emoji}
               color={MARKER_CONFIG.water.pinColor}
+              opacity={infraHidden ? 0 : 1}
               title={MARKER_CONFIG.water.emoji}
               description={w.amenity ?? undefined}
             />
