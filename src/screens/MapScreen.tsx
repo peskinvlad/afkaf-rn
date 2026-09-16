@@ -45,6 +45,16 @@ import { supabase } from '../lib/supabase';
 // До первого GPS-фикса карта показывает этот регион; на первом фиксе один раз
 // плавно центрируемся на пользователе (если он ещё не двигал карту руками),
 // дальше follow-режима на главном экране нет — только кнопка «найти меня».
+//
+// Стабильная ссылка: инлайн-объект в initialRegion давал новый объект на каждый
+// рендер, и react-native-maps на New Arch (legacy-interop) переприменял регион —
+// карту откатывало к нему после каждого пинча. Константа = один и тот же объект.
+const INITIAL_REGION = {
+  latitude: START_COORD.latitude,
+  longitude: START_COORD.longitude,
+  latitudeDelta: START_DELTA,
+  longitudeDelta: START_DELTA,
+};
 
 // Base resting position of the heat card / FAB, and how far they lift when
 // NearbyDogsSheet is open — kept in sync with its own spring/timing so both
@@ -342,7 +352,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   }
 
   function centerMapOn(coord: { latitude: number; longitude: number }) {
-    // Битая координата (NaN/undefined) увезла бы камеру в 0,0 — сплошная вода.
+    // Битая координата (NaN/undefined/0,0) увезла бы камеру в океан.
     if (!isValidCoord(coord)) return;
     // ~city-block zoom
     mapRef.current?.animateToRegion(
@@ -389,12 +399,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         ref={mapRef}
         style={StyleSheet.absoluteFill}
         provider={PROVIDER_DEFAULT}
-        initialRegion={{
-          latitude: START_COORD.latitude,
-          longitude: START_COORD.longitude,
-          latitudeDelta: START_DELTA,
-          longitudeDelta: START_DELTA,
-        }}
+        initialRegion={INITIAL_REGION}
         showsMyLocationButton={false}
         showsCompass={false}
         toolbarEnabled={false}
@@ -416,9 +421,6 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           refreshCalloutAnchor();
         }}
         onRegionChangeComplete={(region) => {
-          // TEMP (убрать после dev-прогона): реальный latitudeDelta на устройстве —
-          // сверяем с порогами гистерезиса INFRA_HIDE_ABOVE/SHOW_BELOW.
-          console.log('[MapScreen] latitudeDelta =', region?.latitudeDelta);
           setInfraHidden((prev) => nextInfraHidden(prev, region?.latitudeDelta));
           refreshCalloutAnchor();
         }}

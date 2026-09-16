@@ -18,6 +18,9 @@ export function isValidCoord(
     !!pt &&
     Number.isFinite(pt.latitude) &&
     Number.isFinite(pt.longitude) &&
+    // (0,0) — валидное число, но это Гвинейский залив (океан). Реальной точки
+    // на нуле у нас не бывает — считаем нулевую координату битой.
+    !(pt.latitude === 0 && pt.longitude === 0) &&
     Math.abs(pt.latitude as number) <= 90 &&
     Math.abs(pt.longitude as number) <= 180
   );

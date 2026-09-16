@@ -566,8 +566,6 @@ export function WalkScreen({ navigation }: Props) {
             refreshCalloutAnchor();
           }}
           onRegionChangeComplete={(region) => {
-            // TEMP (убрать после dev-прогона): реальный latitudeDelta на устройстве.
-            console.log('[WalkScreen] latitudeDelta =', region?.latitudeDelta);
             setInfraHidden((prev) => nextInfraHidden(prev, region?.latitudeDelta));
             refreshCalloutAnchor();
           }}
