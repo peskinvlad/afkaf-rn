@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import MapView, { PROVIDER_DEFAULT, MarkerAnimated, MapPressEvent } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { Menu, Bell, SlidersHorizontal } from 'lucide-react-native';
+import { Menu, Bell, SlidersHorizontal, MapPinPlusInside } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { colors, radii, shadows, heatVis } from '../theme/tokens';
 import { WalkSlider } from '../components/WalkSlider';
@@ -603,7 +603,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           }}
           activeOpacity={0.85}
         >
-          <Text style={styles.fabIcon}>+</Text>
+          <MapPinPlusInside size={24} color={colors.white} />
         </TouchableOpacity>
       </Animated.View>
 

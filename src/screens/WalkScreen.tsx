@@ -13,7 +13,7 @@ import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Bell, SlidersHorizontal } from 'lucide-react-native';
+import { Bell, SlidersHorizontal, MapPinPlusInside } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { colors, radii, shadows, heatVis } from '../theme/tokens';
 import { haversine, LatLng, isValidCoord, START_COORD, START_DELTA } from '../lib/geo';
@@ -774,7 +774,7 @@ export function WalkScreen({ navigation }: Props) {
             onPress={() => navigation.navigate('MarkerCreate')}
             activeOpacity={0.85}
           >
-            <Text style={styles.fabIcon}>+</Text>
+            <MapPinPlusInside size={24} color={colors.white} />
           </TouchableOpacity>
         </View>
       </View>
