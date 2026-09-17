@@ -218,6 +218,17 @@ export function WalkScreen({ navigation }: Props) {
   // MapKit applies without animation: the whole map jumped each fix while the
   // marker was still sliding, and any pinch-zoom was undone by the next fix.
   const cameraHasFix = useRef(false);
+  // Готовность карты = onMapReady И onLayout с ненулевым размером. Ref (не state):
+  // followWith зовётся из замыкания GPS-подписки, а ref читается всегда свежим —
+  // иначе гейт застрял бы на false. Follow непрерывный, поэтому «отложенного»
+  // one-shot не нужно: пропущенный до готовности фикс догонит следующий (и он же
+  // будет первым реальным центрированием — cameraHasFix ещё false → duration 0).
+  const mapReadyFiredRef = useRef(false);
+  const mapLaidOutRef = useRef(false);
+  const mapReadyRef = useRef(false);
+  function markMapReadyIfDone() {
+    if (mapReadyFiredRef.current && mapLaidOutRef.current) mapReadyRef.current = true;
+  }
   // Follow mode: the camera tracks the walker until they pan the map by hand,
   // then it lets go until they tap the locate button to re-centre. The button
   // is always visible and looks identical to MapScreen's, so no render state is
@@ -229,6 +240,9 @@ export function WalkScreen({ navigation }: Props) {
   function followWith(pt: LatLng) {
     // Hand panned away → don't yank the camera back on the next fix.
     if (!followUserRef.current) return;
+    // Карта не готова → пропускаем (cameraHasFix не трогаем, чтобы первый
+    // реальный фикс после готовности всё ещё «прыгнул» без пролёта).
+    if (!mapReadyRef.current) return;
     // First fix jumps straight there — gliding from the default centre would
     // fly across the city.
     const duration = cameraHasFix.current ? MOVE_MS : 0;
@@ -239,6 +253,7 @@ export function WalkScreen({ navigation }: Props) {
   // Locate button: re-centre on the last fix and resume following.
   function handleCenterOnMe() {
     setFollow(true);
+    if (!mapReadyRef.current) return; // карта не готова — тап игнорируем
     const pt = latestPos.current;
     if (isValidCoord(pt)) mapRef.current?.animateCamera({ center: pt }, { duration: 350 });
   }
@@ -559,6 +574,15 @@ export function WalkScreen({ navigation }: Props) {
           // One mechanism = no flicker. Full-screen map keeps mapPadding stable
           // and recenters animateCamera (followWith) within the visible area.
           mapPadding={walkMapAttribution}
+          onMapReady={() => {
+            mapReadyFiredRef.current = true;
+            markMapReadyIfDone();
+          }}
+          onLayout={(e) => {
+            const { width, height } = e.nativeEvent.layout;
+            if (width > 0 && height > 0) mapLaidOutRef.current = true;
+            markMapReadyIfDone();
+          }}
           onPress={handleMapPress}
           // A hand pan (details.isGesture) drops follow mode. Programmatic
           // camera moves (followWith → animateCamera) report isGesture=false, so

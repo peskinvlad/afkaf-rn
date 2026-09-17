@@ -113,6 +113,18 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   const widgetsBottom = useRef(new Animated.Value(WIDGETS_BASE_BOTTOM)).current;
   const mapRef = useRef<MapView | null>(null);
 
+  // Готовность карты = onMapReady произошёл И был onLayout с ненулевым размером.
+  // Нужно state (не только ref), чтобы эффект firstFix перезапустился и выполнил
+  // отложенное центрирование, когда карта наконец готова. Программное движение
+  // камеры по неготовой карте улетает в «океан» (в релизе фикс приходит раньше
+  // onMapReady/onLayout).
+  const [mapReady, setMapReady] = useState(false);
+  const mapReadyFiredRef = useRef(false);
+  const mapLaidOutRef = useRef(false);
+  function markMapReadyIfDone() {
+    if (mapReadyFiredRef.current && mapLaidOutRef.current) setMapReady(true);
+  }
+
   // Первый GPS-фикс за открытие экрана → один раз плавно центрируемся на
   // пользователе. didAutoCenter гасит повтор; userMovedMap отменяет авто-центр,
   // если человек успел подвигать карту жестом до прихода фикса — не дёргаем.
@@ -260,10 +272,17 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   useEffect(() => {
     if (didAutoCenterRef.current || userMovedMapRef.current) return;
     if (!isValidCoord(userLocation)) return;
+    // Карта ещё не готова → откладываем: НЕ помечаем one-shot выполненным, чтобы
+    // при переходе mapReady=true эффект перезапустился и центрировал по
+    // последнему валидному userLocation.
+    if (!mapReady) {
+      mapDebug.log(`DEFER:firstFix ${userLocation!.latitude},${userLocation!.longitude}`);
+      return;
+    }
     didAutoCenterRef.current = true;
     mapDebug.log(`LOC ${userLocation!.latitude},${userLocation!.longitude},${accuracy ?? '?'}`);
     moveCamera('firstFix', userLocation);
-  }, [userLocation]);
+  }, [userLocation, mapReady]);
 
   const hiddenCount = Object.values(activeCategories).filter((v) => !v).length;
 
@@ -366,6 +385,13 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   // не изменилось: тот же isValidCoord-guard и тот же animateToRegion; лог —
   // no-op без EXPO_PUBLIC_MAP_DEBUG.
   function moveCamera(source: string, target: { latitude: number; longitude: number }) {
+    // Карта не готова (нет onMapReady/onLayout) → не двигаем: animateToRegion по
+    // неготовой карте улетает в океан. Для firstFix сработает отложенный путь в
+    // эффекте выше (DEFER); для locateBtn тап просто игнорируется.
+    if (!mapReady) {
+      mapDebug.log(`SKIP:${source}`);
+      return;
+    }
     // ~city-block zoom
     const region = { ...target, latitudeDelta: 0.005, longitudeDelta: 0.005 };
     // Битая координата (NaN/undefined/0,0) увезла бы камеру в океан.
@@ -428,9 +454,15 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         // fights MapKit's layoutMargins placement inside layoutSubviews and
         // flickers under a moving camera. mapPadding shifts the visual centre up.
         mapPadding={mapAttribution}
-        onMapReady={() => mapDebug.log('READY')}
+        onMapReady={() => {
+          mapReadyFiredRef.current = true;
+          markMapReadyIfDone();
+          mapDebug.log('READY');
+        }}
         onLayout={(e) => {
           const { width, height } = e.nativeEvent.layout;
+          if (width > 0 && height > 0) mapLaidOutRef.current = true;
+          markMapReadyIfDone();
           mapDebug.log(`LAYOUT ${Math.round(width)}×${Math.round(height)}`);
         }}
         onPress={handleMapPress}
