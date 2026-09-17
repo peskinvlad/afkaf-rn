@@ -14,6 +14,7 @@ import { colors, radii, shadows } from '../theme/tokens';
 import { BADGES } from '../constants/badges';
 import { HeatStatus, HEAT_DANGER_ABOVE_C } from '../lib/heat';
 import { pickWalkVerdict, VERDICT_TITLE_KEY } from '../lib/walkVerdict';
+import { MAP_CAMERA_ZOOM_RANGE } from '../lib/mapConfig';
 
 interface RouteCoord { latitude: number; longitude: number; }
 
@@ -89,6 +90,7 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
           style={StyleSheet.absoluteFill}
           provider={PROVIDER_DEFAULT}
           initialRegion={{ ...center, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
+          cameraZoomRange={MAP_CAMERA_ZOOM_RANGE}
           scrollEnabled={false}
           zoomEnabled={false}
           pitchEnabled={false}

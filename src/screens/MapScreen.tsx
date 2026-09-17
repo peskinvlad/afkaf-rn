@@ -39,6 +39,7 @@ import { MARKER_CONFIG, INFRA_MARKER_TYPES, nextInfraHidden } from '../lib/marke
 import { isValidCoord, START_COORD, START_DELTA } from '../lib/geo';
 import { mapDebug } from '../lib/mapDebug';
 import { MapDebugOverlay } from '../components/MapDebugOverlay';
+import { MAP_CAMERA_ZOOM_RANGE } from '../lib/mapConfig';
 import { ensureLocationPermission } from '../lib/locationPermission';
 import { isAccurateFix, createGlitchFilter } from '../lib/gpsQuality';
 import { supabase } from '../lib/supabase';
@@ -443,6 +444,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         style={StyleSheet.absoluteFill}
         provider={PROVIDER_DEFAULT}
         initialRegion={INITIAL_REGION}
+        cameraZoomRange={MAP_CAMERA_ZOOM_RANGE}
         showsMyLocationButton={false}
         showsCompass={false}
         toolbarEnabled={false}
@@ -458,6 +460,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           mapReadyFiredRef.current = true;
           markMapReadyIfDone();
           mapDebug.log('READY');
+          mapDebug.log('ZOOMRANGE on'); // видно на скриншоте, что билд с фиксом
         }}
         onLayout={(e) => {
           const { width, height } = e.nativeEvent.layout;

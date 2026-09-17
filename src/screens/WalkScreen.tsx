@@ -35,6 +35,7 @@ import { LocateButton } from '../components/LocateButton';
 import NearbyDogsSheet from '../components/NearbyDogsSheet';
 import { ShareProfileSheet } from '../components/ShareProfileSheet';
 import { mapAttributionInsets, MapAttributionInsets } from '../lib/mapInsets';
+import { MAP_CAMERA_ZOOM_RANGE } from '../lib/mapConfig';
 import { useFriends } from '../hooks/useFriends';
 import { sendFriendRequest } from '../lib/friendships';
 import { supabase } from '../lib/supabase';
@@ -561,6 +562,7 @@ export function WalkScreen({ navigation }: Props) {
           style={StyleSheet.absoluteFill}
           provider={PROVIDER_DEFAULT}
           initialRegion={INITIAL_REGION}
+          cameraZoomRange={MAP_CAMERA_ZOOM_RANGE}
           showsMyLocationButton={false}
           showsCompass={false}
           toolbarEnabled={false}

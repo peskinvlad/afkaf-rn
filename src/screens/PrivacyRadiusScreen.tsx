@@ -13,6 +13,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
 import { loadHomeZone } from '../lib/privacyZone';
+import { MAP_CAMERA_ZOOM_RANGE } from '../lib/mapConfig';
 import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
 
 const FLORENTIN = { latitude: 32.0559, longitude: 34.7722 };
@@ -139,6 +140,7 @@ export function PrivacyRadiusScreen({ navigation }: any) {
             latitudeDelta: 0.01,
             longitudeDelta: 0.01,
           }}
+          cameraZoomRange={MAP_CAMERA_ZOOM_RANGE}
         />
         )}
 
