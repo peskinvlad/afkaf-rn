@@ -102,7 +102,11 @@ export function WalkScreen({ navigation }: Props) {
   const measureHeatChip = useCallback(() => {
     heatChipRef.current?.measureInWindow((x: number, y: number, w: number) => {
       if (!w) return;
-      const next = mapAttributionInsets({ top: y, left: x }, screenH, insets.bottom);
+      const fallback = {
+        left: 14 - 4,
+        bottom: WALK_PANEL_CONTENT + WALK_CHIP_GAP + HEAT_CHIP_HEIGHT + 4 - 8,
+      };
+      const next = mapAttributionInsets({ top: y, left: x }, screenH, insets.bottom, fallback);
       setWalkMapAttribution((prev) =>
         prev.bottom === next.bottom && prev.left === next.left ? prev : next,
       );

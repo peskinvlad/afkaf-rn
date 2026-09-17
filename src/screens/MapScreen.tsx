@@ -148,12 +148,21 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     left: MAP_CHIP.left - 4,
   }));
   const measureHeatChip = useCallback(() => {
-    heatChipRef.current?.measureInWindow((x: number, y: number, w: number) => {
+    heatChipRef.current?.measureInWindow((x: number, y: number, w: number, h: number) => {
       if (!w) return; // not laid out yet
-      const next = mapAttributionInsets({ top: y, left: x }, screenH, insets.bottom);
-      setMapAttribution((prev) =>
-        prev.bottom === next.bottom && prev.left === next.left ? prev : next,
-      );
+      const fallback = {
+        left: MAP_CHIP.left - 4,
+        bottom: WIDGETS_BASE_BOTTOM + HEAT_CHIP_HEIGHT + 4 - 8 - insets.bottom,
+      };
+      const next = mapAttributionInsets({ top: y, left: x }, screenH, insets.bottom, fallback);
+      setMapAttribution((prev) => {
+        if (prev.bottom === next.bottom && prev.left === next.left) return prev;
+        const win = Dimensions.get('window');
+        mapDebug.log(
+          `PAD x=${x},y=${y},w=${w},h=${h} win=${win.width}×${win.height} → t${next.top} r${next.right} b${next.bottom} l${next.left}`,
+        );
+        return next;
+      });
     });
   }, [screenH, insets.bottom]);
   // Screen position of the open marker's pin, so the callout can sit on it.

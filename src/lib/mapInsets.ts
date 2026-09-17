@@ -1,3 +1,5 @@
+import { mapDebug } from './mapDebug';
+
 // Insets for MapKit's attribution ornaments (mapPadding / layoutMargins): the
 // Apple logo and the "Legal" link. They sit STRICTLY ABOVE the asphalt-
 // temperature chip, hugging it — visually one plate with the chip.
@@ -40,19 +42,42 @@ export interface MapAttributionInsets {
   left: number;
 }
 
+// Верхняя граница левого отступа: у нас чип у левого края (~10–12 pt); всё сильно
+// больше — это мусорный замер (measureInWindow вернул x ≈ ширины окна, напр. при
+// RTL-раскладке до применения lockLayoutLTR). Такой left ⇒ layoutMargins съедают
+// всю ширину ⇒ видимая область карты нулевая ⇒ longitudeDelta 0 ⇒ переворот
+// долготы на 180° и пропавший логотип Apple.
+const MAX_SANE_LEFT = 48;
+// Верхняя граница нижнего отступа — доля высоты окна: реальный bottom ~150–260,
+// но битый замер может дать отрицательное/огромное значение.
+const MAX_SANE_BOTTOM_FRACTION = 0.6;
+
 // One line directly above the chip, left-aligned to it. `screenHeight` is the
 // window height (Dimensions), so screenHeight − chip.top is the distance from
 // the screen bottom to the chip's top edge. `safeAreaBottom` is the bottom
 // safe-area inset MapKit re-adds (see note above).
+//
+// САНИТАЙЗЕР (всегда, не под флагом): измеренные left/bottom могут прийти
+// мусорными в Release (замер до финальной раскладки / RTL / смещение), и MapKit
+// от битого layoutMargins уводит карту в «океан». Держим top/right = 0 строго,
+// left и bottom — только в разумном диапазоне, иначе фолбэк-константа экрана.
 export function mapAttributionInsets(
   chip: ChipRect,
   screenHeight: number,
   safeAreaBottom: number,
+  fallback: { left: number; bottom: number },
 ): MapAttributionInsets {
-  return {
-    top: 0,
-    right: 0,
-    bottom: screenHeight - chip.top + DESIRED_GAP - MAPKIT_MARGIN - safeAreaBottom,
-    left: chip.left - LEFT_NUDGE,
-  };
+  const rawLeft = chip.left - LEFT_NUDGE;
+  const rawBottom = screenHeight - chip.top + DESIRED_GAP - MAPKIT_MARGIN - safeAreaBottom;
+
+  const leftOk = Number.isFinite(rawLeft) && rawLeft >= 0 && rawLeft <= MAX_SANE_LEFT;
+  const left = leftOk ? rawLeft : fallback.left;
+  if (!leftOk) mapDebug.log(`PADFIX left=${rawLeft}→${left}`);
+
+  const maxBottom = screenHeight * MAX_SANE_BOTTOM_FRACTION;
+  const bottomOk = Number.isFinite(rawBottom) && rawBottom >= 0 && rawBottom <= maxBottom;
+  const bottom = bottomOk ? rawBottom : fallback.bottom;
+  if (!bottomOk) mapDebug.log(`PADFIX bottom=${rawBottom}→${bottom}`);
+
+  return { top: 0, right: 0, bottom, left };
 }
