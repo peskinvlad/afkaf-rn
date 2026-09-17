@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { MapMarker, WaterSource } from '../lib/markerConfig';
+import { mapDebug } from '../lib/mapDebug';
 
 // A marker added mid-walk used to stay invisible until the walk ended: the
 // layer was fetched once per screen mount and never again, and starting a walk
@@ -87,9 +88,13 @@ async function refreshMarkers() {
     // Keep whatever is on the map. A failed poll on a patchy connection must
     // not blank the layer mid-walk.
     console.warn('[useMapMarkers] markers fetch error:', error.message, error.code);
+    mapDebug.setMarkersStatus(`markers=ERR: ${error.message}`);
     return;
   }
-  if (data) publishMarkers(data as MapMarker[]);
+  if (data) {
+    mapDebug.setMarkersStatus(`markers=${data.length}`);
+    publishMarkers(data as MapMarker[]);
+  }
 }
 
 // Static OSM seed data with no TTL — fetched once for the life of the process,
@@ -101,9 +106,11 @@ async function loadWaterSources() {
     .select('id, lat, lng, amenity, dog_bowl');
   if (error) {
     console.warn('[useMapMarkers] water_sources fetch error:', error.message, error.code);
+    mapDebug.setWaterStatus(`water=ERR: ${error.message}`);
     return;
   }
   if (data) {
+    mapDebug.setWaterStatus(`water=${data.length}`);
     waterLoaded = true;
     waterCache = data as WaterSource[];
     waterSubs.forEach((fn) => fn(waterCache));

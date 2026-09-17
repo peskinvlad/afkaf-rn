@@ -13,6 +13,9 @@
     "preview": {
       "distribution": "internal",
       "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_MAP_DEBUG": "1"
+      },
       "ios": {}
     },
     "production": {

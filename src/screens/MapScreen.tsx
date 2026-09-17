@@ -37,6 +37,8 @@ import { LocationRequiredCard } from '../components/LocationRequiredCard';
 import { filterMarkersAndWater } from '../lib/markerFilter';
 import { MARKER_CONFIG, INFRA_MARKER_TYPES, nextInfraHidden } from '../lib/markerConfig';
 import { isValidCoord, START_COORD, START_DELTA } from '../lib/geo';
+import { mapDebug } from '../lib/mapDebug';
+import { MapDebugOverlay } from '../components/MapDebugOverlay';
 import { ensureLocationPermission } from '../lib/locationPermission';
 import { isAccurateFix, createGlitchFilter } from '../lib/gpsQuality';
 import { supabase } from '../lib/supabase';
@@ -259,7 +261,8 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     if (didAutoCenterRef.current || userMovedMapRef.current) return;
     if (!isValidCoord(userLocation)) return;
     didAutoCenterRef.current = true;
-    centerMapOn(userLocation);
+    mapDebug.log(`LOC ${userLocation!.latitude},${userLocation!.longitude},${accuracy ?? '?'}`);
+    moveCamera('firstFix', userLocation);
   }, [userLocation]);
 
   const hiddenCount = Object.values(activeCategories).filter((v) => !v).length;
@@ -358,14 +361,20 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     }
   }
 
-  function centerMapOn(coord: { latitude: number; longitude: number }) {
-    // Битая координата (NaN/undefined/0,0) увезла бы камеру в океан.
-    if (!isValidCoord(coord)) return;
+  // Единственная точка программного движения камеры. source — короткая метка
+  // места вызова (firstFix / locateBtn / …) для диагностического лога. Поведение
+  // не изменилось: тот же isValidCoord-guard и тот же animateToRegion; лог —
+  // no-op без EXPO_PUBLIC_MAP_DEBUG.
+  function moveCamera(source: string, target: { latitude: number; longitude: number }) {
     // ~city-block zoom
-    mapRef.current?.animateToRegion(
-      { ...coord, latitudeDelta: 0.005, longitudeDelta: 0.005 },
-      350,
-    );
+    const region = { ...target, latitudeDelta: 0.005, longitudeDelta: 0.005 };
+    // Битая координата (NaN/undefined/0,0) увезла бы камеру в океан.
+    if (!isValidCoord(target)) {
+      mapDebug.log(`REJECT:${source} ${region.latitude},${region.longitude}`);
+      return;
+    }
+    mapDebug.log(`ANIM:${source} → ${region.latitude},${region.longitude},${region.latitudeDelta}`);
+    mapRef.current?.animateToRegion(region, 350);
   }
 
   // One-shot centre on the user — no follow mode. Without a position yet:
@@ -373,7 +382,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   // got its native dialog; blocked → recovery card).
   async function handleCenterOnMe() {
     if (userLocation) {
-      centerMapOn(userLocation);
+      moveCamera('locateBtn', userLocation);
       return;
     }
     const { granted, blocked } = await ensureLocationPermission();
@@ -385,7 +394,8 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
     const pt = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
     setUserLocation(pt);
-    centerMapOn(pt);
+    mapDebug.log(`LOC ${pt.latitude},${pt.longitude},${loc.coords.accuracy ?? '?'}`);
+    moveCamera('locateBtn', pt);
   }
 
   function handleMenuPress() {
@@ -418,6 +428,11 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         // fights MapKit's layoutMargins placement inside layoutSubviews and
         // flickers under a moving camera. mapPadding shifts the visual centre up.
         mapPadding={mapAttribution}
+        onMapReady={() => mapDebug.log('READY')}
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          mapDebug.log(`LAYOUT ${Math.round(width)}×${Math.round(height)}`);
+        }}
         onPress={handleMapPress}
         // During the gesture the anchor is recomputed as fast as the bridge
         // keeps up; the Complete event guarantees a final exact placement.
@@ -427,7 +442,12 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           if ((details as any)?.isGesture) userMovedMapRef.current = true;
           refreshCalloutAnchor();
         }}
-        onRegionChangeComplete={(region) => {
+        onRegionChangeComplete={(region, details) => {
+          if (mapDebug.enabled) {
+            mapDebug.log(
+              `RC ${region?.latitude},${region?.longitude},${region?.latitudeDelta},${region?.longitudeDelta},gesture=${(details as any)?.isGesture}`,
+            );
+          }
           setInfraHidden((prev) => nextInfraHidden(prev, region?.latitudeDelta));
           refreshCalloutAnchor();
         }}
@@ -620,6 +640,10 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
       )}
 
       {!isGuest && <ShareProfileSheet visible={shareVisible} onClose={() => setShareVisible(false)} />}
+
+      {/* Диагностический оверлей камеры/данных — только при EXPO_PUBLIC_MAP_DEBUG=1
+          (preview). Без флага возвращает null и ничего не пишет. */}
+      <MapDebugOverlay />
 
     </View>
   );
