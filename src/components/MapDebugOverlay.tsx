@@ -11,10 +11,10 @@ export function MapDebugOverlay() {
   const insets = useSafeAreaInsets();
   const [, forceRender] = useState(0);
 
-  useEffect(() => {
-    if (!mapDebug.enabled) return;
-    return mapDebug.subscribe(() => forceRender((n) => n + 1));
-  }, []);
+  // Подписка ВСЕГДА активна (не гейтим по enabled): переключение из DevPanel
+  // вызывает notify, и оверлей должен перерисоваться, чтобы появиться/исчезнуть
+  // без перезапуска. Подписка дешёвая — один слушатель.
+  useEffect(() => mapDebug.subscribe(() => forceRender((n) => n + 1)), []);
 
   if (!mapDebug.enabled) return null;
 

@@ -22,3 +22,21 @@ export const MAP_CAMERA_ZOOM_RANGE: CameraZoomRange = {
   minCenterCoordinateDistance: 50,
   maxCenterCoordinateDistance: 40_000_000,
 };
+
+// AddMarkerScreen: тот же фикс (отключить legacy-clamp), НО с ограничением
+// отдаления — раньше это делал minZoomLevel={15} (легаси-путь, который
+// cameraZoomRange отключает). Возвращаем ограничение через maxCenterCoordinateDistance.
+//
+// Расчёт «эквивалент zoom 15 на 430 pt»:
+//   web-mercator zoom 15: 360°/2^15 = 0.010986°/256 px; на ширину 430 px →
+//   0.010986·(430/256) = 0.018457° долготы; на широте 32° ×cos(32°)=0.848 →
+//   0.015656° ≈ 0.015656·111320 ≈ 1740 м видимой ширины (~1.7 км).
+//   MapKit centerCoordinateDistance (дистанция камеры до центра при pitch 0)
+//   эмпирически ≈ ~2× видимой ширины на портретном телефоне → ~3.4 км.
+// Берём 3500 м как «не отдаляться дальше квартала» — приближённо, легко
+// подстроить. minCenterCoordinateDistance 50 — как у общей (близкий зум для
+// точной установки метки).
+export const ADD_MARKER_CAMERA_ZOOM_RANGE: CameraZoomRange = {
+  minCenterCoordinateDistance: 50,
+  maxCenterCoordinateDistance: 3500,
+};

@@ -22,6 +22,7 @@ import {
   DEV_VOTE_OWN_KEY,
   emitDevSettingsChange,
 } from '../constants/dev';
+import { mapDebug } from '../lib/mapDebug';
 import { useApp } from '../hooks/useApp';
 import {
   getTrackDiagnostics,
@@ -54,6 +55,7 @@ export function DevPanel({ visible, onClose }: Props) {
   const [tempInput, setTempInput] = useState('');
   const [overrideActive, setOverrideActive] = useState<string | null>(null);
   const [voteOwn, setVoteOwn] = useState(false);
+  const [mapDebugOn, setMapDebugOn] = useState(mapDebug.enabled);
   // Короткие подтверждения «сброшено/применено» по ключу строки
   const [flash, setFlash] = useState<Record<string, string>>({});
   // Трек-диагностика: снимок обновляем по таймеру, пока панель открыта, чтобы
@@ -99,6 +101,9 @@ export function DevPanel({ visible, onClose }: Props) {
       } catch {
         setAppleLinked(false);
       }
+
+      // Текущее рантайм-состояние оверлея карты (env-дефолт или сохранённое).
+      setMapDebugOn(mapDebug.enabled);
     })();
   }, [visible]);
 
@@ -165,6 +170,11 @@ export function DevPanel({ visible, onClose }: Props) {
     if (next) await AsyncStorage.setItem(DEV_VOTE_OWN_KEY, 'true');
     else await AsyncStorage.removeItem(DEV_VOTE_OWN_KEY);
     emitDevSettingsChange();
+  }
+
+  async function toggleMapDebug(next: boolean) {
+    setMapDebugOn(next);
+    await mapDebug.setEnabled(next); // применяется сразу + persist, без перезапуска
   }
 
   // Живой индикатор домашней зоны — та же формула, что в гейте active_walks
@@ -336,6 +346,23 @@ export function DevPanel({ visible, onClose }: Props) {
             <Text style={styles.note}>
               Убирает клиентский гейт isOwnMarker в MarkerCallout (только
               для DEV_USER_IDS). Серверная логика не тронута.
+            </Text>
+          </View>
+
+          {/* ── Отладка карты ── */}
+          <Text style={styles.sectionTitle}>Отладка карты</Text>
+          <View style={styles.card}>
+            <View style={styles.switchRow}>
+              <Text style={styles.rowLabelFlex}>Map debug overlay</Text>
+              <Switch
+                value={mapDebugOn}
+                onValueChange={toggleMapDebug}
+                trackColor={{ true: colors.primary, false: colors.border }}
+              />
+            </View>
+            <Text style={styles.note}>
+              Диагностический оверлей карты (RC / PAD / ANIM / DATA) на Map и Walk.
+              Меняется сразу, без перезапуска. Виден только dev-пользователю.
             </Text>
           </View>
         </ScrollView>

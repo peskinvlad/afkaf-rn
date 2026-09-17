@@ -51,6 +51,9 @@ if (__DEV__ && !isDevListConfigured()) {
 // AsyncStorage-ключи dev-оверрайдов
 export const DEV_ASPHALT_OVERRIDE_KEY = 'dev_asphalt_temp_override';
 export const DEV_VOTE_OWN_KEY = 'dev_vote_own_markers';
+// Рантайм-переключатель диагностического оверлея карты (DevPanel). Значение
+// важнее env-дефолта EXPO_PUBLIC_MAP_DEBUG; читается mapDebug при старте.
+export const DEV_MAP_DEBUG_KEY = 'dev_map_debug_overlay';
 
 // ── Мини-шина событий ────────────────────────────────────────────────────────
 // DevPanel меняет ключи в AsyncStorage; подписчики (useAsphaltTemp) должны

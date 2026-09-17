@@ -1,13 +1,19 @@
-// On-screen camera/data diagnostics for MapScreen, gated by EXPO_PUBLIC_MAP_DEBUG.
-// Без флага ВСЁ — no-op: буфер не пишется, подписчики не дёргаются, оверлей
-// (см. MapDebugOverlay) не рендерится. Флаг задаётся ТОЛЬКО в preview-профиле
-// eas.json — в production/development его нет.
+// On-screen camera/data diagnostics for Map/WalkScreen.
 //
-// Кольцевой буфер живёт в модуле (не в стейте MapScreen), а перерисовку делает
-// только маленький MapDebugOverlay через subscribe — так лог не вызывает
+// Включённость — РАНТАЙМ-значение, а не только флаг сборки:
+//   • дефолт = EXPO_PUBLIC_MAP_DEBUG === '1' (preview-профиль eas.json);
+//   • если в AsyncStorage задан рантайм-переключатель (DevPanel) — он важнее
+//     env-дефолта, читается один раз при старте и меняется без перезапуска
+//     (оверлей подписан через subscribe и перерисуется).
+// Когда выключено — ВСЁ no-op: буфер не пишется, подписчики не дёргаются,
+// MapDebugOverlay возвращает null. Кольцевой буфер живёт в модуле (не в стейте
+// экрана), перерисовку делает только маленький оверлей — лог не вызывает
 // ре-рендеров MapView.
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DEV_MAP_DEBUG_KEY } from '../constants/dev';
 
-export const MAP_DEBUG_ENABLED = process.env.EXPO_PUBLIC_MAP_DEBUG === '1';
+const ENV_DEFAULT = process.env.EXPO_PUBLIC_MAP_DEBUG === '1';
+let enabled = ENV_DEFAULT;
 
 const MAX_EVENTS = 10;
 const events: string[] = [];
@@ -21,6 +27,17 @@ function notify() {
   listeners.forEach((l) => l());
 }
 
+// Рантайм-оверрайд из AsyncStorage важнее env-дефолта. Читаем один раз при
+// старте; если ключ задан ('true'/'false') — применяем и будим оверлей.
+AsyncStorage.getItem(DEV_MAP_DEBUG_KEY)
+  .then((v) => {
+    if (v === 'true' || v === 'false') {
+      enabled = v === 'true';
+      notify();
+    }
+  })
+  .catch(() => {});
+
 // мм:сс.ммм — достаточно, чтобы видеть порядок и задержки между событиями.
 function stamp(): string {
   const d = new Date();
@@ -31,11 +48,28 @@ function stamp(): string {
 }
 
 export const mapDebug = {
-  enabled: MAP_DEBUG_ENABLED,
+  // Живое значение (getter): оверлей читает его при каждом рендере и
+  // подписан на notify, поэтому переключение из DevPanel действует сразу.
+  get enabled(): boolean {
+    return enabled;
+  },
 
-  // Одно событие в кольцевой буфер (LAYOUT / READY / LOC / ANIM / REJECT / RC).
+  // Рантайм-переключатель (DevPanel): меняет значение без перезапуска, persist
+  // в AsyncStorage, будит подписчиков (оверлей). Гейт «только dev» — в вызывающем
+  // (DevPanel открыт только для DEV_USER_IDS).
+  async setEnabled(v: boolean): Promise<void> {
+    enabled = v;
+    notify();
+    try {
+      await AsyncStorage.setItem(DEV_MAP_DEBUG_KEY, v ? 'true' : 'false');
+    } catch {
+      // persist не критичен: значение уже применено в рантайме
+    }
+  },
+
+  // Одно событие в кольцевой буфер (LAYOUT / READY / LOC / ANIM / REJECT / RC / PAD).
   log(line: string): void {
-    if (!MAP_DEBUG_ENABLED) return;
+    if (!enabled) return;
     events.push(`${stamp()} ${line}`);
     if (events.length > MAX_EVENTS) events.shift();
     notify();
@@ -43,12 +77,12 @@ export const mapDebug = {
 
   // Постоянная строка статуса данных — обновляется при каждой загрузке.
   setMarkersStatus(s: string): void {
-    if (!MAP_DEBUG_ENABLED) return;
+    if (!enabled) return;
     markersStatus = s;
     notify();
   },
   setWaterStatus(s: string): void {
-    if (!MAP_DEBUG_ENABLED) return;
+    if (!enabled) return;
     waterStatus = s;
     notify();
   },

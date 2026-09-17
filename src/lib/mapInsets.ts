@@ -27,8 +27,6 @@ const DESIRED_GAP = 4;
 // MapKit's intrinsic ornament margin above the layout margin (see note above).
 // Empirically tuned on-device: lower value → ornaments sit higher.
 const MAPKIT_MARGIN = 8;
-// Nudge the ornaments 4pt left of the chip's left edge for exact visual align.
-const LEFT_NUDGE = 4;
 
 export interface ChipRect {
   top: number;  // chip's top edge, measured from the top of the screen (window)
@@ -42,42 +40,38 @@ export interface MapAttributionInsets {
   left: number;
 }
 
-// Верхняя граница левого отступа: у нас чип у левого края (~10–12 pt); всё сильно
-// больше — это мусорный замер (measureInWindow вернул x ≈ ширины окна, напр. при
-// RTL-раскладке до применения lockLayoutLTR). Такой left ⇒ layoutMargins съедают
-// всю ширину ⇒ видимая область карты нулевая ⇒ longitudeDelta 0 ⇒ переворот
-// долготы на 180° и пропавший логотип Apple.
-const MAX_SANE_LEFT = 48;
 // Верхняя граница нижнего отступа — доля высоты окна: реальный bottom ~150–260,
 // но битый замер может дать отрицательное/огромное значение.
 const MAX_SANE_BOTTOM_FRACTION = 0.6;
 
-// One line directly above the chip, left-aligned to it. `screenHeight` is the
-// window height (Dimensions), so screenHeight − chip.top is the distance from
-// the screen bottom to the chip's top edge. `safeAreaBottom` is the bottom
-// safe-area inset MapKit re-adds (see note above).
+// One line directly above the chip. `screenHeight` is the window height
+// (Dimensions), so screenHeight − chip.top is the distance from the screen
+// bottom to the chip's top edge. `safeAreaBottom` is the bottom safe-area inset
+// MapKit re-adds (see note above).
 //
-// САНИТАЙЗЕР (всегда, не под флагом): измеренные left/bottom могут прийти
-// мусорными в Release (замер до финальной раскладки / RTL / смещение), и MapKit
-// от битого layoutMargins уводит карту в «океан». Держим top/right = 0 строго,
-// left и bottom — только в разумном диапазоне, иначе фолбэк-константа экрана.
+// LEFT НИКОГДА не берётся из замера — только фолбэк-константа экрана. Причина:
+// measureInWindow меряет чип в координатах окна, и во время slide-in перехода
+// навигации (animation:'slide_from_right') входящий экран смещён на ширину окна
+// вправо → x ≈ ширина+16 (наблюдали left=442 при окне 430) → layoutMargins
+// съедают всю ширину → видимая область карты нулевая → longitudeDelta 0 →
+// переворот долготы на 180° («океан») и пропавший логотип Apple. Горизонтальный
+// отступ у нас маленький и постоянный, мерить его незачем.
+//
+// Из замера используется ТОЛЬКО y (для bottom). bottom-санитайзер (всегда, не
+// под флагом): при мусорном/отрицательном/слишком большом значении — фолбэк.
+// top и right — строго 0.
 export function mapAttributionInsets(
   chip: ChipRect,
   screenHeight: number,
   safeAreaBottom: number,
   fallback: { left: number; bottom: number },
 ): MapAttributionInsets {
-  const rawLeft = chip.left - LEFT_NUDGE;
   const rawBottom = screenHeight - chip.top + DESIRED_GAP - MAPKIT_MARGIN - safeAreaBottom;
-
-  const leftOk = Number.isFinite(rawLeft) && rawLeft >= 0 && rawLeft <= MAX_SANE_LEFT;
-  const left = leftOk ? rawLeft : fallback.left;
-  if (!leftOk) mapDebug.log(`PADFIX left=${rawLeft}→${left}`);
 
   const maxBottom = screenHeight * MAX_SANE_BOTTOM_FRACTION;
   const bottomOk = Number.isFinite(rawBottom) && rawBottom >= 0 && rawBottom <= maxBottom;
   const bottom = bottomOk ? rawBottom : fallback.bottom;
   if (!bottomOk) mapDebug.log(`PADFIX bottom=${rawBottom}→${bottom}`);
 
-  return { top: 0, right: 0, bottom, left };
+  return { top: 0, right: 0, bottom, left: fallback.left };
 }

@@ -24,7 +24,7 @@ import { haversine } from '../lib/geo';
 import { isAccurateFix, GPS_ACCURACY_MAX_M } from '../lib/gpsQuality';
 import { addLocalMarker, MARKER_COLUMNS } from '../hooks/useMapMarkers';
 import { MapMarker, MARKER_CONFIG } from '../lib/markerConfig';
-import { MAP_CAMERA_ZOOM_RANGE } from '../lib/mapConfig';
+import { ADD_MARKER_CAMERA_ZOOM_RANGE } from '../lib/mapConfig';
 import { colors, radii, shadows } from '../theme/tokens';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -345,10 +345,9 @@ export function AddMarkerScreen({ navigation }: Props) {
               style={StyleSheet.absoluteFill}
               provider={PROVIDER_DEFAULT}
               initialRegion={region}
-              cameraZoomRange={MAP_CAMERA_ZOOM_RANGE}
+              cameraZoomRange={ADD_MARKER_CAMERA_ZOOM_RANGE}
               scrollEnabled={hasAccurateFix}
               zoomEnabled={hasAccurateFix}
-              minZoomLevel={15}
               pitchEnabled={false}
               rotateEnabled={false}
               showsCompass={false}

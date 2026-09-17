@@ -34,6 +34,7 @@ import { FirstWalkTipCard } from '../components/FirstWalkTipCard';
 import { LocateButton } from '../components/LocateButton';
 import NearbyDogsSheet from '../components/NearbyDogsSheet';
 import { ShareProfileSheet } from '../components/ShareProfileSheet';
+import { MapDebugOverlay } from '../components/MapDebugOverlay';
 import { mapAttributionInsets, MapAttributionInsets } from '../lib/mapInsets';
 import { MAP_CAMERA_ZOOM_RANGE } from '../lib/mapConfig';
 import { useFriends } from '../hooks/useFriends';
@@ -817,6 +818,10 @@ export function WalkScreen({ navigation }: Props) {
       </View>
 
       {!isGuest && <ShareProfileSheet visible={shareVisible} onClose={() => setShareVisible(false)} />}
+
+      {/* Диагностический оверлей карты — тот же компонент/буфер, что на MapScreen.
+          Рендерится только при включённом mapDebug (env preview или DevPanel). */}
+      <MapDebugOverlay />
     </View>
   );
 }
