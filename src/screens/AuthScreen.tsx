@@ -28,11 +28,12 @@ const REDIRECT_URI = 'afkaf://auth/callback';
 // на ввод пароля и 2FA; вне окна любой afkaf://auth/callback игнорируется.
 const OAUTH_ACCEPT_MS = 120_000;
 
-// TEMP (бета): любую заминку OAuth-входа показываем Alert'ом с текстом. Иначе
-// флоу гасит ошибку в console.warn и на устройстве видно лишь «мигание» экрана
-// без причины. Убрать, как только причина Google-входа подтвердится на билде.
-function authAlert(stage: string, detail?: string): void {
-  Alert.alert('Google sign-in failed', detail ? `${stage}\n\n${detail}` : stage);
+// TEMP (бета): любую заминку входа показываем Alert'ом с текстом. Иначе флоу
+// гасит ошибку в console.warn и на устройстве видно лишь «мигание» экрана без
+// причины. Заголовок захардкожен (как и был у Google) — не через i18n. Убрать,
+// когда причины входа подтвердятся на билде.
+function authAlert(stage: string, detail?: string, title = 'Google sign-in failed'): void {
+  Alert.alert(title, detail ? `${stage}\n\n${detail}` : stage);
 }
 
 // Detect "new user" — created within last 60 seconds
@@ -184,6 +185,7 @@ export function AuthScreen({ navigation }: Props) {
       });
       if (!credential.identityToken) {
         console.warn('[Auth] Apple credential carried no identityToken');
+        authAlert('signInAsync', 'Apple не вернул identityToken', 'Apple sign-in failed');
         setLoadingProvider(null);
         return;
       }
@@ -193,6 +195,7 @@ export function AuthScreen({ navigation }: Props) {
       });
       if (error) {
         console.warn('[Auth] signInWithIdToken error:', error.message);
+        authAlert('signInWithIdToken', error.message, 'Apple sign-in failed');
         setLoadingProvider(null);
         return;
       }
@@ -212,12 +215,17 @@ export function AuthScreen({ navigation }: Props) {
           .from('profiles')
           .update({ display_name: name.slice(0, 50) })
           .eq('id', uid);
-        if (pErr) console.warn('[Auth] Apple name → profile update failed:', pErr.message);
+        if (pErr) {
+          console.warn('[Auth] Apple name → profile update failed:', pErr.message);
+          authAlert('запись профиля', pErr.message, 'Apple sign-in failed');
+        }
       }
     } catch (e: any) {
-      // Пользователь закрыл системный шит — это не ошибка, молча выходим.
+      // Пользователь закрыл системный шит (ERR_REQUEST_CANCELED) — не ошибка,
+      // молча выходим без Alert. Всё остальное — показываем.
       if (e?.code !== 'ERR_REQUEST_CANCELED') {
         console.warn('[Auth] Apple signIn exception:', e);
+        authAlert('signInAsync', String(e?.message ?? e), 'Apple sign-in failed');
       }
       setLoadingProvider(null);
     }
