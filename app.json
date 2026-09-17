@@ -4,6 +4,7 @@
     "slug": "afkaf-rn",
     "scheme": "afkaf",
     "version": "0.1.0",
+    "newArchEnabled": false,
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
