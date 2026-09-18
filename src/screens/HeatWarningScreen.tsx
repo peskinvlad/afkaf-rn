@@ -2,8 +2,11 @@ import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
+import { Lang } from '../i18n';
 import { HourlyPoint } from '../hooks/useAsphaltTemp';
 import { colors, radii, shadows } from '../theme/tokens';
+
+const DATE_LOCALE: Record<Lang, string> = { he: 'he-IL', en: 'en-US', ru: 'ru-RU' };
 
 interface Props {
   navigation: any;
@@ -15,7 +18,7 @@ interface Props {
 // anyway" always works.
 export function HeatWarningScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const { t, heatData, hourlyForecast, setIsWalking } = useApp();
+  const { t, lang, heatData, hourlyForecast, setIsWalking } = useApp();
 
   // Same "first future forecast point back in the safe zone" logic as
   // PavementTempScreen's best-time card, duplicated locally (out of scope
@@ -49,7 +52,7 @@ export function HeatWarningScreen({ navigation }: Props) {
               <Text style={styles.bestTimeTitle}>{t('heat.best_time.title')}</Text>
               <Text style={styles.bestTimeBody}>
                 {t('heat.best_time.after', {
-                  time: new Date(bestPoint.timeEpoch * 1000).toLocaleTimeString([], {
+                  time: new Date(bestPoint.timeEpoch * 1000).toLocaleTimeString(DATE_LOCALE[lang], {
                     hour: '2-digit',
                     minute: '2-digit',
                   }),

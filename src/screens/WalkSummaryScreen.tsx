@@ -77,7 +77,7 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
   }
 
   function handleShare() {
-    Share.share({ message: `${verdictText} — ${kmStr} km in ${mins} min 🐾` });
+    Share.share({ message: t('walk.summary.shareMessage', { verdict: verdictText, km: kmStr, mins }) });
   }
 
   return (
@@ -117,7 +117,7 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
         <View style={styles.mapBottomRow}>
           {/* Distance chip — bottom left */}
           <View style={[styles.distanceChip, shadows.sm]}>
-            <Text style={styles.distanceTxt}>{kmStr} km</Text>
+            <Text style={styles.distanceTxt}>{kmStr} {t('walk.summary.km')}</Text>
           </View>
 
           {/* Share button — bottom right */}
@@ -215,8 +215,9 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
 function StatCol({ value, label }: { value: string; label: string }) {
   return (
     <View style={styles.statCol}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+      {/* Ограничиваем масштаб системного шрифта — см. WalkScreen.StatCol. */}
+      <Text style={styles.statValue} maxFontSizeMultiplier={1.2} numberOfLines={1}>{value}</Text>
+      <Text style={styles.statLabel} maxFontSizeMultiplier={1.2} numberOfLines={1}>{label}</Text>
     </View>
   );
 }

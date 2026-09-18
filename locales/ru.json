@@ -1,0 +1,6 @@
+{
+  "NSMotionUsageDescription": "afkaf использует данные движения, чтобы считать шаги во время прогулки.",
+  "NSPhotoLibraryUsageDescription": "afkaf нужен доступ к фото, чтобы поставить фотографию в профиль собаки.",
+  "NSLocationWhenInUseUsageDescription": "afkaf показывает рядом собак, прогулки и опасности на карте и записывает маршрут прогулки.",
+  "NSLocationAlwaysAndWhenInUseUsageDescription": "afkaf продолжает записывать маршрут и показывать активность рядом, даже когда приложение свёрнуто."
+}

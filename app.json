@@ -4,6 +4,10 @@
     "slug": "afkaf-rn",
     "scheme": "afkaf",
     "version": "0.1.0",
+    "locales": {
+      "he": "./locales/he.json",
+      "ru": "./locales/ru.json"
+    },
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",

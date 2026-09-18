@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Pencil } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
+import { Lang } from '../i18n';
 import { useBadges } from '../hooks/useBadges';
 import { useFriends } from '../hooks/useFriends';
 import { BADGES } from '../constants/badges';
@@ -60,18 +61,18 @@ interface Stats {
 
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-function formatMonthYear(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en', { month: 'long', year: 'numeric' });
+const DATE_LOCALE: Record<Lang, string> = { he: 'he-IL', en: 'en-US', ru: 'ru-RU' };
+
+function formatMonthYear(iso: string, lang: Lang): string {
+  return new Date(iso).toLocaleDateString(DATE_LOCALE[lang], { month: 'long', year: 'numeric' });
 }
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en', { day: 'numeric', month: 'short' });
+function formatDate(iso: string, lang: Lang): string {
+  return new Date(iso).toLocaleDateString(DATE_LOCALE[lang], { day: 'numeric', month: 'short' });
 }
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: false });
+function formatTime(iso: string, lang: Lang): string {
+  return new Date(iso).toLocaleTimeString(DATE_LOCALE[lang], { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 function formatDuration(sec: number | null): string {
@@ -86,7 +87,7 @@ interface Props { navigation: any }
 
 export function ProfileScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const { t, isGuest, isTrusted, confirmedCount, refreshTrustStatus } = useApp();
+  const { t, lang, isGuest, isTrusted, confirmedCount, refreshTrustStatus } = useApp();
   const { earnedIds: earnedBadgeIds, refresh: refreshBadges } = useBadges();
   const { friends } = useFriends();
 
@@ -267,7 +268,7 @@ export function ProfileScreen({ navigation }: Props) {
   }
 
   const displayName = profile?.display_name ?? t('profile.anonymous');
-  const memberSince = profile?.created_at ? formatMonthYear(profile.created_at) : '—';
+  const memberSince = profile?.created_at ? formatMonthYear(profile.created_at, lang) : '—';
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -393,7 +394,7 @@ export function ProfileScreen({ navigation }: Props) {
               <>
                 <SectionHeader title={t('profile.recentWalks')} />
                 {recentWalks.map((w) => (
-                  <WalkRow key={w.id} walk={w} />
+                  <WalkRow key={w.id} walk={w} t={t} lang={lang} />
                 ))}
               </>
             )}
@@ -457,10 +458,13 @@ function StatCol({ value, label, onPress }: { value: string; label: string; onPr
   return <View style={styles.statCol}>{body}</View>;
 }
 
-function DogCard({ dog, onEdit, t }: { dog: Dog; onEdit: () => void; t: (k: string) => string }) {
+function DogCard({ dog, onEdit, t }: { dog: Dog; onEdit: () => void; t: (k: string, vars?: Record<string, string | number>) => string }) {
   const hasPhoto = !!dog.photo_url;
-  const details  = [dog.breed, dog.age ? `${dog.age} yrs` : null, dog.weight ? `${dog.weight} kg` : null]
-    .filter(Boolean).join(' · ');
+  const details  = [
+    dog.breed,
+    dog.age ? t('profile.dog.age', { n: dog.age }) : null,
+    dog.weight ? t('profile.dog.weight', { n: dog.weight }) : null,
+  ].filter(Boolean).join(' · ');
 
   return (
     <View style={[styles.card, styles.dogCard]}>
@@ -499,19 +503,19 @@ function DogTrait({ label, value }: { label: string; value: string }) {
   );
 }
 
-function WalkRow({ walk }: { walk: Walk }) {
+function WalkRow({ walk, t, lang }: { walk: Walk; t: (k: string, vars?: Record<string, string | number>) => string; lang: Lang }) {
   // Pre-duration_s rows only carry minutes — good enough for display
   const durationSec = walk.duration_s ?? (walk.duration_min != null ? walk.duration_min * 60 : null);
   return (
     <View style={[styles.card, styles.walkRow]}>
       <View style={styles.walkLeft}>
-        <Text style={styles.walkDate}>{formatDate(walk.started_at)}</Text>
-        <Text style={styles.walkTime}>{formatTime(walk.started_at)}</Text>
+        <Text style={styles.walkDate}>{formatDate(walk.started_at, lang)}</Text>
+        <Text style={styles.walkTime}>{formatTime(walk.started_at, lang)}</Text>
       </View>
       <View style={styles.walkStats}>
-        <WalkStat value={formatDuration(durationSec)} label="dur" />
-        <WalkStat value={walk.distance_km != null ? `${walk.distance_km.toFixed(2)} km` : '—'} label="dist" />
-        <WalkStat value={walk.steps != null ? String(walk.steps) : '—'} label="steps" />
+        <WalkStat value={formatDuration(durationSec)} label={t('summary.duration')} />
+        <WalkStat value={walk.distance_km != null ? `${walk.distance_km.toFixed(2)} ${t('walk.summary.km')}` : '—'} label={t('summary.distance')} />
+        <WalkStat value={walk.steps != null ? String(walk.steps) : '—'} label={t('summary.steps')} />
       </View>
     </View>
   );

@@ -648,7 +648,7 @@ export function WalkScreen({ navigation }: Props) {
         {/* ── LIVE chip — top center ── */}
         <View style={[styles.liveChip, { top: insets.top + 12 }]}>
           <View style={styles.liveDot} />
-          <Text style={styles.liveTxt}>LIVE</Text>
+          <Text style={styles.liveTxt}>{t('map.live')}</Text>
         </View>
 
         {/* ── Filter — top right group ── */}
@@ -761,14 +761,14 @@ export function WalkScreen({ navigation }: Props) {
           {isHeatLoading ? (
             <>
               <Text style={[styles.heatTemp, { color: heatVis_.color }]}>—°</Text>
-              <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
+              <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ {t('map.heatLabel')}</Text>
             </>
           ) : !heatData.has_data ? (
             <Text style={styles.heatUnavailable} numberOfLines={2}>{t('map.heatUnavailable')}</Text>
           ) : (
             <>
               <Text style={[styles.heatTemp, { color: heatVis_.color }]}>{heatData.surface_est_c}°</Text>
-              <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
+              <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ {t('map.heatLabel')}</Text>
             </>
           )}
         </TouchableOpacity>
@@ -830,8 +830,10 @@ export function WalkScreen({ navigation }: Props) {
 function StatCol({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.statCol}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+      {/* Ограничиваем масштаб системного шрифта: при крупном Dynamic Type
+          цифры/подписи ломали строку и обрезались («ВРЕМ…»). */}
+      <Text style={styles.statValue} maxFontSizeMultiplier={1.2} numberOfLines={1}>{value}</Text>
+      <Text style={styles.statLabel} maxFontSizeMultiplier={1.2} numberOfLines={1}>{label}</Text>
     </View>
   );
 }

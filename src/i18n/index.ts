@@ -37,7 +37,14 @@ const strings: Record<Lang, Record<string, string>> = {
     'map.walkingNearby': 'מטיילים בקרבת מקום',
     'map.heatUnavailable': 'אין נתונים',
     'map.you': 'אני',
-    'map.live': 'חי',
+    'map.live': 'LIVE',
+    'map.heatLabel': 'אספלט',
+    'drawer.subtitle': 'בטא · גוש דן',
+    'profile.dog.age': 'גיל {n}',
+    'profile.dog.weight': '{n} ק״ג',
+    'water.amenity.drinking_water': 'ברזייה',
+    'water.amenity.default': 'נקודת מים',
+    'walk.summary.shareMessage': '{verdict} — {km} ק״מ ב־{mins} דק׳ 🐾',
     'map.filters.hazards': 'סכנות',
     'map.filters.parks': 'פארקים',
     'map.filters.water': 'מים',
@@ -456,7 +463,14 @@ const strings: Record<Lang, Record<string, string>> = {
     'map.walkingNearby': 'walking nearby',
     'map.heatUnavailable': 'no data',
     'map.you': 'You',
-    'map.live': 'Live',
+    'map.live': 'LIVE',
+    'map.heatLabel': 'asphalt',
+    'drawer.subtitle': 'beta · Gush Dan',
+    'profile.dog.age': '{n} yrs',
+    'profile.dog.weight': '{n} kg',
+    'water.amenity.drinking_water': 'drinking fountain',
+    'water.amenity.default': 'water',
+    'walk.summary.shareMessage': '{verdict} — {km} km in {mins} min 🐾',
     'map.filters.hazards': 'Hazards',
     'map.filters.parks': 'Parks',
     'map.filters.water': 'Water',
@@ -875,7 +889,14 @@ const strings: Record<Lang, Record<string, string>> = {
     'map.walkingNearby': 'гуляют рядом',
     'map.heatUnavailable': 'нет данных',
     'map.you': 'Я',
-    'map.live': 'Live',
+    'map.live': 'LIVE',
+    'map.heatLabel': 'асфальт',
+    'drawer.subtitle': 'бета · Гуш-Дан',
+    'profile.dog.age': '{n} г.',
+    'profile.dog.weight': '{n} кг',
+    'water.amenity.drinking_water': 'питьевой фонтанчик',
+    'water.amenity.default': 'вода',
+    'walk.summary.shareMessage': '{verdict} — {km} км за {mins} мин 🐾',
     'map.filters.hazards': 'Опасности',
     'map.filters.parks': 'Парки',
     'map.filters.water': 'Вода',
@@ -1274,7 +1295,9 @@ export function t(key: string, lang: Lang, vars?: Record<string, string | number
   let s = strings[lang]?.[key] ?? strings.en[key] ?? key;
   if (vars) {
     for (const k in vars) {
-      s = s.replace(`{${k}}`, String(vars[k]));
+      // split/join заменяет ВСЕ вхождения {k} (String.replace бил только по
+      // первому — вторая подстановка того же плейсхолдера оставалась сырой).
+      s = s.split(`{${k}}`).join(String(vars[k]));
     }
   }
   return s;

@@ -526,7 +526,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
             emoji={MARKER_CONFIG.water.emoji}
             color={MARKER_CONFIG.water.pinColor}
             title={MARKER_CONFIG.water.emoji}
-            description={w.amenity ?? undefined}
+            description={t(w.amenity === 'drinking_water' ? 'water.amenity.drinking_water' : 'water.amenity.default')}
           />
         ))}
       </MapView>
@@ -585,14 +585,14 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           {isHeatLoading ? (
             <>
               <Text style={[styles.heatTemp, { color: heatVis_.color }]}>—°</Text>
-              <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
+              <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ {t('map.heatLabel')}</Text>
             </>
           ) : !heatData.has_data ? (
             <Text style={styles.heatUnavailable} numberOfLines={2}>{t('map.heatUnavailable')}</Text>
           ) : (
             <>
               <Text style={[styles.heatTemp, { color: heatVis_.color }]}>{heatData.surface_est_c}°</Text>
-              <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ asphalt</Text>
+              <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ {t('map.heatLabel')}</Text>
             </>
           )}
         </TouchableOpacity>

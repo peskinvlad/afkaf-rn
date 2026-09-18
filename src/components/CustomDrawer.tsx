@@ -86,7 +86,7 @@ export function CustomDrawer({ open, onClose, onNavigate, activeScreen }: Props)
       >
         <View style={styles.header}>
           <Text style={styles.logo}>🐾 afkaf</Text>
-          <Text style={styles.tagline}>Florentin, TLV</Text>
+          <Text style={styles.tagline}>{t('drawer.subtitle')}</Text>
         </View>
 
         <View style={styles.menu}>

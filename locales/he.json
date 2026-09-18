@@ -1,0 +1,6 @@
+{
+  "NSMotionUsageDescription": "נתוני התנועה משמשים את afkaf לספירת הצעדים שלך בטיול.",
+  "NSPhotoLibraryUsageDescription": "הגישה לתמונות נדרשת כדי לבחור תמונה לפרופיל של הכלב.",
+  "NSLocationWhenInUseUsageDescription": "המיקום שלך משמש להצגת כלבים, טיולים וסכנות בקרבתך על המפה ולתיעוד מסלול הטיול.",
+  "NSLocationAlwaysAndWhenInUseUsageDescription": "המיקום ברקע מאפשר להמשיך לתעד את המסלול גם כשהאפליקציה ברקע או שהמסך נעול."
+}
