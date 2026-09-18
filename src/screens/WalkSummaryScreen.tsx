@@ -113,8 +113,9 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
           <Text style={styles.completeChipTxt}>{t('walk.summary.complete')}</Text>
         </View>
 
-        {/* Map bottom row */}
-        <View style={styles.mapBottomRow}>
+        {/* Map top row — под «complete»-пиллом. Раньше сидел внизу и перекрывал
+            нижние углы карты, где Apple рисует логотип (слева) и Legal (справа). */}
+        <View style={[styles.mapTopRow, { top: insets.top + 52 }]}>
           {/* Distance chip — bottom left */}
           <View style={[styles.distanceChip, shadows.sm]}>
             <Text style={styles.distanceTxt}>{kmStr} {t('walk.summary.km')}</Text>
@@ -249,14 +250,14 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
 
-  mapBottomRow: {
+  mapTopRow: {
     position: 'absolute',
-    bottom: 12,
+    // top задаётся инлайном (insets.top + 52) — ниже центрального «complete»-пилла.
     left: 14,
     right: 14,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
+    alignItems: 'flex-start',
     zIndex: 30,
   },
   distanceChip: {
