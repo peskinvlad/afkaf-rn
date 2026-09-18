@@ -280,6 +280,11 @@ export function WalkScreen({ navigation }: Props) {
   // Skipped entirely for guests and for visibility='nobody'.
   const activeWalkUserId = useRef<string | null>(null);
   const activeWalkRowExists = useRef(false);
+  // Зеркало activeWalkRowExists в state для бейджа: показывает, публикуется ли
+  // позиция ПРЯМО СЕЙЧАС. Читает ТО ЖЕ решение (см. syncActiveWalkRow), а не
+  // считает геометрию зоны заново. Обновляется только там, где меняется сам
+  // activeWalkRowExists (создание/удаление строки active_walks).
+  const [isPublishing, setIsPublishing] = useState(false);
   const activeWalkStartAttempted = useRef(false);
   const latestPos = useRef<LatLng | null>(null);
   const distanceKmRef = useRef(0);
@@ -335,7 +340,10 @@ export function WalkScreen({ navigation }: Props) {
       },
       { onConflict: 'user_id' }
     );
-    if (!error) activeWalkRowExists.current = true;
+    if (!error) {
+      activeWalkRowExists.current = true;
+      setIsPublishing(true);
+    }
   }
 
   async function pingActiveWalkRow(pt: LatLng) {
@@ -354,6 +362,7 @@ export function WalkScreen({ navigation }: Props) {
   async function stopActiveWalkRow() {
     if (!activeWalkRowExists.current || !activeWalkUserId.current) return;
     activeWalkRowExists.current = false;
+    setIsPublishing(false);
     await supabase.from('active_walks').delete().eq('user_id', activeWalkUserId.current);
   }
 
@@ -647,8 +656,10 @@ export function WalkScreen({ navigation }: Props) {
 
         {/* ── LIVE chip — top center ── */}
         <View style={[styles.liveChip, { top: insets.top + 12 }]}>
-          <View style={styles.liveDot} />
-          <Text style={styles.liveTxt}>{t('map.live')}</Text>
+          <View style={[styles.liveDot, !isPublishing && styles.hiddenDot]} />
+          <Text style={[styles.liveTxt, !isPublishing && styles.hiddenTxt]}>
+            {isPublishing ? t('map.live') : t('map.hidden')}
+          </Text>
         </View>
 
         {/* ── Filter — top right group ── */}
@@ -895,6 +906,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
     letterSpacing: 1,
+  },
+  // Позиция не публикуется (гость / «Никто» / домашняя зона) — серые точка и текст.
+  hiddenDot: {
+    backgroundColor: colors.textMuted,
+  },
+  hiddenTxt: {
+    color: colors.textMuted,
   },
 
 
