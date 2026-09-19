@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Easing,
   StyleSheet,
@@ -43,7 +44,7 @@ interface Props {
   onClose: () => void;
 }
 
-const AUTO_CLOSE_MS = 800; // after a fresh vote: show the ✓, then dismiss
+const VOTE_FEEDBACK_MS = 2000; // after a fresh vote: show the thank-you note this long, then restore the meta line
 
 type TFn = (key: string, vars?: Record<string, string | number>) => string;
 
@@ -196,7 +197,10 @@ function CalloutBubble({
   const [counts, setCounts] = useState<VoteCounts>({ still_there: 0, gone: 0 });
   const [loading, setLoading] = useState(false);
   const [voting, setVoting] = useState(false);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Right after a vote lands, the meta line briefly swaps to a "thanks" note
+  // (see below) so the tap has an unmistakable acknowledgement.
+  const [justVoted, setJustVoted] = useState(false);
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Dev-only trust-test: bypass the client-side own-marker gate. Always false
   // outside DEV_USER_IDS (the getter checks the list itself).
   const [devVoteOwn, setDevVoteOwn] = useState(false);
@@ -247,40 +251,55 @@ function CalloutBubble({
 
   useEffect(() => {
     return () => {
-      if (closeTimer.current) clearTimeout(closeTimer.current);
+      if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
     };
   }, []);
 
   async function handleVote(vote: VoteValue) {
     if (!currentUserId || voting) return;
+
+    // Snapshot for rollback: if the server rejects the vote we put the button
+    // and counter back exactly as they were.
+    const prevVote = myVote;
+    const prevCounts = counts;
+
+    // Optimistic — the tap is acknowledged instantly, before the network:
+    // the button fills / gets its ✓, the "confirmed N times" counter moves,
+    // and the meta line flips to the thank-you note. A light tap of haptics
+    // seals it.
+    setCounts((prev) => {
+      const next = { ...prev };
+      if (prevVote) next[prevVote] = Math.max(0, next[prevVote] - 1);
+      next[vote] += 1;
+      return next;
+    });
+    setMyVote(vote);
+    setJustVoted(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = setTimeout(() => setJustVoted(false), VOTE_FEEDBACK_MS);
+
+    // voting blocks a second tap while the request is in flight (no visual
+    // graying — the buttons just stop responding).
     setVoting(true);
-    try {
-      const { error } = await supabase
-        .from('marker_votes')
-        .upsert(
-          { marker_id: marker.id, user_id: currentUserId, vote },
-          { onConflict: 'marker_id,user_id' }
-        );
-      if (error) {
-        // supabase-js returns the error rather than throwing — without this
-        // check a failed/offline vote still showed the optimistic ✓ and
-        // auto-closed, so the user thought it landed. Leave the UI untouched.
-        console.warn('[MarkerCallout] vote failed:', error.message);
-        return;
-      }
-      // Optimistic update
-      setCounts((prev) => {
-        const next = { ...prev };
-        if (myVote) next[myVote] = Math.max(0, next[myVote] - 1);
-        next[vote] += 1;
-        return next;
-      });
-      setMyVote(vote);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      if (closeTimer.current) clearTimeout(closeTimer.current);
-      closeTimer.current = setTimeout(onClose, AUTO_CLOSE_MS);
-    } finally {
-      setVoting(false);
+    const { error } = await supabase
+      .from('marker_votes')
+      .upsert(
+        { marker_id: marker.id, user_id: currentUserId, vote },
+        { onConflict: 'marker_id,user_id' }
+      );
+    setVoting(false);
+
+    if (error) {
+      // supabase-js returns the error rather than throwing. Roll the optimistic
+      // change back and tell the user, so a failed/offline vote is never
+      // mistaken for a counted one.
+      console.warn('[MarkerCallout] vote failed:', error.message);
+      if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+      setCounts(prevCounts);
+      setMyVote(prevVote);
+      setJustVoted(false);
+      Alert.alert(t('detail.voteError.title'), t('detail.voteError.body'));
     }
   }
 
@@ -425,6 +444,12 @@ function CalloutBubble({
         {isPermanentPlace ? (
           <Text style={[styles.trustLine, rtl && styles.txtRight]} numberOfLines={2}>
             {placeMeta}
+          </Text>
+        ) : justVoted ? (
+          // For ~2s after a vote the meta line becomes an explicit thank-you,
+          // then reverts to the (now updated) confirmations · distance · time.
+          <Text style={[styles.trustLine, styles.voteThanks, rtl && styles.txtRight]} numberOfLines={2}>
+            {t('detail.voteThanks')}
           </Text>
         ) : (trustLine.length > 0 || fresh) ? (
           <Text style={[styles.trustLine, rtl && styles.txtRight]} numberOfLines={2}>
@@ -608,6 +633,12 @@ const styles = StyleSheet.create({
     ...typography.xs,
     fontFamily: 'Nunito_600SemiBold',
     color: colors.textMuted,
+  },
+  // Same size as the meta line it replaces (so the bubble doesn't jump), but in
+  // the brand green to read as a positive acknowledgement.
+  voteThanks: {
+    color: colors.primaryDark,
+    fontFamily: 'Nunito_700Bold',
   },
 
   loadingRow: {
