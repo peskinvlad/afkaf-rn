@@ -4,6 +4,14 @@
     "slug": "afkaf-rn",
     "scheme": "afkaf",
     "version": "0.1.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/ff653cfd-a587-43dc-ab53-92a296293f3d",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "locales": {
       "he": "./locales/he.json",
       "ru": "./locales/ru.json"

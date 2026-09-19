@@ -13,6 +13,7 @@
     "preview": {
       "distribution": "internal",
       "environment": "preview",
+      "channel": "preview",
       "env": {
         "EXPO_PUBLIC_MAP_DEBUG": "1"
       },
@@ -21,6 +22,7 @@
     "production": {
       "distribution": "store",
       "environment": "production",
+      "channel": "production",
       "autoIncrement": true,
       "ios": {}
     }
