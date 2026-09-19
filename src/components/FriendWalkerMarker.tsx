@@ -43,6 +43,10 @@ export function FriendWalkerMarker({ coordinate, avatar, ageMs, onPress }: Props
       anchor={{ x: 0.5, y: 0.5 }}
       tracksViewChanges={tracksViewChanges}
       onPress={onPress}
+      // Always above hazard/water markers (zIndex 1), whether or not the callout
+      // is open — otherwise the native stack reshuffles on re-render and a
+      // co-located hazard pin can cover the dog. Stays below the user marker (3).
+      zIndex={2}
     >
       <View style={[styles.touchArea, stale && styles.stale]}>
         <View style={styles.disc}>

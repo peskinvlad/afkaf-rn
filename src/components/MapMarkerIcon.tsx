@@ -12,6 +12,10 @@ type Props = {
   onPress?: () => void;
   title?: string;
   description?: string;
+  // Draw order vs other markers. Default 1 (base layer: hazards + water).
+  // Friend pins sit above at 2, the user marker above that at 3 — set explicitly
+  // so the stack can't reshuffle when a marker re-renders (e.g. a callout opens).
+  zIndex?: number;
 };
 
 // Coloured disc + emoji replacing the stock pin. tracksViewChanges stays on
@@ -20,7 +24,7 @@ type Props = {
 // frame — a short timeout is more reliable there than onLayout, which fires
 // before the frame is committed. Then it's switched off so the map doesn't
 // re-rasterise every marker on every frame.
-export function MapMarkerIcon({ coordinate, emoji, color, onPress, title, description }: Props) {
+export function MapMarkerIcon({ coordinate, emoji, color, onPress, title, description, zIndex = 1 }: Props) {
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
   useEffect(() => {
@@ -36,6 +40,7 @@ export function MapMarkerIcon({ coordinate, emoji, color, onPress, title, descri
       onPress={onPress}
       title={title}
       description={description}
+      zIndex={zIndex}
     >
       <View style={styles.touchArea}>
         <View style={[styles.disc, { backgroundColor: color }]}>

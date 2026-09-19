@@ -542,6 +542,8 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
             coordinate={userCoord}
             anchor={{ x: 0.5, y: 0.5 }}
             flat
+            // Above every other marker (friend pins are 2, hazards/water 1).
+            zIndex={3}
             // Constant true on this one marker only: the native-driven rotation
             // needs a live view. The rest of the map never pulses anymore.
             tracksViewChanges
