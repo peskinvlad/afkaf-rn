@@ -6,7 +6,9 @@ import {
   TouchableOpacity,
   Linking,
   StyleSheet,
+  I18nManager,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { useApp } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
@@ -262,10 +264,16 @@ const FAQSection = ({ title, icon, items, isRTL }: { title: string; icon: string
   );
 };
 
-export default function AboutScreen() {
+export default function AboutScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
   const { lang } = useApp();
   const t = STRINGS[lang] ?? STRINGS.en;
   const isRTL = lang === 'he';
+  // Back arrow follows the layout direction, not the content language. The app
+  // is locked to LTR (I18nManager.isRTL stays false), so the arrow sits on the
+  // left and points left in every language — same as Settings / Notifications.
+  // `isRTL` above is content-only (text alignment) and must NOT drive the header.
+  const layoutRTL = I18nManager.isRTL;
 
   // ── Hidden dev entry ──────────────────────────────────────────────────────
   // 5 quick taps on the version line open DevPanel — only for DEV_USER_IDS.
@@ -310,7 +318,21 @@ export default function AboutScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      {/* Header — same pattern as Settings / Notifications */}
+      <View style={[styles.header, layoutRTL && styles.rowReverse]}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backBtn}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Text style={styles.backArrow}>{layoutRTL ? '→' : '←'}</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{t.title}</Text>
+        <View style={styles.backBtn} />
+      </View>
+
+      <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.hero}>
         <Text style={styles.pawIcon}>🐾</Text>
         <Text style={styles.appName}>afkaf</Text>
@@ -371,7 +393,8 @@ export default function AboutScreen() {
       {devPanelVisible && (
         <DevPanel visible={devPanelVisible} onClose={() => setDevPanelVisible(false)} />
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -386,9 +409,20 @@ const WHITE = '#ffffff';
 const BORDER = '#dde8dc';
 
 const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: BG },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  backBtn: { width: 36, alignItems: 'center' },
+  backArrow: { fontSize: 20, color: TEXT_DARK },
+  headerTitle: { fontFamily: 'Nunito-Bold', fontSize: 18, color: TEXT_DARK, flex: 1, textAlign: 'center' },
   container: { flex: 1, backgroundColor: BG },
   content: { paddingBottom: 48 },
-  hero: { backgroundColor: PRIMARY, paddingTop: 48, paddingBottom: 36, alignItems: 'center' },
+  hero: { backgroundColor: PRIMARY, paddingTop: 28, paddingBottom: 36, alignItems: 'center' },
   pawIcon: { fontSize: 40, marginBottom: 8 },
   appName: { fontFamily: 'Nunito-ExtraBold', fontSize: 36, color: WHITE, letterSpacing: 1 },
   tagline: { fontFamily: 'Nunito-Regular', fontSize: 15, color: 'rgba(255,255,255,0.8)', textAlign: 'center', marginTop: 6, lineHeight: 22 },
