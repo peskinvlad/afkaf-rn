@@ -170,7 +170,6 @@ export function useAsphaltTemp(lang: Lang): AsphaltTempResult {
         // Forecast arrives slightly later — update separately without blocking main UI
         const forecast = await forecastPromise;
         if (cancelled) return true;
-        console.log('[useAsphaltTemp] hourlyForecast length:', forecast.length, 'first:', forecast[0]);
         setHourlyForecast(forecast);
         return true;
       } catch (e) {
