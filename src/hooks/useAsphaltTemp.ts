@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 import { LatLng } from '../lib/geo';
+import { Lang } from '../i18n';
 import { getDevAsphaltOverride, onDevSettingsChange } from '../constants/dev';
 import { HeatStatus, statusFor, surfaceFromAir, getEffectiveAsphaltTemp } from '../lib/heat';
+
+// App language → OpenWeatherMap `lang` code. OWM happens to use the same codes
+// we do (he/en/ru), but map explicitly so a new app language can't silently
+// fall back to English.
+const OWM_LANG: Record<Lang, string> = { he: 'he', en: 'en', ru: 'ru' };
 
 // Пороги и подмена оверрайдом живут в lib/heat.ts — здесь только ре-экспорт
 // типа для существующих импортёров.
@@ -45,10 +51,10 @@ interface CurrentWeather {
   icon: string;
 }
 
-async function fetchCurrentWeather(lat: number, lon: number): Promise<CurrentWeather | null> {
+async function fetchCurrentWeather(lat: number, lon: number, lang: Lang): Promise<CurrentWeather | null> {
   const key = process.env.EXPO_PUBLIC_OPENWEATHER_API_KEY;
   const res = await fetch(
-    `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${key}`
+    `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&lang=${OWM_LANG[lang]}&appid=${key}`
   );
   if (!res.ok) return null;
   const data = await res.json();
@@ -60,10 +66,10 @@ async function fetchCurrentWeather(lat: number, lon: number): Promise<CurrentWea
   };
 }
 
-async function fetchForecast(lat: number, lon: number): Promise<HourlyPoint[]> {
+async function fetchForecast(lat: number, lon: number, lang: Lang): Promise<HourlyPoint[]> {
   const key = process.env.EXPO_PUBLIC_OPENWEATHER_API_KEY;
   const res = await fetch(
-    `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${key}`
+    `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&lang=${OWM_LANG[lang]}&appid=${key}`
   );
   if (!res.ok) return [];
   const data = await res.json();
@@ -81,7 +87,7 @@ async function fetchForecast(lat: number, lon: number): Promise<HourlyPoint[]> {
   });
 }
 
-export function useAsphaltTemp(): AsphaltTempResult {
+export function useAsphaltTemp(lang: Lang): AsphaltTempResult {
   const [surfaceTempC, setSurfaceTempC] = useState<number | null>(null);
   const [airTempC, setAirTempC] = useState<number | null>(null);
   const [feelsLikeC, setFeelsLikeC] = useState<number | null>(null);
@@ -141,8 +147,8 @@ export function useAsphaltTemp(): AsphaltTempResult {
         setIsFallbackLocation(usedFallback);
 
         // Fire both requests in parallel, but unblock loading as soon as current weather arrives
-        const currentPromise = fetchCurrentWeather(coords.latitude, coords.longitude);
-        const forecastPromise = fetchForecast(coords.latitude, coords.longitude);
+        const currentPromise = fetchCurrentWeather(coords.latitude, coords.longitude, lang);
+        const forecastPromise = fetchForecast(coords.latitude, coords.longitude, lang);
 
         const current = await currentPromise;
         if (cancelled) return true;
@@ -183,7 +189,10 @@ export function useAsphaltTemp(): AsphaltTempResult {
       if (retryTimer) clearTimeout(retryTimer);
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, []);
+    // lang is a dependency: switching language re-runs this effect, which fires
+    // a fresh fetch right away, so the weather description is re-localized
+    // immediately instead of waiting for the next 30-min refresh.
+  }, [lang]);
 
   // Единая точка подмены — та же функция, что задаёт статус всем потребителям.
   const effective = getEffectiveAsphaltTemp(surfaceTempC, devOverrideC);

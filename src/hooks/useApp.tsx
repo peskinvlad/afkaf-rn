@@ -130,7 +130,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     surfaceTempC, airTempC, status: heatStatus, loading: isHeatLoading,
     feelsLikeC, weatherDescription, weatherIcon, hourlyForecast, isFallbackLocation,
     overrideActive: heatOverrideActive, realSurfaceTempC,
-  } = useAsphaltTemp();
+  } = useAsphaltTemp(lang);
   const heatData: HeatData = {
     status: heatStatus,
     surface_est_c: surfaceTempC ?? 0,
