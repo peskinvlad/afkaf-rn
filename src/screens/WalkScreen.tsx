@@ -28,6 +28,8 @@ import { filterMarkersAndWater } from '../lib/markerFilter';
 import { MARKER_CONFIG, INFRA_MARKER_TYPES, nextInfraHidden } from '../lib/markerConfig';
 import { MarkerFilterSheet, RadiusFilter } from '../components/MarkerFilterSheet';
 import { MarkerCallout } from '../components/MarkerCallout';
+import { FriendCallout } from '../components/FriendCallout';
+import { FriendWalkerMarker, FRIEND_PIN_HIDE_MS } from '../components/FriendWalkerMarker';
 import { UserLocationMarker } from '../components/UserLocationMarker';
 import { MapMarkerIcon } from '../components/MapMarkerIcon';
 import { FirstWalkTipCard } from '../components/FirstWalkTipCard';
@@ -72,7 +74,7 @@ interface Props {
 export function WalkScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const {
-    t, heatData, isHeatLoading, isGuest, confirmedCount,
+    t, rtl, heatData, isHeatLoading, isGuest, confirmedCount,
     radius, setRadius, activeCategories, toggleCategory, userLocation, setUserLocation,
   } = useApp();
   const heatVis_ = heatVis[heatData.status];
@@ -146,11 +148,39 @@ export function WalkScreen({ navigation }: Props) {
     detailMarker ? { latitude: detailMarker.lat, longitude: detailMarker.lng } : null
   );
 
+  // Walking friends → pins (same rules as MapScreen: accepted friends, fresh,
+  // valid coords). See friendWalkers/FriendWalkerMarker.
+  const friendWalkers = useMemo(() => {
+    const now = Date.now();
+    return nearbyDogs
+      .filter((d) => friendStatusByUser[d.userId] === 'friends')
+      .map((d) => ({ ...d, ageMs: now - d.updatedAt }))
+      .filter((d) => d.ageMs <= FRIEND_PIN_HIDE_MS && isValidCoord({ latitude: d.lat, longitude: d.lng }));
+  }, [nearbyDogs, friendStatusByUser]);
+
+  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
+  const selectedFriend = selectedFriendId
+    ? friendWalkers.find((w) => w.userId === selectedFriendId) ?? null
+    : null;
+  const { point: friendAnchor, refresh: refreshFriendAnchor } = useCalloutAnchor(
+    mapRef,
+    selectedFriend ? { latitude: selectedFriend.lat, longitude: selectedFriend.lng } : null
+  );
+
+  function handleWalkNearbyCardPress(userId: string) {
+    const w = friendWalkers.find((x) => x.userId === userId);
+    if (!w) return;
+    setNearbySheetVisible(false);
+    const center = { latitude: w.lat, longitude: w.lng };
+    if (isValidCoord(center)) mapRef.current?.animateCamera({ center }, { duration: 350 });
+  }
+
   function handleMapPress(e: MapPressEvent) {
     // Android delivers a marker tap through the map's onPress as well. That
     // gesture is what opened the callout — it must not close it again.
     if (e.nativeEvent.action === 'marker-press') return;
     setDetailMarker(null);
+    setSelectedFriendId(null);
   }
   const hiddenCount = Object.values(activeCategories).filter((v) => !v).length;
   // Memoised so a re-render that doesn't move the walker (e.g. the 1s timer
@@ -609,10 +639,12 @@ export function WalkScreen({ navigation }: Props) {
             // During the gesture the anchor is recomputed as fast as the bridge
             // keeps up; the Complete event guarantees a final exact placement.
             refreshCalloutAnchor();
+            refreshFriendAnchor();
           }}
           onRegionChangeComplete={(region) => {
             setInfraHidden((prev) => nextInfraHidden(prev, region?.latitudeDelta));
             refreshCalloutAnchor();
+            refreshFriendAnchor();
           }}
         >
           {route.length > 1 && (
@@ -624,6 +656,8 @@ export function WalkScreen({ navigation }: Props) {
               coordinate={userCoord}
               anchor={{ x: 0.5, y: 0.5 }}
               flat
+              // Above every other marker (friend pins are 2, hazards/water 1).
+              zIndex={3}
               // Constant true on this one marker only — the native-driven
               // rotation needs a live view; no more per-fix pulsing.
               tracksViewChanges
@@ -638,7 +672,7 @@ export function WalkScreen({ navigation }: Props) {
               coordinate={{ latitude: m.lat, longitude: m.lng }}
               emoji={MARKER_CONFIG[m.type]?.emoji ?? '📍'}
               color={MARKER_CONFIG[m.type]?.pinColor ?? '#6b7280'}
-              onPress={() => setDetailMarker(m)}
+              onPress={() => { setSelectedFriendId(null); setDetailMarker(m); }}
             />
           ))}
 
@@ -650,6 +684,16 @@ export function WalkScreen({ navigation }: Props) {
               color={MARKER_CONFIG.water.pinColor}
               title={MARKER_CONFIG.water.emoji}
               description={w.amenity ?? undefined}
+            />
+          ))}
+
+          {friendWalkers.map((w) => (
+            <FriendWalkerMarker
+              key={`friend-${w.userId}`}
+              coordinate={{ latitude: w.lat, longitude: w.lng }}
+              avatar={w.avatar}
+              ageMs={w.ageMs}
+              onPress={() => { setDetailMarker(null); setSelectedFriendId(w.userId); }}
             />
           ))}
         </MapView>
@@ -664,7 +708,7 @@ export function WalkScreen({ navigation }: Props) {
 
         {/* ── Filter — top right group ── */}
         <TouchableOpacity
-          onPress={() => { setDetailMarker(null); setFilterSheetOpen(true); }}
+          onPress={() => { setDetailMarker(null); setSelectedFriendId(null); setFilterSheetOpen(true); }}
           style={[styles.iconBtn, shadows.sm, { position: 'absolute', zIndex: 30, top: insets.top + 8, right: 70 }]}
           activeOpacity={0.8}
           hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
@@ -679,7 +723,7 @@ export function WalkScreen({ navigation }: Props) {
 
         {/* ── Bell — top right ── */}
         <TouchableOpacity
-          onPress={() => { setDetailMarker(null); navigation.navigate('Alerts'); }}
+          onPress={() => { setDetailMarker(null); setSelectedFriendId(null); navigation.navigate('Alerts'); }}
           style={[styles.iconBtn, shadows.sm, { position: 'absolute', zIndex: 30, top: insets.top + 8, right: 14 }]}
           activeOpacity={0.8}
           hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
@@ -695,6 +739,17 @@ export function WalkScreen({ navigation }: Props) {
           marker={detailMarker}
           anchor={calloutAnchor}
           onClose={() => setDetailMarker(null)}
+        />
+
+        <FriendCallout
+          friend={selectedFriend
+            ? { dogName: selectedFriend.dogName, ownerName: selectedFriend.ownerName, updatedAt: selectedFriend.updatedAt }
+            : null}
+          anchor={friendAnchor}
+          topInset={insets.top}
+          t={t}
+          rtl={rtl}
+          onClose={() => setSelectedFriendId(null)}
         />
       </View>
 
@@ -714,7 +769,7 @@ export function WalkScreen({ navigation }: Props) {
         </View>
 
         {/* Walkers nearby — opens the same NearbyDogsSheet as MapScreen */}
-        <TouchableOpacity style={styles.nearbyRow} activeOpacity={0.7} onPress={() => { setDetailMarker(null); setNearbySheetVisible(true); }}>
+        <TouchableOpacity style={styles.nearbyRow} activeOpacity={0.7} onPress={() => { setDetailMarker(null); setSelectedFriendId(null); setNearbySheetVisible(true); }}>
           <Text style={styles.nearbyEmoji}>🐕🐕🦮</Text>
           <Text style={styles.nearbyTxt}>{nearbyTotal}  {t('walk.nearby')}</Text>
           <Text style={styles.nearbyArrow}>▼</Text>
@@ -824,6 +879,7 @@ export function WalkScreen({ navigation }: Props) {
           statusByUser={friendStatusByUser}
           onAddFriend={handleAddNearbyFriend}
           sendingUserId={sendingFriendId}
+          onCardPress={handleWalkNearbyCardPress}
           onInvite={() => setShareVisible(true)}
         />
       </View>

@@ -11,6 +11,7 @@ interface WalkRow {
   user_id: string;
   lat: number;
   lng: number;
+  updated_at: string;
 }
 
 // Nearby dogs within RADIUS_KM, filtered client-side (row count is small).
@@ -48,7 +49,7 @@ export function useNearbyDogs(userLocation: LatLng | null) {
     }
 
     const [{ data: walks }, { data: hidden }] = await Promise.all([
-      supabase.from('active_walks').select('user_id, lat, lng'),
+      supabase.from('active_walks').select('user_id, lat, lng, updated_at'),
       supabase.rpc('get_hidden_walks_count', { user_lat: loc.latitude, user_lng: loc.longitude }),
     ]);
 
@@ -65,6 +66,11 @@ export function useNearbyDogs(userLocation: LatLng | null) {
         dogName: p?.dog_name ?? '',
         ownerName: p?.display_name ?? '',
         avatar: p?.dog_avatar ?? '🐕',
+        lat: w.lat,
+        lng: w.lng,
+        // No updated_at (shouldn't happen — RLS already filters on it) → treat as
+        // "now" so a missing timestamp never hides an otherwise-visible friend.
+        updatedAt: w.updated_at ? new Date(w.updated_at).getTime() : Date.now(),
       };
     });
 
