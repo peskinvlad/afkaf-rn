@@ -193,10 +193,10 @@ const strings: Record<Lang, Record<string, string>> = {
     'detail.votes': 'הצבעות',
     'detail.stillHere': 'עדיין פה',
     'detail.gone.vote': 'נעלם',
-    'detail.voteThanks': 'תודה! קיבלנו את ההצבעה',
+    'detail.voteThanks': 'תודה! עדכנו את הסימון',
     'detail.voteError.title': 'לא הצלחנו',
-    'detail.voteError.body': 'ההצבעה לא נשלחה. בדוק את החיבור ונסה שוב.',
-    'detail.loginToVote': 'התחבר כדי להצביע',
+    'detail.voteError.body': 'עדכון הסימון לא נשלח. בדוק את החיבור ונסה שוב.',
+    'detail.loginToVote': 'התחבר כדי לעדכן סימונים',
     'detail.confirmedTimes': 'אושרה {n} פעמים',
     'detail.distance.m': '{n} מ׳',
     'detail.distance.km': '{n} ק״מ',
@@ -212,7 +212,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'settings.heatWarn': 'התראת חום',
 
     'register.prompt.title': 'כדי לתרום צריך חשבון',
-    'register.prompt.body': 'צור חשבון כדי לסמן מפגעים, להצביע ולהתחבר עם שכנים.',
+    'register.prompt.body': 'צור חשבון כדי לסמן מפגעים, לעדכן סימונים ולהתחבר עם שכנים.',
     'register.prompt.cta': 'יצירת חשבון',
     'register.prompt.later': 'אולי אחר כך',
 
