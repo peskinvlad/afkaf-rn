@@ -7,16 +7,19 @@ development-сборки (dev client, APK) на ветке `exp/android`. Сег
 
 ## Карта (Google Maps)
 
-- **Ключ Google Maps API.** Сегодня собираем БЕЗ ключа — карта будет пустой
-  (серая сетка), приложение при этом не падает. Позже завести ключ «чистым»
-  вариантом:
+- **Ключ Google Maps API.** ВАЖНО: без ключа на Android приложение **падает**
+  при создании карты (`java.lang.RuntimeException: API key not found`,
+  `com.rnmaps.maps.MapView.<init>`) — это НЕ «серая карта», а краш. Первая
+  dev-сборка это подтвердила.
+  - **Механизм подключения уже готов** (сделано): `app.config.js` дописывает
+    `expo.android.config.googleMaps.apiKey` из переменной окружения
+    `GOOGLE_MAPS_ANDROID_API_KEY`. Ключ в git не попадает. Осталось только
+    завести саму переменную в EAS и получить ключ в Google Cloud.
   - Google Cloud Console → включить **Maps SDK for Android** → создать **API key**.
   - Ограничить ключ по **package** (`com.afkaf.app`) + **SHA-1** отпечатку
     keystore (SHA-1 берётся из `eas credentials` после первой сборки).
-  - Ключ НЕ коммитить: завести `EXPO_PUBLIC_*` переменную в EAS (environment
-    `development`) + добавить `app.config.js`, который подставит её в
-    `expo.android.config.googleMaps.apiKey`. (Сейчас конфиг статичный `app.json`
-    без `app.config.js`.)
+  - Завести `GOOGLE_MAPS_ANDROID_API_KEY` в EAS для окружений **development** и
+    **preview** (значение — ключ из Google Cloud).
 
 - **Поведение меток и зума на Google Maps.** На Android действует Google Maps,
   не Apple Maps, поэтому:
