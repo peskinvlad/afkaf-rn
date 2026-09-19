@@ -111,8 +111,6 @@ export function PavementTempScreen({ navigation }: any) {
   const sliderPct = scalePos(heatData.surface_est_c) * 100;
   const nowStr = fmtTime(Date.now() / 1000);
 
-  console.log('[PavementTemp] hourlyForecast in render:', hourlyForecast?.length);
-
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       {/* ── Header ── */}
@@ -206,7 +204,6 @@ export function PavementTempScreen({ navigation }: any) {
               style={styles.forecastScroll}
             >
               {hourlyForecast.map((pt, i) => {
-                console.log('[PavementTemp] rendering forecast card', i, pt.timeEpoch);
                 const ptVis = heatVis[pt.status];
                 const isCurrent = i === currentIdx;
                 const WeatherIcon = iconToLucide(pt.icon);
