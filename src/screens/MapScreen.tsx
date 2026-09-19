@@ -435,10 +435,12 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   }
 
   function handleMenuPress() {
+    setDetailMarker(null); // the popup floats above the map — don't let it hang over the drawer
     onMenuPress?.();
   }
 
   function handleBellPress() {
+    setDetailMarker(null);
     navigation.navigate('Alerts');
   }
 
@@ -544,7 +546,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
 
       {/* ── Filter — top-right group ── */}
       <TouchableOpacity
-        onPress={() => setFilterSheetOpen(true)}
+        onPress={() => { setDetailMarker(null); setFilterSheetOpen(true); }}
         style={[styles.iconBtn, shadows.sm, { position: 'absolute', zIndex: 30, top: insets.top + 8, right: 66 }]}
         activeOpacity={0.8}
       >
@@ -649,7 +651,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         style={[styles.bottomPanel, { paddingBottom: insets.bottom + 12 }]}
         onLayout={e => setBottomPanelHeight(e.nativeEvent.layout.height)}
       >
-        <TouchableOpacity onPress={() => setNearbySheetVisible(true)} activeOpacity={0.7}>
+        <TouchableOpacity onPress={() => { setDetailMarker(null); setNearbySheetVisible(true); }} activeOpacity={0.7}>
           <View style={styles.walkersRow}>
             <Text style={styles.walkersEmoji}>🐕🐕🦮</Text>
             <Text style={styles.walkersTxt}>{nearbyTotal}  {t('map.walkingNearby')}</Text>
@@ -659,6 +661,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         <WalkSlider
           asphaltTemp={heatData.surface_est_c}
           onWalkStart={handleStartWalk}
+          onSwipeStart={() => setDetailMarker(null)}
         />
       </View>
 

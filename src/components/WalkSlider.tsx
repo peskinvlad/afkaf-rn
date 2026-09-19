@@ -38,9 +38,12 @@ const PILL_COLORS = {
 interface Props {
   asphaltTemp: number;
   onWalkStart: () => void;
+  // Fired the moment the user starts dragging the slider — the map screen uses
+  // it to dismiss an open marker popup so it can't hang over the walk UI.
+  onSwipeStart?: () => void;
 }
 
-export function WalkSlider({ asphaltTemp, onWalkStart }: Props) {
+export function WalkSlider({ asphaltTemp, onWalkStart, onSwipeStart }: Props) {
   const { t } = useApp();
   const dragX = useRef(new Animated.Value(0)).current;
 
@@ -58,6 +61,13 @@ export function WalkSlider({ asphaltTemp, onWalkStart }: Props) {
     onWalkStartRef.current = onWalkStart;
   }, [onWalkStart]);
 
+  // Same frozen-closure trap as onWalkStart: the PanResponder is built once, so
+  // read the latest callback through a ref rather than the first render's copy.
+  const onSwipeStartRef = useRef(onSwipeStart);
+  useEffect(() => {
+    onSwipeStartRef.current = onSwipeStart;
+  }, [onSwipeStart]);
+
   // Same trap: `triggered` used to be state read from that frozen closure, so
   // it was permanently false and the re-entrancy guard did nothing. It never
   // took part in rendering, so a ref is both correct and one render cheaper.
@@ -67,6 +77,10 @@ export function WalkSlider({ asphaltTemp, onWalkStart }: Props) {
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
+
+      onPanResponderGrant: () => {
+        onSwipeStartRef.current?.();
+      },
 
       onPanResponderMove: (_, { dx }) => {
         const clamped = Math.max(0, Math.min(dx, TRACK_W));

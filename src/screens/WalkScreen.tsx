@@ -664,7 +664,7 @@ export function WalkScreen({ navigation }: Props) {
 
         {/* ── Filter — top right group ── */}
         <TouchableOpacity
-          onPress={() => setFilterSheetOpen(true)}
+          onPress={() => { setDetailMarker(null); setFilterSheetOpen(true); }}
           style={[styles.iconBtn, shadows.sm, { position: 'absolute', zIndex: 30, top: insets.top + 8, right: 70 }]}
           activeOpacity={0.8}
           hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
@@ -679,7 +679,7 @@ export function WalkScreen({ navigation }: Props) {
 
         {/* ── Bell — top right ── */}
         <TouchableOpacity
-          onPress={() => navigation.navigate('Alerts')}
+          onPress={() => { setDetailMarker(null); navigation.navigate('Alerts'); }}
           style={[styles.iconBtn, shadows.sm, { position: 'absolute', zIndex: 30, top: insets.top + 8, right: 14 }]}
           activeOpacity={0.8}
           hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
@@ -714,7 +714,7 @@ export function WalkScreen({ navigation }: Props) {
         </View>
 
         {/* Walkers nearby — opens the same NearbyDogsSheet as MapScreen */}
-        <TouchableOpacity style={styles.nearbyRow} activeOpacity={0.7} onPress={() => setNearbySheetVisible(true)}>
+        <TouchableOpacity style={styles.nearbyRow} activeOpacity={0.7} onPress={() => { setDetailMarker(null); setNearbySheetVisible(true); }}>
           <Text style={styles.nearbyEmoji}>🐕🐕🦮</Text>
           <Text style={styles.nearbyTxt}>{nearbyTotal}  {t('walk.nearby')}</Text>
           <Text style={styles.nearbyArrow}>▼</Text>
