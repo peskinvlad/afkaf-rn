@@ -500,6 +500,12 @@ function VoteButton({
           !isPrimary && active && styles.voteBtnTxtGhostActive,
         ]}
         numberOfLines={1}
+        // The pair splits the bubble width evenly (flex:1), so a long Russian
+        // label — "✓ Ещё здесь", or Hebrew "✓ עדיין פה" — nudges the font down
+        // a touch instead of truncating or wrapping. Floor at 0.85 so it never
+        // shrinks to unreadable.
+        adjustsFontSizeToFit
+        minimumFontScale={0.85}
       >
         {active ? `✓ ${label}` : label}
       </Text>
@@ -621,12 +627,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   voteBtn: {
+    // No fixed width: each button just takes half of whatever the bubble is
+    // (flex:1 + the row's 8pt gap), so the pair can never push the bubble
+    // wider than its content — the Russian labels used to force a minWidth of
+    // 116 each and spill past the popup edge. The label text shrinks to fit
+    // (see VoteButton) instead of the button growing to fit the label.
     flex: 1,
-    // Floor so the longest label fits with its ✓ prefix ("✓ Ещё здесь", and
-    // Hebrew is wider still): two of these + gap + bubble padding push the
-    // bubble out to ~268pt, under MAX_WIDTH, so nothing truncates. flex:1 keeps
-    // the pair equal-width when other content makes the bubble wider.
-    minWidth: 116,
     height: 42,
     borderRadius: radii.sm,
     alignItems: 'center',
