@@ -19,6 +19,8 @@ import { colors, radii, shadows, heatVis } from '../theme/tokens';
 import { WalkSlider } from '../components/WalkSlider';
 import { MarkerFilterSheet, RadiusFilter } from '../components/MarkerFilterSheet';
 import { MarkerCallout } from '../components/MarkerCallout';
+import { FriendCallout } from '../components/FriendCallout';
+import { FriendWalkerMarker, FRIEND_PIN_HIDE_MS } from '../components/FriendWalkerMarker';
 import { UserLocationMarker } from '../components/UserLocationMarker';
 import { MapMarkerIcon } from '../components/MapMarkerIcon';
 import { useMapMarkers } from '../hooks/useMapMarkers';
@@ -82,7 +84,7 @@ interface Props {
 export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   const insets = useSafeAreaInsets();
   const {
-    t, heatData, isHeatLoading, setIsWalking, isGuest, isWalking, isTrusted,
+    t, rtl, heatData, isHeatLoading, setIsWalking, isGuest, isWalking, isTrusted,
     radius, setRadius, activeCategories, toggleCategory, userLocation, setUserLocation,
   } = useApp();
 
@@ -92,6 +94,25 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   const { statusByUser: friendStatusByUser, refresh: refreshFriends } = useFriends();
   const [sendingFriendId, setSendingFriendId] = useState<string | null>(null);
   const [shareVisible, setShareVisible] = useState(false);
+
+  // Walking friends we draw a pin for: accepted friends only, with a valid
+  // position that isn't older than the hide cutoff. `everyone`-visibility
+  // strangers stay in the sheet without a pin. Recomputed each 30s poll, so a
+  // finished walk drops out (row gone) and a stale pin fades/disappears.
+  const friendWalkers = useMemo(() => {
+    const now = Date.now();
+    return nearbyDogs
+      .filter((d) => friendStatusByUser[d.userId] === 'friends')
+      .map((d) => ({ ...d, ageMs: now - d.updatedAt }))
+      .filter((d) => d.ageMs <= FRIEND_PIN_HIDE_MS && isValidCoord({ latitude: d.lat, longitude: d.lng }));
+  }, [nearbyDogs, friendStatusByUser]);
+
+  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
+  // Selection resolves against the live list, so it self-clears when a friend's
+  // walk ends or their pin goes stale.
+  const selectedFriend = selectedFriendId
+    ? friendWalkers.find((w) => w.userId === selectedFriendId) ?? null
+    : null;
 
   async function handleAddNearbyFriend(userId: string) {
     if (sendingFriendId) return;
@@ -172,12 +193,26 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     mapRef,
     detailMarker ? { latitude: detailMarker.lat, longitude: detailMarker.lng } : null
   );
+  // Second anchor for the friend callout — same pin-tracking machinery.
+  const { point: friendAnchor, refresh: refreshFriendAnchor } = useCalloutAnchor(
+    mapRef,
+    selectedFriend ? { latitude: selectedFriend.lat, longitude: selectedFriend.lng } : null
+  );
+
+  // Center the map on a friend's pin when their card is tapped in the sheet.
+  function handleNearbyCardPress(userId: string) {
+    const w = friendWalkers.find((x) => x.userId === userId);
+    if (!w) return; // not a friend / no pin → do nothing
+    setNearbySheetVisible(false);
+    moveCamera('friendCard', { latitude: w.lat, longitude: w.lng });
+  }
 
   function handleMapPress(e: MapPressEvent) {
     // Android delivers a marker tap through the map's onPress as well. That
     // gesture is what opened the callout — it must not close it again.
     if (e.nativeEvent.action === 'marker-press') return;
     setDetailMarker(null);
+    setSelectedFriendId(null);
   }
 
   useEffect(() => {
@@ -436,11 +471,13 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
 
   function handleMenuPress() {
     setDetailMarker(null); // the popup floats above the map — don't let it hang over the drawer
+    setSelectedFriendId(null);
     onMenuPress?.();
   }
 
   function handleBellPress() {
     setDetailMarker(null);
+    setSelectedFriendId(null);
     navigation.navigate('Alerts');
   }
 
@@ -487,6 +524,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           // движения камеры приходят с isGesture=false и его не взводят).
           if ((details as any)?.isGesture) userMovedMapRef.current = true;
           refreshCalloutAnchor();
+          refreshFriendAnchor();
         }}
         onRegionChangeComplete={(region, details) => {
           if (mapDebug.enabled) {
@@ -496,6 +534,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           }
           setInfraHidden((prev) => nextInfraHidden(prev, region?.latitudeDelta));
           refreshCalloutAnchor();
+          refreshFriendAnchor();
         }}
       >
         {hasUserFix && (
@@ -517,7 +556,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
             coordinate={{ latitude: m.lat, longitude: m.lng }}
             emoji={MARKER_CONFIG[m.type]?.emoji ?? '📍'}
             color={MARKER_CONFIG[m.type]?.pinColor ?? '#6b7280'}
-            onPress={() => setDetailMarker(m)}
+            onPress={() => { setSelectedFriendId(null); setDetailMarker(m); }}
           />
         ))}
 
@@ -529,6 +568,16 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
             color={MARKER_CONFIG.water.pinColor}
             title={MARKER_CONFIG.water.emoji}
             description={t(w.amenity === 'drinking_water' ? 'water.amenity.drinking_water' : 'water.amenity.default')}
+          />
+        ))}
+
+        {friendWalkers.map((w) => (
+          <FriendWalkerMarker
+            key={`friend-${w.userId}`}
+            coordinate={{ latitude: w.lat, longitude: w.lng }}
+            avatar={w.avatar}
+            ageMs={w.ageMs}
+            onPress={() => { setDetailMarker(null); setSelectedFriendId(w.userId); }}
           />
         ))}
       </MapView>
@@ -546,7 +595,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
 
       {/* ── Filter — top-right group ── */}
       <TouchableOpacity
-        onPress={() => { setDetailMarker(null); setFilterSheetOpen(true); }}
+        onPress={() => { setDetailMarker(null); setSelectedFriendId(null); setFilterSheetOpen(true); }}
         style={[styles.iconBtn, shadows.sm, { position: 'absolute', zIndex: 30, top: insets.top + 8, right: 66 }]}
         activeOpacity={0.8}
       >
@@ -642,6 +691,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           statusByUser={friendStatusByUser}
           onAddFriend={handleAddNearbyFriend}
           sendingUserId={sendingFriendId}
+          onCardPress={handleNearbyCardPress}
           onInvite={() => setShareVisible(true)}
         />
       </View>
@@ -651,7 +701,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         style={[styles.bottomPanel, { paddingBottom: insets.bottom + 12 }]}
         onLayout={e => setBottomPanelHeight(e.nativeEvent.layout.height)}
       >
-        <TouchableOpacity onPress={() => { setDetailMarker(null); setNearbySheetVisible(true); }} activeOpacity={0.7}>
+        <TouchableOpacity onPress={() => { setDetailMarker(null); setSelectedFriendId(null); setNearbySheetVisible(true); }} activeOpacity={0.7}>
           <View style={styles.walkersRow}>
             <Text style={styles.walkersEmoji}>🐕🐕🦮</Text>
             <Text style={styles.walkersTxt}>{nearbyTotal}  {t('map.walkingNearby')}</Text>
@@ -661,7 +711,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         <WalkSlider
           asphaltTemp={heatData.surface_est_c}
           onWalkStart={handleStartWalk}
-          onSwipeStart={() => setDetailMarker(null)}
+          onSwipeStart={() => { setDetailMarker(null); setSelectedFriendId(null); }}
         />
       </View>
 
@@ -680,6 +730,17 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         marker={detailMarker}
         anchor={calloutAnchor}
         onClose={() => setDetailMarker(null)}
+      />
+
+      <FriendCallout
+        friend={selectedFriend
+          ? { dogName: selectedFriend.dogName, ownerName: selectedFriend.ownerName, updatedAt: selectedFriend.updatedAt }
+          : null}
+        anchor={friendAnchor}
+        topInset={insets.top}
+        t={t}
+        rtl={rtl}
+        onClose={() => setSelectedFriendId(null)}
       />
 
       {locationCardVisible && (

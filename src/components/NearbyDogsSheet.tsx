@@ -21,6 +21,11 @@ export type NearbyDog = {
   dogName: string;
   ownerName: string;
   avatar: string;      // emoji
+  // Live position of this walk + when it was last pinged (ms epoch). Carried so
+  // the map can draw a pin for walking friends and center on one from the sheet.
+  lat: number;
+  lng: number;
+  updatedAt: number;
 };
 
 type Props = {
@@ -34,6 +39,9 @@ type Props = {
   statusByUser?: Record<string, FriendshipRpcStatus>;
   onAddFriend?: (userId: string) => void;
   sendingUserId?: string | null;
+  // Tap on a friend's card → parent centers the map on their pin. Only wired for
+  // accepted friends (they're the ones with a pin); ignored for everyone else.
+  onCardPress?: (userId: string) => void;
   // Opens ShareProfileSheet from the empty state (0 nearby).
   onInvite?: () => void;
   bottomOffset?: number;
@@ -41,16 +49,17 @@ type Props = {
 };
 
 const DogCard = ({
-  dog, status, sending, onAdd,
+  dog, status, sending, onAdd, onCardPress,
 }: {
   dog: NearbyDog;
   status: FriendshipRpcStatus;
   sending: boolean;
   onAdd?: (userId: string) => void;
+  onCardPress?: (userId: string) => void;
 }) => {
   const { t } = useApp();
-  return (
-    <View style={styles.card}>
+  const inner = (
+    <>
       <View style={styles.avatarWrap}>
         <View style={styles.avatar}>
           <Text style={styles.avatarEmoji}>{dog.avatar}</Text>
@@ -75,8 +84,19 @@ const DogCard = ({
           <Text style={styles.addPillTxt} numberOfLines={1}>+ {t('friends.add_friend')}</Text>
         </TouchableOpacity>
       )}
-    </View>
+    </>
   );
+
+  // Only friends have a pin on the map, so only their card centers the map on
+  // tap. Everyone else stays a plain card.
+  if (status === 'friends') {
+    return (
+      <TouchableOpacity style={styles.card} activeOpacity={0.7} onPress={() => onCardPress?.(dog.userId)}>
+        {inner}
+      </TouchableOpacity>
+    );
+  }
+  return <View style={styles.card}>{inner}</View>;
 };
 
 const AnonymousCard = ({ count }: { count: number }) => {
@@ -96,7 +116,7 @@ const AnonymousCard = ({ count }: { count: number }) => {
 
 export default function NearbyDogsSheet({
   visible, onClose, dogs, anonymousCount, locationAvailable, onEnableLocation,
-  statusByUser, onAddFriend, sendingUserId, onInvite, bottomOffset = 0, onHeightChange,
+  statusByUser, onAddFriend, sendingUserId, onCardPress, onInvite, bottomOffset = 0, onHeightChange,
 }: Props) {
   const { t } = useApp();
   const translateY = useRef(new Animated.Value(300)).current;
@@ -186,6 +206,7 @@ export default function NearbyDogsSheet({
                 status={statusByUser?.[dog.userId] ?? 'none'}
                 sending={sendingUserId === dog.userId}
                 onAdd={onAddFriend}
+                onCardPress={onCardPress}
               />
             ))}
             {anonymousCount > 0 && <AnonymousCard count={anonymousCount} />}
