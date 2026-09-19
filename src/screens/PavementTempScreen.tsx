@@ -146,6 +146,10 @@ export function PavementTempScreen({ navigation }: any) {
           </Text>
         </View>
 
+        {/* Модель считает нагрев для открытого солнца — честно предупреждаем,
+            что в тени прохладнее. Мелкий серый текст, дизайн карточки не трогаем. */}
+        <Text style={styles.sunnySideNote}>{t('heat.sunny_side.note')}</Text>
+
         {/* Fallback-location caption — only when coords are FLORENTIN_FALLBACK,
             not compared here: useAsphaltTemp already tracks this itself. */}
         {isFallbackLocation && (
@@ -325,6 +329,12 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
     marginTop: -spacing.sm,
+  },
+  sunnySideNote: {
+    fontSize: 11,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: -spacing.xs,
   },
   statusIcon: {
     fontSize: 40,

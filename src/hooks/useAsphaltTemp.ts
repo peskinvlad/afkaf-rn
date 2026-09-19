@@ -3,7 +3,7 @@ import * as Location from 'expo-location';
 import { LatLng } from '../lib/geo';
 import { Lang } from '../i18n';
 import { getDevAsphaltOverride, onDevSettingsChange } from '../constants/dev';
-import { HeatStatus, statusFor, surfaceFromAir, getEffectiveAsphaltTemp } from '../lib/heat';
+import { HeatStatus, statusFor, surfaceFromWeather, getEffectiveAsphaltTemp } from '../lib/heat';
 
 // App language → OpenWeatherMap `lang` code. OWM happens to use the same codes
 // we do (he/en/ru), but map explicitly so a new app language can't silently
@@ -49,6 +49,7 @@ interface CurrentWeather {
   feelsLike: number;
   description: string;
   icon: string;
+  clouds: number | null; // % облачности (clouds.all); null если API не прислал
 }
 
 async function fetchCurrentWeather(lat: number, lon: number, lang: Lang): Promise<CurrentWeather | null> {
@@ -63,6 +64,7 @@ async function fetchCurrentWeather(lat: number, lon: number, lang: Lang): Promis
     feelsLike: data.main.feels_like as number,
     description: data.weather?.[0]?.description ?? '',
     icon: data.weather?.[0]?.icon ?? '01d',
+    clouds: typeof data.clouds?.all === 'number' ? data.clouds.all : null,
   };
 }
 
@@ -76,7 +78,9 @@ async function fetchForecast(lat: number, lon: number, lang: Lang): Promise<Hour
   const list = (data.list ?? []).slice(0, 8);
   return list.map((entry: any) => {
     const airTempC = Math.round(entry.main.temp);
-    const surfaceTempC = surfaceFromAir(airTempC);
+    const clouds = typeof entry.clouds?.all === 'number' ? entry.clouds.all : null;
+    // entry.dt — UTC-секунды слота; модель учитывает высоту солнца в этот момент.
+    const surfaceTempC = surfaceFromWeather(entry.main.temp, clouds, entry.dt * 1000, lat, lon);
     return {
       timeEpoch: entry.dt,
       airTempC,
@@ -154,7 +158,9 @@ export function useAsphaltTemp(lang: Lang): AsphaltTempResult {
         if (cancelled) return true;
         if (current !== null) {
           setAirTempC(Math.round(current.temp));
-          setSurfaceTempC(surfaceFromAir(current.temp));
+          setSurfaceTempC(
+            surfaceFromWeather(current.temp, current.clouds, Date.now(), coords.latitude, coords.longitude),
+          );
           setFeelsLikeC(Math.round(current.feelsLike));
           setWeatherDescription(current.description);
           setWeatherIcon(current.icon);
