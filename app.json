@@ -23,6 +23,7 @@
       }
     },
     "android": {
+      "package": "com.afkaf.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
