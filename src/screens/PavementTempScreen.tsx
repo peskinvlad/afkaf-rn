@@ -13,7 +13,7 @@ import {
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
-import { HourlyPoint } from '../hooks/useAsphaltTemp';
+import { pickBestWalkTime } from '../lib/heat';
 import { colors, radii, shadows, spacing, typography, heatVis } from '../theme/tokens';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -101,10 +101,11 @@ export function PavementTempScreen({ navigation }: any) {
     );
   }, [hourlyForecast, nowEpoch]);
 
-  // First future point with status 'ok' — timeEpoch is unix seconds, Date.now() is ms
-  const bestPoint: HourlyPoint | undefined = useMemo(
-    () => hourlyForecast.find(pt => pt.timeEpoch * 1000 > Date.now() && pt.status === 'ok'),
-    [hourlyForecast],
+  // Best walk window: shared with HeatWarningScreen, limited to waking hours,
+  // and aware of today vs tomorrow. See pickBestWalkTime in lib/heat.
+  const bestTime = useMemo(
+    () => pickBestWalkTime(hourlyForecast, status, Date.now()),
+    [hourlyForecast, status],
   );
 
   const sliderPct = scalePos(heatData.surface_est_c) * 100;
@@ -239,12 +240,14 @@ export function PavementTempScreen({ navigation }: any) {
             </Text>
           </View>
           <Text style={styles.bestTimeBody}>
-            {bestPoint
-              ? t('heat.best_time.after', {
-                  time: fmtTime(bestPoint.timeEpoch),
-                  temp: bestPoint.surfaceTempC,
-                })
-              : t('heat.best_time.none')}
+            {bestTime.kind === 'now'
+              ? t('heat.best_time.now')
+              : bestTime.kind === 'none'
+              ? t('heat.best_time.none')
+              : t(`heat.best_time.${bestTime.kind}`, {
+                  time: fmtTime(bestTime.timeEpoch),
+                  temp: bestTime.surfaceTempC,
+                })}
           </Text>
         </View>
 

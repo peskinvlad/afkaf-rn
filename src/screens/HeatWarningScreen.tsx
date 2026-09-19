@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
 import { Lang } from '../i18n';
-import { HourlyPoint } from '../hooks/useAsphaltTemp';
+import { pickBestWalkTime } from '../lib/heat';
 import { colors, radii, shadows } from '../theme/tokens';
 
 const DATE_LOCALE: Record<Lang, string> = { he: 'he-IL', en: 'en-US', ru: 'ru-RU' };
@@ -20,13 +20,17 @@ export function HeatWarningScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t, lang, heatData, hourlyForecast, setIsWalking } = useApp();
 
-  // Same "first future forecast point back in the safe zone" logic as
-  // PavementTempScreen's best-time card, duplicated locally (out of scope
-  // to extract a shared helper here).
-  const bestPoint: HourlyPoint | undefined = useMemo(
-    () => hourlyForecast.find((pt) => pt.timeEpoch * 1000 > Date.now() && pt.status === 'ok'),
-    [hourlyForecast]
+  // Shared best-walk-window logic (waking hours, today/tomorrow) — same helper
+  // PavementTempScreen uses. This screen only shows when it's already 'danger',
+  // so 'now' never happens here; we render the card only for a real future slot.
+  const bestTime = useMemo(
+    () => pickBestWalkTime(hourlyForecast, heatData.status, Date.now()),
+    [hourlyForecast, heatData.status]
   );
+  const bestSlot =
+    bestTime.kind === 'today' || bestTime.kind === 'tomorrowMorning' || bestTime.kind === 'tomorrow'
+      ? bestTime
+      : null;
 
   function postpone() {
     navigation.goBack();
@@ -45,18 +49,18 @@ export function HeatWarningScreen({ navigation }: Props) {
         <Text style={styles.title}>{t('heat.warning.title')}</Text>
         <Text style={styles.body}>{t('heat.warning.body')}</Text>
 
-        {bestPoint && (
+        {bestSlot && (
           <View style={[styles.bestTimeCard, shadows.sm]}>
             <Text style={styles.bestTimeIcon}>🕐</Text>
             <View style={styles.bestTimeTextWrap}>
               <Text style={styles.bestTimeTitle}>{t('heat.best_time.title')}</Text>
               <Text style={styles.bestTimeBody}>
-                {t('heat.best_time.after', {
-                  time: new Date(bestPoint.timeEpoch * 1000).toLocaleTimeString(DATE_LOCALE[lang], {
+                {t(`heat.best_time.${bestSlot.kind}`, {
+                  time: new Date(bestSlot.timeEpoch * 1000).toLocaleTimeString(DATE_LOCALE[lang], {
                     hour: '2-digit',
                     minute: '2-digit',
                   }),
-                  temp: bestPoint.surfaceTempC,
+                  temp: bestSlot.surfaceTempC,
                 })}
               </Text>
             </View>
