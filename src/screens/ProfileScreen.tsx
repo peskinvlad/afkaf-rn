@@ -67,6 +67,44 @@ function formatMonthYear(iso: string, lang: Lang): string {
   return new Date(iso).toLocaleDateString(DATE_LOCALE[lang], { month: 'long', year: 'numeric' });
 }
 
+// Russian year word for a whole number: 1 → «год», 2–4 → «года», 5–20 → «лет»,
+// then by the last digit (11–14 stay «лет»). Matches spoken Russian so "2.5 г."
+// (which reads like grams) becomes "2,5 года", "5 лет", "11 лет".
+function ruYearWord(n: number): string {
+  const lastTwo = n % 100;
+  const last = n % 10;
+  if (lastTwo >= 11 && lastTwo <= 14) return 'лет';
+  if (last === 1) return 'год';
+  if (last >= 2 && last <= 4) return 'года';
+  return 'лет';
+}
+
+// Dog age is free-text (a numeric field the owner fills in). English "{n} yrs"
+// and Hebrew "גיל {n}" are unambiguous, so they keep the existing i18n string.
+// Only Russian gets special treatment: under a year → "N мес.", a whole number
+// declines normally, a fractional value always takes «года» ("2,5 года") with a
+// comma decimal. Unparseable Russian text is shown as-is rather than "… г.".
+function formatDogAge(
+  raw: string,
+  lang: Lang,
+  t: (k: string, vars?: Record<string, string | number>) => string,
+): string {
+  if (lang !== 'ru') return t('profile.dog.age', { n: raw });
+
+  const value = parseFloat(raw.trim().replace(',', '.'));
+  if (!isFinite(value) || value <= 0) return raw.trim();
+
+  if (value < 1) {
+    const months = Math.round(value * 12);
+    if (months >= 12) return '1 год';
+    return `${Math.max(1, months)} мес.`;
+  }
+  if (!Number.isInteger(value)) {
+    return `${String(value).replace('.', ',')} года`;
+  }
+  return `${value} ${ruYearWord(value)}`;
+}
+
 function formatDate(iso: string, lang: Lang): string {
   return new Date(iso).toLocaleDateString(DATE_LOCALE[lang], { day: 'numeric', month: 'short' });
 }
@@ -360,6 +398,7 @@ export function ProfileScreen({ navigation }: Props) {
                 dog={dog}
                 onEdit={() => navigation.navigate('DogProfile', { dogId: dog.id })}
                 t={t}
+                lang={lang}
               />
             ))}
             <TouchableOpacity
@@ -458,11 +497,11 @@ function StatCol({ value, label, onPress }: { value: string; label: string; onPr
   return <View style={styles.statCol}>{body}</View>;
 }
 
-function DogCard({ dog, onEdit, t }: { dog: Dog; onEdit: () => void; t: (k: string, vars?: Record<string, string | number>) => string }) {
+function DogCard({ dog, onEdit, t, lang }: { dog: Dog; onEdit: () => void; t: (k: string, vars?: Record<string, string | number>) => string; lang: Lang }) {
   const hasPhoto = !!dog.photo_url;
   const details  = [
     dog.breed,
-    dog.age ? t('profile.dog.age', { n: dog.age }) : null,
+    dog.age ? formatDogAge(dog.age, lang, t) : null,
     dog.weight ? t('profile.dog.weight', { n: dog.weight }) : null,
   ].filter(Boolean).join(' · ');
 
