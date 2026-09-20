@@ -383,7 +383,12 @@ export function DogProfileScreen({ navigation, route }: Props) {
               onPress={() => setSociability(s)}
               activeOpacity={0.75}
             >
-              <Text style={[styles.pillTxt, sociability === s && styles.pillTxtSelected]}>
+              <Text
+                style={[styles.pillTxt, sociability === s && styles.pillTxtSelected]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+              >
                 {t(`dogProfile.sociability.${s}`)}
               </Text>
             </TouchableOpacity>
