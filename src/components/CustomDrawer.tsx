@@ -17,11 +17,13 @@ import { colors, radii } from '../theme/tokens';
 const DRAWER_W = 280;
 const { width: SCREEN_W } = Dimensions.get('window');
 
-// Android рисует по elevation глобально в окне: плавающие кнопки карты
-// (elevation до 8 у FAB) всплывали ПОВЕРХ drawer'а, у которого elevation не
-// был задан. Поднимаем весь контейнер drawer'а выше их всех. На iOS порядок
-// задаёт дерево (drawer — сосед после MapScreen), elevation там не нужен.
-const androidOnTop = Platform.OS === 'android' ? { elevation: 32, zIndex: 32 } : null;
+// На New Architecture (Fabric) Android мапит zIndex в нативный Z вьюхи, а не
+// только в порядок отрисовки. Плавающие элементы MapScreen с zIndex 50 (чип
+// асфальта, колонка Locate+FAB) имеют Z ≈ 50 и перекрывали drawer, у которого
+// было всего 32 (elevation 8 у FAB тут ни при чём). Ставим drawer'у Z заведомо
+// выше 50 — тогда он и его backdrop поверх всего. На iOS порядок задаёт дерево
+// (drawer — сосед после MapScreen), Z-костыль не нужен.
+const androidOnTop = Platform.OS === 'android' ? { elevation: 100, zIndex: 100 } : null;
 
 const MENU_ITEMS = [
   { key: 'map', icon: '🗺️', labelKey: 'menu.map', screen: 'MapScreen' },
