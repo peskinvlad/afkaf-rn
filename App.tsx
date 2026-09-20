@@ -1,6 +1,7 @@
 import 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
 import { View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import {
   useFonts,
@@ -32,6 +33,10 @@ export default function App() {
 
   return (
     <AppProvider>
+      {/* Тёмные значки статус-бара: все экраны под баром светлые (карта, surface,
+          светлые фоны экранов) — на iOS дефолт и так тёмный, здесь фиксируем
+          цвет для Android, где по умолчанию значки белые и тонут на светлом. */}
+      <StatusBar style="dark" />
       <RootNavigator />
     </AppProvider>
   );
