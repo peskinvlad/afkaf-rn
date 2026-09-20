@@ -55,27 +55,38 @@ development-сборки (dev client, APK) на ветке `exp/android`. Сег
 Заведено после прогона preview-сборки на старом Samsung. Часть пунктов —
 блокеры, часть — косметика/перф. Порядок: сверху вниз по важности.
 
-### БЛОКЕР №1 — старт прогулки роняет приложение (нужна новая нативная сборка)
+### БЛОКЕР №1 — старт прогулки роняет приложение — ✅ ИСПРАВЛЕНО (нужна новая сборка)
 
-- **Симптом:** тап «начать прогулку» на Android **крашит приложение целиком**.
-  Раньше (без ExpoTaskManager в билде) на этом месте показывался Alert
-  «Не удалось включить геолокацию».
-- **Причина:** трек прогулки идёт через `Location.startLocationUpdatesAsync`
-  + TaskManager (`src/lib/walkTracking.ts`). На Android этот вызов требует
-  **foreground service** — иначе система убивает процесс. Настройки сейчас нет
-  (см. блок «Геолокация / фон» выше: `isAndroidForegroundServiceEnabled`
-  не выставлен, разрешения foreground-service не заданы).
-- **Полное решение (новая нативная сборка):**
-  - плагин `expo-location` в `app.json`: `isAndroidForegroundServiceEnabled: true`;
-  - `foregroundService` в опциях `startLocationUpdatesAsync` (заголовок/текст/иконка
-    уведомления) — Android-ветка в `walkTracking.ts`;
-  - разрешения: `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`
-    (и `ACCESS_BACKGROUND_LOCATION`, если нужен трек в фоне).
-  - **Это нативные изменения → OTA не спасёт, нужна новая сборка + подъём `version`.**
-- **Временная мера (можно доставить через EAS Update, только JS):** на Android
-  блокировать старт прогулки заглушкой с понятным сообщением
-  («Прогулки на Android скоро — трекинг ещё не готов»), не доходя до
-  `startLocationUpdatesAsync`. Убирает краш до нативной сборки.
+- **Симптом (был):** тап «начать прогулку» на Android крашил приложение / давал
+  Alert «Не удалось включить геолокацию».
+- **Причина:** `startLocationUpdatesAsync` без `foregroundService` стартовал как
+  фоновый сервис → требовал `ACCESS_BACKGROUND_LOCATION` (у нас нет), а на
+  Android 14+ ещё и `FOREGROUND_SERVICE_LOCATION` — их не было в манифесте.
+- **Сделано (коммиты `feat(android): enable location foreground service…` +
+  `feat(android): FGS notification…`):**
+  - `expo-location` в `app.json`: `isAndroidForegroundServiceEnabled: true` →
+    плагин добавляет `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_LOCATION`;
+  - `android.permissions += POST_NOTIFICATIONS`;
+  - `walkTracking.startWalkTracking(fgs)` передаёт `foregroundService`
+    (title/body/color `#2c5f25`, `killServiceOnDestroy`) — под `Platform.OS==='android'`,
+    iOS-ветка без изменений;
+  - `ACCESS_BACKGROUND_LOCATION` НЕ добавляли (старт из foreground);
+  - POST_NOTIFICATIONS запрашивается перед стартом (Android 13+, non-blocking);
+  - Alert геолокации разбит на короткий title + message.
+- **Требует новой нативной сборки** (OTA не доставит новые разрешения/FGS).
+  Ручной прогон старт-финиш прогулки на Samsung после сборки обязателен.
+
+### БЛОКЕР №2 — Android runtimeVersion до раздачи тестерам
+
+- **Контекст:** `version` НАМЕРЕННО оставлен `0.1.0` (общий для iOS и Android;
+  подъём после мержа в `main` сменил бы `runtimeVersion` по policy `appVersion`
+  и отрезал бы текущий iOS build 3 от OTA). На канале preview одно устройство —
+  старую сборку просто заменяем новой.
+- **Что сделать до раздачи Android тестерам:** завести **отдельный
+  `android.runtimeVersion`** (через `app.config.js`), не меняя `version` и iOS
+  runtime, чтобы Android-обновления по воздуху были изолированы от iOS. **Решить
+  схему версионирования ДО первого мержа `exp/android` в `main`** — иначе общий
+  `appVersion`-runtime свяжет платформы и OTA пойдёт крест-накрест.
 
 ### БЛОКЕР-соседи и баги UI
 
