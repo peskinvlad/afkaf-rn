@@ -524,15 +524,20 @@ export function WalkScreen({ navigation }: Props) {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (cancelled) return;
       if (status !== 'granted') {
-        Alert.alert(t('walk.geoError')); // permission denied → no tracking, no timer
+        // Short title + details in message — long title truncates on Android.
+        Alert.alert(t('walk.geoErrorTitle'), t('walk.geoErrorBody')); // denied → no tracking, no timer
         return;
       }
       setLocationGranted(true);
       try {
-        await startWalkTracking();
+        await startWalkTracking({
+          notificationTitle: t('walk.fgsTitle'),
+          notificationBody: t('walk.fgsBody'),
+          notificationColor: '#2c5f25',
+        });
       } catch (e) {
         console.warn('[WalkScreen] startWalkTracking failed:', e);
-        if (!cancelled) Alert.alert(t('walk.geoError')); // task failed → no timer
+        if (!cancelled) Alert.alert(t('walk.geoErrorTitle'), t('walk.geoErrorBody')); // task failed → no timer
         return;
       }
       // Left the screen while the start was in flight — the cleanup's stop ran

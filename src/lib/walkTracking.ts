@@ -1,3 +1,4 @@
+import { Platform, PermissionsAndroid } from 'react-native';
 import * as Location from 'expo-location';
 import { requireOptionalNativeModule } from 'expo';
 
@@ -88,7 +89,27 @@ export function subscribeWalkLocations(fn: Listener): () => void {
   };
 }
 
-export async function startWalkTracking(): Promise<void> {
+// Notification shown by the Android foreground service that keeps the walk
+// recording. Texts come from the caller (i18n); iOS never uses this.
+export type WalkForegroundServiceText = {
+  notificationTitle: string;
+  notificationBody: string;
+  notificationColor?: string;
+};
+
+// Android 13+: the FGS notification is only visible with POST_NOTIFICATIONS.
+// Denial does NOT block the walk — the service still runs (see LocationModule:
+// no POST_NOTIFICATIONS gate), so we ask once and ignore the result.
+async function requestAndroidNotificationsPermission(): Promise<void> {
+  if (Platform.OS !== 'android' || (Platform.Version as number) < 33) return;
+  try {
+    await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+  } catch (e) {
+    console.warn('[walkTracking] POST_NOTIFICATIONS request failed:', e);
+  }
+}
+
+export async function startWalkTracking(fgs?: WalkForegroundServiceText): Promise<void> {
   if (!isBackgroundTrackingAvailable) {
     fallbackSub?.remove();
     fallbackSub = await Location.watchPositionAsync(
@@ -101,6 +122,8 @@ export async function startWalkTracking(): Promise<void> {
     );
     return;
   }
+  // Android: make the FGS notification visible if allowed (non-blocking).
+  await requestAndroidNotificationsPermission();
   try {
     await Location.startLocationUpdatesAsync(WALK_LOCATION_TASK, {
       accuracy: Location.Accuracy.BestForNavigation,
@@ -111,6 +134,19 @@ export async function startWalkTracking(): Promise<void> {
       // Always permission — the rest of the walk would be lost.
       pausesUpdatesAutomatically: false,
       showsBackgroundLocationIndicator: true,
+      // Android only: run as a user-initiated foreground service, which does
+      // NOT require ACCESS_BACKGROUND_LOCATION (started from the open screen).
+      // On iOS the spread is empty → options are byte-identical to before.
+      ...(Platform.OS === 'android' && fgs
+        ? {
+            foregroundService: {
+              notificationTitle: fgs.notificationTitle,
+              notificationBody: fgs.notificationBody,
+              notificationColor: fgs.notificationColor,
+              killServiceOnDestroy: true,
+            },
+          }
+        : {}),
     });
     // startLocationUpdatesAsync can resolve while the native task fails to
     // attach (e.g. UIBackgroundModes missing in the built Info.plist throws
