@@ -65,7 +65,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
         .select('*')
         .eq('id', dogId)
         .maybeSingle();
-      console.log('[DogProfile] load existing dog error:', JSON.stringify(error));
+      console.warn('[DogProfile] load existing dog error:', JSON.stringify(error));
       if (data) {
         setDogName(data.name ?? '');
         setBreed(data.breed ?? '');
