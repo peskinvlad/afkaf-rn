@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Marker } from 'react-native-maps';
 
 // Freshness of a friend's last position ping (ms epoch → age):
@@ -12,6 +12,13 @@ export const FRIEND_PIN_HIDE_MS = 10 * 60 * 1000;
 const RING_COLOR = '#2c5f25'; // brand green — distinct from hazard/water discs and own marker
 const TOUCH_SIZE = 44;
 const DISC_SIZE = 38;
+
+// Симметричный запас против обрезки bitmap на Android (см. MapMarkerIcon).
+// Центр не двигается → anchor 0.5/0.5 без изменений; iOS: pad=0.
+const ANDROID_MARKER_PAD = 6;
+const androidMarkerBox = Platform.OS === 'android'
+  ? { width: TOUCH_SIZE + ANDROID_MARKER_PAD * 2, height: TOUCH_SIZE + ANDROID_MARKER_PAD * 2 }
+  : null;
 
 type Props = {
   coordinate: { latitude: number; longitude: number };
@@ -48,7 +55,9 @@ export function FriendWalkerMarker({ coordinate, avatar, ageMs, onPress }: Props
       // co-located hazard pin can cover the dog. Stays below the user marker (3).
       zIndex={2}
     >
-      <View style={[styles.touchArea, stale && styles.stale]}>
+      {/* collapsable={false}: Android иначе схлопывает wrapper до снятия bitmap
+          и режет пин по правому/нижнему краю (см. MapMarkerIcon). */}
+      <View collapsable={false} style={[styles.touchArea, androidMarkerBox, stale && styles.stale]}>
         <View style={styles.disc}>
           <Text style={styles.emoji}>{avatar}</Text>
         </View>

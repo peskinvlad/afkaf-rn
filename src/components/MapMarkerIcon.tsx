@@ -1,9 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Marker } from 'react-native-maps';
 
 const TOUCH_SIZE = 44; // ≥ the stock pin's tap target the markers had before
 const DISC_SIZE = 38;
+
+// Android режет bitmap маркера по рамке чуть меньше самой вьюхи (правый/нижний
+// край диска обрезался). Симметричный запас вокруг центрированного диска даёт
+// прозрачные поля, в которые уходит обрезка, — диск цел. Растём симметрично,
+// поэтому центр (и anchor 0.5/0.5) не двигается. iOS: pad=0, геометрия та же.
+const ANDROID_MARKER_PAD = 6;
+const androidMarkerBox = Platform.OS === 'android'
+  ? { width: TOUCH_SIZE + ANDROID_MARKER_PAD * 2, height: TOUCH_SIZE + ANDROID_MARKER_PAD * 2 }
+  : null;
 
 type Props = {
   coordinate: { latitude: number; longitude: number };
@@ -42,7 +51,9 @@ export function MapMarkerIcon({ coordinate, emoji, color, onPress, title, descri
       description={description}
       zIndex={zIndex}
     >
-      <View style={styles.touchArea}>
+      {/* collapsable={false}: не даём Android «схлопнуть» wrapper-вью до снятия
+          bitmap (схлопнутая/недомеренная вью и давала обрезку пина). */}
+      <View collapsable={false} style={[styles.touchArea, androidMarkerBox]}>
         <View style={[styles.disc, { backgroundColor: color }]}>
           <Text style={styles.emoji}>{emoji}</Text>
         </View>

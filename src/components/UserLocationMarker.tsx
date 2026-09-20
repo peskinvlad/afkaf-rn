@@ -1,5 +1,5 @@
 import React from 'react';
-import { Animated, View, Text, StyleSheet } from 'react-native';
+import { Animated, Platform, View, Text, StyleSheet } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 
 interface Props {
@@ -39,7 +39,7 @@ export function UserLocationMarker({ headingAnim, accuracy }: Props) {
     ? Math.max(SIZE, Math.min(accuracy, 120))
     : 0;
 
-  return (
+  const content = (
     <View style={styles.container}>
       {/* GPS accuracy ring — centred on the GPS anchor (container centre) */}
       {ringSize > 0 && (
@@ -75,9 +75,30 @@ export function UserLocationMarker({ headingAnim, accuracy }: Props) {
       <Text style={styles.paw}>🐾</Text>
     </View>
   );
+
+  // iOS: возвращаем ровно прежнее дерево — anti-jump-контейнер (overflow:hidden,
+  // 48×48) не трогаем. Android: оборачиваем симметричным прозрачным полем и
+  // collapsable={false}, чтобы bitmap маркера снимался с запасом и не резал
+  // правый/нижний край панциря. Поле симметрично → центр (GPS-точка) и
+  // anchor 0.5/0.5 не меняются.
+  if (Platform.OS === 'android') {
+    return (
+      <View collapsable={false} style={styles.androidPad}>
+        {content}
+      </View>
+    );
+  }
+  return content;
 }
 
 const styles = StyleSheet.create({
+  // Android-only: прозрачное поле вокруг 48×48 контейнера (запас под обрезку
+  // bitmap). Центрирует единственного ребёнка → центр совпадает с GPS-точкой.
+  androidPad: {
+    padding: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   container: {
     width: SIZE,
     height: SIZE,
