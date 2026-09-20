@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -15,6 +16,12 @@ import { colors, radii } from '../theme/tokens';
 
 const DRAWER_W = 280;
 const { width: SCREEN_W } = Dimensions.get('window');
+
+// Android рисует по elevation глобально в окне: плавающие кнопки карты
+// (elevation до 8 у FAB) всплывали ПОВЕРХ drawer'а, у которого elevation не
+// был задан. Поднимаем весь контейнер drawer'а выше их всех. На iOS порядок
+// задаёт дерево (drawer — сосед после MapScreen), elevation там не нужен.
+const androidOnTop = Platform.OS === 'android' ? { elevation: 32, zIndex: 32 } : null;
 
 const MENU_ITEMS = [
   { key: 'map', icon: '🗺️', labelKey: 'menu.map', screen: 'MapScreen' },
@@ -70,7 +77,7 @@ export function CustomDrawer({ open, onClose, onNavigate, activeScreen }: Props)
   if (!mounted) return null;
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents={open ? 'auto' : 'none'}>
+    <View style={[StyleSheet.absoluteFill, androidOnTop]} pointerEvents={open ? 'auto' : 'none'}>
       {/* Backdrop */}
       <TouchableWithoutFeedback onPress={onClose}>
         <Animated.View style={[styles.backdrop, { opacity: backdropAnim }]} />
