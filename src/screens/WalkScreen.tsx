@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AppState,
   Alert,
+  Platform,
   View,
   Text,
   TouchableOpacity,
@@ -26,6 +27,7 @@ import { useCalloutAnchor } from '../hooks/useCalloutAnchor';
 import { isAccurateFix, createGlitchFilter } from '../lib/gpsQuality';
 import { filterMarkersAndWater } from '../lib/markerFilter';
 import { MARKER_CONFIG, INFRA_MARKER_TYPES, nextInfraHidden } from '../lib/markerConfig';
+import { selectVisiblePins, ViewportRegion } from '../lib/mapViewport';
 import { MarkerFilterSheet, RadiusFilter } from '../components/MarkerFilterSheet';
 import { MarkerCallout } from '../components/MarkerCallout';
 import { FriendCallout } from '../components/FriendCallout';
@@ -51,6 +53,15 @@ import { subscribeWalkLocations, startWalkTracking, stopWalkTracking } from '../
 // прыгает на пользователя первым же фиксом, так что этот регион виден лишь миг.
 const INITIAL_REGION = { ...START_COORD, latitudeDelta: START_DELTA, longitudeDelta: START_DELTA };
 const ACTIVE_WALK_PING_MS = 60000;
+
+// Android: animateCamera сохраняет текущий зум, если поле `zoom` не передано, а
+// стартовая нативная камера на Android сидит на «не-разложенном» фолбэке
+// react-native-maps (newLatLngZoom zoom 10 = «полстраны»; MapView.java:588) —
+// и никто её больше не двигает по зуму (cameraZoomRange — проп MapKit, на
+// Google Maps игнорируется). Поэтому на Android задаём явный уличный зум; iOS
+// поле `zoom` не читает (использует altitude) — ветка ниже под Platform.OS.
+const STREET_ZOOM = 17; // ≈ MapScreen animateToRegion delta 0.005 (уровень улицы)
+const ANDROID_CAMERA_ZOOM = Platform.OS === 'android' ? { zoom: STREET_ZOOM } : {};
 // WalkScreen bottom-panel height ABOVE the safe-area inset (measured from the
 // styles: paddingTop 16 + stats ~46 + gap 10 + nearby row 48 + gap 10 + finish
 // ~59 + paddingBottom-non-safe 8 ≈ 198). The guest banner is intentionally NOT
@@ -172,7 +183,7 @@ export function WalkScreen({ navigation }: Props) {
     if (!w) return;
     setNearbySheetVisible(false);
     const center = { latitude: w.lat, longitude: w.lng };
-    if (isValidCoord(center)) mapRef.current?.animateCamera({ center }, { duration: 350 });
+    if (isValidCoord(center)) mapRef.current?.animateCamera({ center, ...ANDROID_CAMERA_ZOOM }, { duration: 350 });
   }
 
   function handleMapPress(e: MapPressEvent) {
@@ -195,11 +206,29 @@ export function WalkScreen({ navigation }: Props) {
   // зуме (см. MapScreen). Ремоунт безопасен: «океан» был из-за нестабильного
   // initialRegion, уже исправлено. Состояние — по гистерезису.
   const [infraHidden, setInfraHidden] = useState(false);
-  const markersToRender = useMemo(
-    () => (infraHidden ? filteredMarkers.filter((m) => !INFRA_MARKER_TYPES.includes(m.type)) : filteredMarkers),
-    [filteredMarkers, infraHidden],
+  // Android: вьюпорт-куллинг вместо монтирования всех ~1660 пинов сразу (ANR на
+  // старте, Samsung S9). Регион берём из onRegionChangeComplete; до первого
+  // известного региона инфраструктуру не монтируем (см. selectVisiblePins).
+  // Потолок 150 пинов в области → инфраструктуру скрываем, опасные метки — нет.
+  // iOS: androidPins === null → дерево прежнее (зум-гейт infraHidden).
+  const [visibleRegion, setVisibleRegion] = useState<ViewportRegion | null>(null);
+  const androidPins = useMemo(
+    () => (Platform.OS === 'android'
+      ? selectVisiblePins(visibleRegion, filteredMarkers, filteredWaterSources)
+      : null),
+    [visibleRegion, filteredMarkers, filteredWaterSources],
   );
-  const waterToRender = infraHidden ? [] : filteredWaterSources;
+  const markersToRender = useMemo(() => {
+    if (androidPins) {
+      const list = androidPins.markers;
+      // Метка с открытым callout не размонтируется, пока callout открыт, даже
+      // если пан увёл её за пределы вьюпорта (иначе повиснет пустой callout).
+      if (detailMarker && !list.some((m) => m.id === detailMarker.id)) return [...list, detailMarker];
+      return list;
+    }
+    return infraHidden ? filteredMarkers.filter((m) => !INFRA_MARKER_TYPES.includes(m.type)) : filteredMarkers;
+  }, [androidPins, detailMarker, filteredMarkers, infraHidden]);
+  const waterToRender = androidPins ? androidPins.waterSources : (infraHidden ? [] : filteredWaterSources);
 
   // Radius change — no extra location request here: the GPS watcher below
   // (already running for route tracking) keeps userLocation fresh in context.
@@ -254,6 +283,10 @@ export function WalkScreen({ navigation }: Props) {
   // MapKit applies without animation: the whole map jumped each fix while the
   // marker was still sliding, and any pinch-zoom was undone by the next fix.
   const cameraHasFix = useRef(false);
+  // Android one-shot: follow-обновления идут без zoom (держим ручной масштаб).
+  // Если стартовый zoom:17 не применился и карта осталась на «полстраны» —
+  // один раз подтягиваем зум; после первой проверки страховку не трогаем.
+  const followZoomCheckedRef = useRef(false);
   // Готовность карты = onMapReady И onLayout с ненулевым размером. Ref (не state):
   // followWith зовётся из замыкания GPS-подписки, а ref читается всегда свежим —
   // иначе гейт застрял бы на false. Follow непрерывный, поэтому «отложенного»
@@ -279,19 +312,39 @@ export function WalkScreen({ navigation }: Props) {
     // Карта не готова → пропускаем (cameraHasFix не трогаем, чтобы первый
     // реальный фикс после готовности всё ещё «прыгнул» без пролёта).
     if (!mapReadyRef.current) return;
-    // First fix jumps straight there — gliding from the default centre would
-    // fly across the city.
-    const duration = cameraHasFix.current ? MOVE_MS : 0;
     if (!isValidCoord(pt)) return; // битая координата увезла бы камеру в 0,0
-    cameraHasFix.current = true;
-    mapRef.current?.animateCamera({ center: pt }, { duration });
+
+    // Первое позиционирование после старта → прыжок (duration 0) с явным
+    // уличным зумом на Android (iOS zoom игнорирует). Дальше зум не трогаем.
+    if (!cameraHasFix.current) {
+      cameraHasFix.current = true;
+      mapRef.current?.animateCamera({ center: pt, ...ANDROID_CAMERA_ZOOM }, { duration: 0 });
+      return;
+    }
+
+    // Обычное follow-обновление → только center, чтобы не сбрасывать масштаб,
+    // выставленный пользователем пальцами (как на iOS).
+    mapRef.current?.animateCamera({ center: pt }, { duration: MOVE_MS });
+
+    // Android-страховка (один раз): если стартовый zoom не применился и карта
+    // осталась на фолбэке «полстраны» (zoom < 13) — подтянуть до 17. Проверяем
+    // единожды: как только зум хоть раз нормальный, поздний ручной zoom-out
+    // назад не дёргаем.
+    if (Platform.OS === 'android' && !followZoomCheckedRef.current) {
+      followZoomCheckedRef.current = true;
+      mapRef.current?.getCamera().then((cam) => {
+        if (cam && typeof cam.zoom === 'number' && cam.zoom < 13) {
+          mapRef.current?.animateCamera({ center: pt, zoom: STREET_ZOOM }, { duration: MOVE_MS });
+        }
+      }).catch(() => {});
+    }
   }
   // Locate button: re-centre on the last fix and resume following.
   function handleCenterOnMe() {
     setFollow(true);
     if (!mapReadyRef.current) return; // карта не готова — тап игнорируем
     const pt = latestPos.current;
-    if (isValidCoord(pt)) mapRef.current?.animateCamera({ center: pt }, { duration: 350 });
+    if (isValidCoord(pt)) mapRef.current?.animateCamera({ center: pt, ...ANDROID_CAMERA_ZOOM }, { duration: 350 });
   }
   const [accuracy, setAccuracy] = useState<number | undefined>(undefined);
   // Second gate, after accuracy: a fix that reports good accuracy but lands
@@ -647,7 +700,12 @@ export function WalkScreen({ navigation }: Props) {
             refreshFriendAnchor();
           }}
           onRegionChangeComplete={(region) => {
-            setInfraHidden((prev) => nextInfraHidden(prev, region?.latitudeDelta));
+            // Android: вьюпорт-куллинг по региону; iOS: прежний зум-гейт infra.
+            if (Platform.OS === 'android') {
+              if (region) setVisibleRegion(region);
+            } else {
+              setInfraHidden((prev) => nextInfraHidden(prev, region?.latitudeDelta));
+            }
             refreshCalloutAnchor();
             refreshFriendAnchor();
           }}

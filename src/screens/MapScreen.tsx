@@ -8,6 +8,7 @@ import {
   Animated,
   Easing,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -38,6 +39,7 @@ import { CoverageBanner } from '../components/CoverageBanner';
 import { LocationRequiredCard } from '../components/LocationRequiredCard';
 import { filterMarkersAndWater } from '../lib/markerFilter';
 import { MARKER_CONFIG, INFRA_MARKER_TYPES, nextInfraHidden } from '../lib/markerConfig';
+import { selectVisiblePins, ViewportRegion } from '../lib/mapViewport';
 import { isValidCoord, START_COORD, START_DELTA } from '../lib/geo';
 import { mapDebug } from '../lib/mapDebug';
 import { MapDebugOverlay } from '../components/MapDebugOverlay';
@@ -401,11 +403,28 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   // исправлено), а не из-за пересборки аннотаций. Состояние — по гистерезису
   // из onRegionChangeComplete.
   const [infraHidden, setInfraHidden] = useState(false); // старт = городской зум, показываем
-  const markersToRender = useMemo(
-    () => (infraHidden ? filteredMarkers.filter((m) => !INFRA_MARKER_TYPES.includes(m.type)) : filteredMarkers),
-    [filteredMarkers, infraHidden],
+  // Android: вьюпорт-куллинг вместо монтирования всех ~1660 пинов сразу (ANR на
+  // слабом устройстве). Регион — из onRegionChangeComplete; до первого известного
+  // региона инфраструктуру не монтируем; потолок 150 пинов → инфраструктуру
+  // скрываем (см. selectVisiblePins). iOS: androidPins === null → дерево прежнее.
+  const [visibleRegion, setVisibleRegion] = useState<ViewportRegion | null>(null);
+  const androidPins = useMemo(
+    () => (Platform.OS === 'android'
+      ? selectVisiblePins(visibleRegion, filteredMarkers, filteredWaterSources)
+      : null),
+    [visibleRegion, filteredMarkers, filteredWaterSources],
   );
-  const waterToRender = infraHidden ? [] : filteredWaterSources;
+  const markersToRender = useMemo(() => {
+    if (androidPins) {
+      const list = androidPins.markers;
+      // Метка с открытым callout не размонтируется, пока callout открыт, даже
+      // если пан увёл её за пределы вьюпорта (иначе повиснет пустой callout).
+      if (detailMarker && !list.some((m) => m.id === detailMarker.id)) return [...list, detailMarker];
+      return list;
+    }
+    return infraHidden ? filteredMarkers.filter((m) => !INFRA_MARKER_TYPES.includes(m.type)) : filteredMarkers;
+  }, [androidPins, detailMarker, filteredMarkers, infraHidden]);
+  const waterToRender = androidPins ? androidPins.waterSources : (infraHidden ? [] : filteredWaterSources);
 
   async function handleStartWalk() {
     // Location gate strictly before the heat intercept — without it the
@@ -532,7 +551,12 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
               `RC ${region?.latitude},${region?.longitude},${region?.latitudeDelta},${region?.longitudeDelta},gesture=${(details as any)?.isGesture}`,
             );
           }
-          setInfraHidden((prev) => nextInfraHidden(prev, region?.latitudeDelta));
+          // Android: вьюпорт-куллинг по региону; iOS: прежний зум-гейт infra.
+          if (Platform.OS === 'android') {
+            if (region) setVisibleRegion(region);
+          } else {
+            setInfraHidden((prev) => nextInfraHidden(prev, region?.latitudeDelta));
+          }
           refreshCalloutAnchor();
           refreshFriendAnchor();
         }}
