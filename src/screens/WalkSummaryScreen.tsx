@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   Share,
+  Platform,
 } from 'react-native';
 import MapView, { PROVIDER_DEFAULT, Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,14 +43,34 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
 
   // Fit map to route after render
   useEffect(() => {
-    if (routeCoordinates.length > 1 && mapRef.current) {
-      setTimeout(() => {
-        mapRef.current?.fitToCoordinates(routeCoordinates, {
+    const isAndroid = Platform.OS === 'android';
+    const id = setTimeout(() => {
+      const map = mapRef.current;
+      if (!map) return;
+      if (routeCoordinates.length > 1) {
+        map.fitToCoordinates(routeCoordinates, {
           edgePadding: { top: 40, right: 40, bottom: 40, left: 40 },
           animated: false,
         });
-      }, 300);
-    }
+        // Android: очень короткий трек (~20 м) fit'ится до максимума → серая
+        // подложка (нет тайлов на таком зуме). Ограничиваем зум до 18
+        // (охват ~150-190 м). animateCamera с одним `zoom` безопасен: берёт
+        // остальное из текущей камеры (MapView.java animateToCamera, hasKey).
+        if (isAndroid) {
+          map.getCamera().then((cam) => {
+            if (cam && typeof cam.zoom === 'number' && cam.zoom > 18) {
+              map.animateCamera({ zoom: 18 }, { duration: 0 });
+            }
+          }).catch(() => {});
+        }
+      } else if (isAndroid) {
+        // Пустой трек (0-1 точка): на Android initialRegion остаётся на фолбэке
+        // зума 10 (весь Гуш-Дан). Центрируем на известной точке (последний фикс
+        // или стартовая), zoom 16. iOS остаётся на initialRegion (delta 0.01).
+        map.animateCamera({ center, zoom: 16 }, { duration: 0 });
+      }
+    }, 300);
+    return () => clearTimeout(id);
   }, []);
 
   // Вердикт — чистый маппинг по входам, зафиксированным на момент завершения.
