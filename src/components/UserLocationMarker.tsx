@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Animated, Platform, View, Text, StyleSheet } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
+import { MarkerAnimated, Circle as MapCircle, AnimatedRegion } from 'react-native-maps';
+import { LatLng } from '../lib/geo';
 
 interface Props {
   // Continuous heading in degrees from useHeading — drives the rotation on
@@ -8,6 +10,13 @@ interface Props {
   headingAnim: Animated.Value;
   accuracy?: number; // metres — shown as ring when < 120
 }
+
+// Android: свой маркер отдельными PNG вместо SVG-детей (Fabric режет children
+// bitmap — см. MapMarkerIcon). Стрелка-капля крутится нативно, лапа статична
+// поверх, круг точности — через <Circle>. Смотрит строго вверх при rotation 0.
+const ARROW_IMG = require('../../assets/markers/user-arrow.png');
+const PAW_IMG = require('../../assets/markers/user-paw.png');
+const RING_MAX_M = 120; // выше этой точности круг не рисуем (как в iOS-версии)
 
 const SIZE = 48;
 const CX = SIZE / 2;   // 24 — circle center X
@@ -89,6 +98,65 @@ export function UserLocationMarker({ headingAnim, accuracy }: Props) {
     );
   }
   return content;
+}
+
+interface AndroidProps {
+  // AnimatedRegion, как и у iOS-маркера — координата едет за фиксом (слайд).
+  coordinate: AnimatedRegion;
+  // Плоская последняя позиция для <Circle> (у круга центр — LatLng, не Animated).
+  center: LatLng | null;
+  headingAnim: Animated.Value;
+  accuracy?: number;
+}
+
+// Android-версия своего маркера: три оверлея карты вместо SVG-детей одного
+// маркера. iOS сюда не заходит (см. ветку Platform.OS в экранах) — та версия
+// байт в байт прежняя.
+export function UserLocationMarkerAndroid({ coordinate, center, headingAnim, accuracy }: AndroidProps) {
+  // Логика сглаживания направления не меняется: headingAnim по-прежнему считает
+  // useHeading (native driver). Здесь только зеркалим его в JS-value, которым
+  // MarkerAnimated крутит нативный проп `rotation` (он не transform → его нельзя
+  // гнать нативным драйвером напрямую). Значение непрерывное (может выходить за
+  // 0-360) — Google Maps rotation принимает любой угол.
+  const rotation = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const id = headingAnim.addListener(({ value }) => rotation.setValue(value));
+    return () => headingAnim.removeListener(id);
+  }, [headingAnim, rotation]);
+
+  const showRing = center != null && accuracy != null && accuracy > 0 && accuracy <= RING_MAX_M;
+
+  return (
+    <>
+      {showRing && (
+        <MapCircle
+          center={center}
+          radius={accuracy}
+          fillColor="rgba(44, 95, 37, 0.10)"
+          strokeColor="rgba(44, 95, 37, 0.22)"
+          strokeWidth={1}
+        />
+      )}
+      {/* Стрелка-капля: нативное вращение по курсу, flat = лежит на карте,
+          anchor по центру = точка GPS. PNG смотрит строго вверх (север). */}
+      <MarkerAnimated
+        coordinate={coordinate}
+        anchor={{ x: 0.5, y: 0.5 }}
+        flat
+        rotation={rotation as unknown as number}
+        image={ARROW_IMG}
+        zIndex={3}
+      />
+      {/* Лапа: статична поверх стрелки, тот же центр. */}
+      <MarkerAnimated
+        coordinate={coordinate}
+        anchor={{ x: 0.5, y: 0.5 }}
+        flat
+        image={PAW_IMG}
+        zIndex={3}
+      />
+    </>
+  );
 }
 
 const styles = StyleSheet.create({

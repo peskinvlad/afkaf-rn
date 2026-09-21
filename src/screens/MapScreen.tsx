@@ -22,7 +22,7 @@ import { MarkerFilterSheet, RadiusFilter } from '../components/MarkerFilterSheet
 import { MarkerCallout } from '../components/MarkerCallout';
 import { FriendCallout } from '../components/FriendCallout';
 import { FriendWalkerMarker, FRIEND_PIN_HIDE_MS } from '../components/FriendWalkerMarker';
-import { UserLocationMarker } from '../components/UserLocationMarker';
+import { UserLocationMarker, UserLocationMarkerAndroid } from '../components/UserLocationMarker';
 import { MapMarkerIcon } from '../components/MapMarkerIcon';
 import { useMapMarkers } from '../hooks/useMapMarkers';
 import { useHeading } from '../hooks/useHeading';
@@ -561,7 +561,16 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           refreshFriendAnchor();
         }}
       >
-        {hasUserFix && (
+        {hasUserFix && (Platform.OS === 'android' ? (
+          // Android: стрелка (нативное вращение) + лапа + круг точности вместо
+          // SVG-детей одного маркера (Fabric режет children bitmap).
+          <UserLocationMarkerAndroid
+            coordinate={userCoord}
+            center={userLocation}
+            headingAnim={headingAnim}
+            accuracy={accuracy}
+          />
+        ) : (
           <MarkerAnimated
             coordinate={userCoord}
             anchor={{ x: 0.5, y: 0.5 }}
@@ -574,7 +583,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           >
             <UserLocationMarker headingAnim={headingAnim} accuracy={accuracy} />
           </MarkerAnimated>
-        )}
+        ))}
 
         {markersToRender.map((m) => (
           <MapMarkerIcon
