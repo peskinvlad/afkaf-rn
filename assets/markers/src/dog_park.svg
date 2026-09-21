@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- лёгкая тень снизу, чтобы мяч не сливался с зелёным диском -->
+  <circle cx="50" cy="52" r="43" fill="#7d942a"/>
+  <!-- тело мяча: жёлто-зелёный -->
+  <circle cx="50" cy="50" r="43" fill="#c9e03c"/>
+  <!-- обводка потемнее по краю -->
+  <circle cx="50" cy="50" r="43" fill="none" stroke="#94ac2b" stroke-width="3"/>
+  <!-- два белых изогнутых шва (без ракетки) -->
+  <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round">
+    <path d="M 18,20 C 53,38 53,62 18,80"/>
+    <path d="M 82,20 C 47,38 47,62 82,80"/>
+  </g>
+</svg>

@@ -48,3 +48,6 @@ dev/
 
 # supabase CLI local state (project link, etc.)
 supabase/.temp/
+
+# marker PNG generator emoji cache (build-time only)
+scripts/.emoji-cache/
