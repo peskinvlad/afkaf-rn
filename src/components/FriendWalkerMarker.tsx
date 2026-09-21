@@ -20,6 +20,24 @@ const androidMarkerBox = Platform.OS === 'android'
   ? { width: TOUCH_SIZE + ANDROID_MARKER_PAD * 2, height: TOUCH_SIZE + ANDROID_MARKER_PAD * 2 }
   : null;
 
+// Android: готовые PNG пина друга по аватару собаки (белый диск + emoji в
+// зелёном кольце), отдаём через <Marker image> без детей — как у MapMarkerIcon,
+// снимает обрезку на Fabric. Выцветание после 5 минут — через проп opacity (не
+// перерисовкой bitmap). Аватар без PNG → общий View-путь. Ключи = DOG_ICONS из
+// DogProfileScreen (генерируются scripts/gen-marker-pngs.ts).
+const ANDROID_FRIEND_IMAGES: Record<string, any> = {
+  '🐕': require('../../assets/markers/friend-dog.png'),
+  '🐩': require('../../assets/markers/friend-poodle.png'),
+  '🐶': require('../../assets/markers/friend-dogface.png'),
+  '🦮': require('../../assets/markers/friend-guidedog.png'),
+  '🐕‍🦺': require('../../assets/markers/friend-servicedog.png'),
+  '🐾': require('../../assets/markers/friend-pawprints.png'),
+  '🦴': require('../../assets/markers/friend-bone.png'),
+  '🐺': require('../../assets/markers/friend-wolf.png'),
+};
+
+const STALE_OPACITY = 0.5;
+
 type Props = {
   coordinate: { latitude: number; longitude: number };
   avatar: string;   // dog emoji
@@ -31,7 +49,7 @@ type Props = {
 // ring, so it reads apart from the coloured hazard/water discs and the blue
 // user-location marker. tracksViewChanges follows MapMarkerIcon: on briefly so
 // Android rasterises the emoji, then off so the map doesn't re-render every pin
-// each frame (map rules, CLAUDE.md).
+// each frame (map rules, CLAUDE.md). (Только View-путь — iOS и Android-fallback.)
 export function FriendWalkerMarker({ coordinate, avatar, ageMs, onPress }: Props) {
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
@@ -43,6 +61,24 @@ export function FriendWalkerMarker({ coordinate, avatar, ageMs, onPress }: Props
     const id = setTimeout(() => setTracksViewChanges(false), 500);
     return () => clearTimeout(id);
   }, [stale]);
+
+  // Android + известный аватар → готовый PNG без детей. Выцветание после 5 минут
+  // — через opacity-проп; скрытие после 10 минут делает вызывающий (фильтр по
+  // FRIEND_PIN_HIDE_MS) — здесь без изменений.
+  const androidImage = Platform.OS === 'android' ? ANDROID_FRIEND_IMAGES[avatar] : undefined;
+  if (androidImage) {
+    return (
+      <Marker
+        coordinate={coordinate}
+        anchor={{ x: 0.5, y: 0.5 }}
+        image={androidImage}
+        opacity={stale ? STALE_OPACITY : 1}
+        onPress={onPress}
+        // Always above hazard/water markers (zIndex 1), below the user marker (3).
+        zIndex={2}
+      />
+    );
+  }
 
   return (
     <Marker
