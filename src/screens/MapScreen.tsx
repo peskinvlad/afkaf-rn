@@ -580,6 +580,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           <MapMarkerIcon
             key={m.id}
             coordinate={{ latitude: m.lat, longitude: m.lng }}
+            type={m.type}
             emoji={MARKER_CONFIG[m.type]?.emoji ?? '📍'}
             color={MARKER_CONFIG[m.type]?.pinColor ?? '#6b7280'}
             onPress={() => { setSelectedFriendId(null); setDetailMarker(m); }}
@@ -590,6 +591,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           <MapMarkerIcon
             key={`water-${w.id}`}
             coordinate={{ latitude: w.lat, longitude: w.lng }}
+            type="water"
             emoji={MARKER_CONFIG.water.emoji}
             color={MARKER_CONFIG.water.pinColor}
             title={MARKER_CONFIG.water.emoji}
