@@ -266,11 +266,27 @@ export function WalkScreen({ navigation }: Props) {
   const [steps, setSteps] = useState(0);
   useEffect(() => {
     let sub: { remove: () => void } | null = null;
-    Pedometer.isAvailableAsync().then((available) => {
-      if (!available) return;
+    let cancelled = false;
+    (async () => {
+      const available = await Pedometer.isAvailableAsync();
+      if (!available || cancelled) return;
+      // Android 10+: шагомер (TYPE_STEP_COUNTER) закрыт dangerous-разрешением
+      // ACTIVITY_RECOGNITION — без рантайм-запроса watchStepCount молча даёт 0
+      // шагов. Разрешение уже в манифесте (мерж из expo-sensors), так что это
+      // JS/OTA, новой сборки не нужно. Отказ прогулку НЕ блокирует — шаги просто
+      // останутся 0, без Alert. iOS этой ветки не касается (там motion-разрешение
+      // берётся системно при первом обращении).
+      if (Platform.OS === 'android') {
+        try {
+          await Pedometer.requestPermissionsAsync();
+        } catch (e) {
+          console.warn('[WalkScreen] pedometer permission request failed:', e);
+        }
+        if (cancelled) return;
+      }
       sub = Pedometer.watchStepCount((result) => setSteps(result.steps));
-    });
-    return () => { sub?.remove(); };
+    })();
+    return () => { cancelled = true; sub?.remove(); };
   }, []);
 
   // ── GPS route + Haversine distance ────────────────────────────────────
