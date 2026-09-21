@@ -16,7 +16,7 @@ import { isDevUser } from '../constants/dev';
 import { DevPanel } from '../components/DevPanel';
 
 // Keep in sync with app.json → expo.version
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '0.1.0';
 // Public privacy policy (web/privacy.html once deployed). Update if the
 // hosting URL changes.
 const PRIVACY_URL = 'https://afkaf.netlify.app/privacy.html';
@@ -386,7 +386,7 @@ export default function AboutScreen({ navigation }: any) {
         </TouchableOpacity>
         <Text style={styles.footerText}>{t.madeWith}</Text>
         <Text style={styles.versionText} onPress={handleVersionTap} suppressHighlighting>
-          v{APP_VERSION}
+          v{APP_VERSION} · beta
         </Text>
       </View>
 
