@@ -4,6 +4,8 @@ import {
   Alert,
   Animated,
   Easing,
+  Image,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -13,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '../lib/supabase';
 import { MapMarker, MARKER_CONFIG, INFRA_MARKER_TYPES } from '../lib/markerConfig';
+import { ANDROID_MARKER_IMAGES } from '../lib/markerImages';
 import { haversine } from '../lib/geo';
 import { navigationRef } from '../lib/navigationRef';
 import { getDevVoteOwnMarkers } from '../constants/dev';
@@ -329,11 +332,28 @@ function CalloutBubble({
   if (distanceM != null) trustParts.push(distanceLabel(distanceM, t));
   const trustLine = trustParts.join(' · ');
 
-  // Постоянное место: мета-строка — emoji + лейбл типа (мелко), плюс расстояние,
-  // если известно. Без свежести. Заголовок при этом = имя места (description).
-  const placeMetaParts: string[] = [`${cfg.emoji} ${typeLabel}`];
-  if (distanceM != null) placeMetaParts.push(distanceLabel(distanceM, t));
-  const placeMeta = placeMetaParts.join(' · ');
+  // Android: PNG-пин по типу для шапки callout — чтобы карточка и метка на карте
+  // совпадали (Noto-текст-emoji давал ракетку вместо мяча). Тип без PNG → падаем
+  // на iOS-путь (кружок + текст-emoji).
+  const androidHeaderImage = Platform.OS === 'android' ? ANDROID_MARKER_IMAGES[marker.type] : undefined;
+
+  // Постоянное место: мета-строка — лейбл типа (мелко) + расстояние. Без свежести.
+  // Заголовок при этом = имя места (description) либо, при пустом имени, лейбл типа.
+  //   iOS (как было): emoji + лейбл типа [+ расстояние].
+  //   Android (п.1): без emoji — иконка типа уже в шапке (PNG).
+  //   Android (п.2): если имени из OSM нет и заголовок == лейбл типа, тип в мете
+  //     не дублируем — оставляем только расстояние.
+  let placeMeta: string;
+  if (Platform.OS === 'android') {
+    const parts: string[] = [];
+    if (marker.description) parts.push(typeLabel); // имя в шапке → тип как контекст
+    if (distanceM != null) parts.push(distanceLabel(distanceM, t));
+    placeMeta = parts.join(' · ');
+  } else {
+    const placeMetaParts: string[] = [`${cfg.emoji} ${typeLabel}`];
+    if (distanceM != null) placeMetaParts.push(distanceLabel(distanceM, t));
+    placeMeta = placeMetaParts.join(' · ');
+  }
 
   const layout =
     anchor && container && bubbleSize
@@ -421,9 +441,13 @@ function CalloutBubble({
             up to two full lines. Постоянное место — заголовок = имя из OSM
             (description), а при пустом имени падаем на лейбл типа. */}
         <View style={[styles.header, rtl && styles.rowReverse]}>
-          <View style={[styles.iconCircle, { backgroundColor: cfg.pinColor }]}>
-            <Text style={styles.iconEmoji}>{cfg.emoji}</Text>
-          </View>
+          {androidHeaderImage ? (
+            <Image source={androidHeaderImage} style={styles.iconImage} resizeMode="contain" />
+          ) : (
+            <View style={[styles.iconCircle, { backgroundColor: cfg.pinColor }]}>
+              <Text style={styles.iconEmoji}>{cfg.emoji}</Text>
+            </View>
+          )}
           <Text style={[styles.typeLabel, rtl && styles.txtRight]} numberOfLines={2}>
             {isPermanentPlace ? (marker.description || typeLabel) : typeLabel}
           </Text>
@@ -442,9 +466,11 @@ function CalloutBubble({
         {/* Meta line. Постоянное место: emoji + лейбл типа (+ расстояние), без
             свежести. Временная метка: confirmations · distance · freshness. */}
         {isPermanentPlace ? (
-          <Text style={[styles.trustLine, rtl && styles.txtRight]} numberOfLines={2}>
-            {placeMeta}
-          </Text>
+          placeMeta ? (
+            <Text style={[styles.trustLine, rtl && styles.txtRight]} numberOfLines={2}>
+              {placeMeta}
+            </Text>
+          ) : null
         ) : justVoted ? (
           // For ~2s after a vote the meta line becomes an explicit thank-you,
           // then reverts to the (now updated) confirmations · distance · time.
@@ -604,6 +630,13 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     textAlign: 'center',
     includeFontPadding: false, // Android: kill baseline padding that sinks emoji
+  },
+  // Android: PNG-пин в шапке. 44×44 → цветной диск (38 из 50 в PNG) читается
+  // ~34, как прежний iconCircle; прозрачные поля PNG уходят в бокс, ряд по высоте
+  // не растёт (заголовок в 2 строки h2 выше). resizeMode contain.
+  iconImage: {
+    width: 44,
+    height: 44,
   },
   typeLabel: {
     flex: 1,

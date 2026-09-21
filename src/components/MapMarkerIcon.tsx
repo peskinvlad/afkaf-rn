@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Marker } from 'react-native-maps';
+import { ANDROID_MARKER_IMAGES } from '../lib/markerImages';
 
 const TOUCH_SIZE = 44; // ≥ the stock pin's tap target the markers had before
 const DISC_SIZE = 38;
@@ -14,21 +15,12 @@ const androidMarkerBox = Platform.OS === 'android'
   ? { width: TOUCH_SIZE + ANDROID_MARKER_PAD * 2, height: TOUCH_SIZE + ANDROID_MARKER_PAD * 2 }
   : null;
 
-// Android: готовые PNG-пины по типу метки, отдаём их через проп <Marker image>
-// вместо children-View. На New Architecture (Fabric) react-native-maps@1.20.1
-// рисует children-маркеры в заниженный bitmap → пин обрезан (см.
-// docs/ANDROID-TODO.md, вариант «г»). Статичный image этого не касается и не
-// растеризуется. Тип без PNG (неизвестный) падает на общий View-путь (серый 📍).
-// PNG сгенерированы scripts/gen-marker-pngs.ts из того же MARKER_CONFIG.
-const ANDROID_MARKER_IMAGES: Record<string, any> = {
-  park: require('../../assets/markers/marker-park.png'),
-  dog_park: require('../../assets/markers/marker-dog_park.png'),
-  water: require('../../assets/markers/marker-water.png'),
-  danger: require('../../assets/markers/marker-danger.png'),
-  hazard: require('../../assets/markers/marker-hazard.png'),
-  aggressive_dog: require('../../assets/markers/marker-aggressive_dog.png'),
-  forbidden: require('../../assets/markers/marker-forbidden.png'),
-};
+// Android: готовые PNG-пины по типу метки (ANDROID_MARKER_IMAGES, единый
+// источник в lib/markerImages), отдаём через проп <Marker image> вместо
+// children-View. На New Architecture (Fabric) react-native-maps@1.20.1 рисует
+// children-маркеры в заниженный bitmap → пин обрезан (см. docs/ANDROID-TODO.md,
+// вариант «г»). Статичный image этого не касается и не растеризуется. Тип без
+// PNG (неизвестный) падает на общий View-путь (серый 📍).
 
 type Props = {
   coordinate: { latitude: number; longitude: number };
