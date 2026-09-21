@@ -264,30 +264,45 @@ export function WalkScreen({ navigation }: Props) {
 
   // ── Steps — Pedometer (real, 0 if unavailable) ─────────────────────────
   const [steps, setSteps] = useState(0);
+  // iOS: подписка на маунте (как было). Motion-разрешение iOS берёт системно при
+  // первом обращении к CMPedometer (NSMotionUsageDescription).
   useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    let sub: { remove: () => void } | null = null;
+    let cancelled = false;
+    Pedometer.isAvailableAsync().then((available) => {
+      if (!available || cancelled) return;
+      sub = Pedometer.watchStepCount((result) => setSteps(result.steps));
+    });
+    return () => { cancelled = true; sub?.remove(); };
+  }, []);
+  // Android: подписку и запрос ACTIVITY_RECOGNITION откладываем до фактического
+  // старта прогулки (trackingStarted). Зачем:
+  //   1) запрос разрешения не всплывает над HeatWarningScreen/переходом, а
+  //      появляется уже в начатой прогулке;
+  //   2) TYPE_STEP_COUNTER — накопительный с загрузки, база задаётся в момент
+  //      подписки (нативный listenerDecorator сбрасывает её на новом слушателе),
+  //      поэтому подписка на старте = отсчёт с ~0. Раньше подписка была на маунте
+  //      → шаги между маунтом и стартом таймера показывались как «19» при 00:00.
+  // ACTIVITY_RECOGNITION (Android 10+) уже в мёрж-манифесте (expo-sensors) → это
+  // JS/OTA. Отказ прогулку НЕ блокирует — шаги просто останутся 0, без Alert.
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !trackingStarted) return;
     let sub: { remove: () => void } | null = null;
     let cancelled = false;
     (async () => {
       const available = await Pedometer.isAvailableAsync();
       if (!available || cancelled) return;
-      // Android 10+: шагомер (TYPE_STEP_COUNTER) закрыт dangerous-разрешением
-      // ACTIVITY_RECOGNITION — без рантайм-запроса watchStepCount молча даёт 0
-      // шагов. Разрешение уже в манифесте (мерж из expo-sensors), так что это
-      // JS/OTA, новой сборки не нужно. Отказ прогулку НЕ блокирует — шаги просто
-      // останутся 0, без Alert. iOS этой ветки не касается (там motion-разрешение
-      // берётся системно при первом обращении).
-      if (Platform.OS === 'android') {
-        try {
-          await Pedometer.requestPermissionsAsync();
-        } catch (e) {
-          console.warn('[WalkScreen] pedometer permission request failed:', e);
-        }
-        if (cancelled) return;
+      try {
+        await Pedometer.requestPermissionsAsync();
+      } catch (e) {
+        console.warn('[WalkScreen] pedometer permission request failed:', e);
       }
+      if (cancelled) return;
       sub = Pedometer.watchStepCount((result) => setSteps(result.steps));
     })();
     return () => { cancelled = true; sub?.remove(); };
-  }, []);
+  }, [trackingStarted]);
 
   // ── GPS route + Haversine distance ────────────────────────────────────
   const [route, setRoute] = useState<{ latitude: number; longitude: number }[]>([]);
