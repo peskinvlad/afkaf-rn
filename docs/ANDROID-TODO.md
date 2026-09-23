@@ -123,17 +123,47 @@ development-сборки (dev client, APK) на ветке `exp/android`. Сег
   возвращает на уличный зум; на MapScreen метки/вода появляются в видимой
   области при пане.
 
-### БЛОКЕР №2 — Android runtimeVersion до раздачи тестерам
+### БЛОКЕР №2 — Android runtimeVersion до раздачи тестерам — ✅ СДЕЛАНО
 
 - **Контекст:** `version` НАМЕРЕННО оставлен `0.1.0` (общий для iOS и Android;
   подъём после мержа в `main` сменил бы `runtimeVersion` по policy `appVersion`
   и отрезал бы текущий iOS build 3 от OTA). На канале preview одно устройство —
   старую сборку просто заменяем новой.
-- **Что сделать до раздачи Android тестерам:** завести **отдельный
-  `android.runtimeVersion`** (через `app.config.js`), не меняя `version` и iOS
-  runtime, чтобы Android-обновления по воздуху были изолированы от iOS. **Решить
-  схему версионирования ДО первого мержа `exp/android` в `main`** — иначе общий
-  `appVersion`-runtime свяжет платформы и OTA пойдёт крест-накрест.
+- **Сделано (для первого .aab в Play internal testing):**
+  - **`app.json` → `expo.android.runtimeVersion = "android-1"`** (фикс-строка).
+    Top-level `expo.runtimeVersion = { policy: appVersion }` и `expo.version =
+    0.1.0` НЕ тронуты. Платформенный runtime перекрывает top-level только для
+    Android (SDK 54: *«platform specific one takes precedence»*); iOS резолвится
+    из policy → `0.1.0` как прежде. Проверено: `expo config --type introspect`
+    diff — меняются ТОЛЬКО две строки Android (`android.runtimeVersion` +
+    `strings.xml/expo_runtime_version`), iOS Info.plist (`EXUpdatesRuntimeVersion`
+    = `0.1.0`) байт в байт. `app.config.js` не трогали — спред `...config.android`
+    сохраняет `runtimeVersion`.
+  - **Каналы: отдельный `production-android`.** `eas.json` → новый профиль
+    `production-android` (`extends: production`, `channel: production-android`,
+    `.aab` наследуется от store-distribution). Причина: `eas update` публикует
+    сразу под обе платформы, каждую со своим резолвом runtime; на ОБЩЕМ канале
+    `production` публикация с android-ветки посчитала бы iOS-runtime = `0.1.0` и
+    долетела бы до iOS build 3 непроверенным JS. Отдельный канал рвёт связь в
+    обе стороны без дисциплины `--platform`. iOS остаётся на `production`.
+- **Схема версионирования (зафиксирована ДО мержа `exp/android` в `main`):**
+  - iOS: runtime `0.1.0` (policy appVersion), канал `production`. OTA с `main`
+    долетают до iOS build 3 как раньше.
+  - Android: runtime `android-1` (фикс), канал `production-android`. При будущем
+    нативном изменении Android — бампать `android-1 → android-2` (руками, это НЕ
+    `version`), новая сборка. JS-only OTA — тем же runtime.
+- **⚠️ ДО сборки .aab (вне кода, делает владелец):**
+  - Завести **`GOOGLE_MAPS_ANDROID_API_KEY` в EAS-окружении `production`** —
+    сейчас её там НЕТ (есть только в `development`/`preview`). Без неё
+    `app.config.js` не допишет ключ → прод-.aab крашится на открытии карты.
+    Значение — тот же ключ, вставить копированием (сверить символ в символ).
+  - Ограничение ключа Google Maps: добавить **SHA-1 сертификата Play App
+    Signing** (Play Console → Test and release → Setup → App signing → SHA-1
+    сертификата *App signing key*) в ограничения ключа (package `com.afkaf.app`
+    + этот SHA-1). Play подписывает своим сертификатом, отличным от EAS
+    upload-key, — иначе карта в проде будет пустой/битой.
+- **Команда сборки (.aab, запускает владелец):**
+  `cd "/Users/vladpeskin/afkaf mvp/afkaf-rn-android" && eas build --profile production-android --platform android`
 
 ### БЛОКЕР-соседи и баги UI
 
