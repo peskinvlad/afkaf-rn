@@ -647,24 +647,29 @@ export function WalkScreen({ navigation }: Props) {
             refreshFriendAnchor();
           }}
         >
-          {route.length > 1 && (
-            <Polyline coordinates={route} strokeColor={colors.primary} strokeWidth={4} />
-          )}
+          {/* Always mounted under a stable key. An empty/short route becomes an
+              MKPolyline with 0/1 points (count 0 → no deref natively), so there
+              is no churn as route crosses length 1 mid-walk. */}
+          <Polyline key="route" coordinates={route} strokeColor={colors.primary} strokeWidth={4} />
 
-          {hasUserFix && (
-            <MarkerAnimated
-              coordinate={userCoord}
-              anchor={{ x: 0.5, y: 0.5 }}
-              flat
-              // Above every other marker (friend pins are 2, hazards/water 1).
-              zIndex={3}
-              // Constant true on this one marker only — the native-driven
-              // rotation needs a live view; no more per-fix pulsing.
-              tracksViewChanges
-            >
-              <UserLocationMarker headingAnim={headingAnim} accuracy={accuracy} />
-            </MarkerAnimated>
-          )}
+          {/* Always mounted under a stable key so toggling marker types in the
+              filter can never unmount/remount this node — that churn is what made
+              the arrow vanish (symptom a). Before the first GPS fix userCoord sits
+              at 0,0, so hide it with opacity 0 instead of unmounting. */}
+          <MarkerAnimated
+            key="me"
+            coordinate={userCoord}
+            opacity={hasUserFix ? 1 : 0}
+            anchor={{ x: 0.5, y: 0.5 }}
+            flat
+            // Above every other marker (friend pins are 2, hazards/water 1).
+            zIndex={3}
+            // Constant true on this one marker only — the native-driven
+            // rotation needs a live view; no more per-fix pulsing.
+            tracksViewChanges
+          >
+            <UserLocationMarker headingAnim={headingAnim} accuracy={accuracy} />
+          </MarkerAnimated>
 
           {markersToRender.map((m) => (
             <MapMarkerIcon

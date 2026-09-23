@@ -537,20 +537,24 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           refreshFriendAnchor();
         }}
       >
-        {hasUserFix && (
-          <MarkerAnimated
-            coordinate={userCoord}
-            anchor={{ x: 0.5, y: 0.5 }}
-            flat
-            // Above every other marker (friend pins are 2, hazards/water 1).
-            zIndex={3}
-            // Constant true on this one marker only: the native-driven rotation
-            // needs a live view. The rest of the map never pulses anymore.
-            tracksViewChanges
-          >
-            <UserLocationMarker headingAnim={headingAnim} accuracy={accuracy} />
-          </MarkerAnimated>
-        )}
+        {/* Always mounted under a stable key so toggling marker types in the
+            filter can never unmount/remount this node — that churn is what made
+            the arrow vanish (symptom a). Before the first GPS fix userCoord sits
+            at 0,0, so hide it with opacity 0 instead of unmounting. */}
+        <MarkerAnimated
+          key="me"
+          coordinate={userCoord}
+          opacity={hasUserFix ? 1 : 0}
+          anchor={{ x: 0.5, y: 0.5 }}
+          flat
+          // Above every other marker (friend pins are 2, hazards/water 1).
+          zIndex={3}
+          // Constant true on this one marker only: the native-driven rotation
+          // needs a live view. The rest of the map never pulses anymore.
+          tracksViewChanges
+        >
+          <UserLocationMarker headingAnim={headingAnim} accuracy={accuracy} />
+        </MarkerAnimated>
 
         {markersToRender.map((m) => (
           <MapMarkerIcon
