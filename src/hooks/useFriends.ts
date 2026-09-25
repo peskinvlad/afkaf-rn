@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { fetchUserPreviews } from '../lib/userPreviews';
 
@@ -134,9 +135,15 @@ export function useFriends(): UseFriendsResult {
     mountedRef.current = true;
     load();
     const interval = setInterval(load, POLL_INTERVAL_MS);
+    // Coming back from the background: iOS suspends the poll timer, so refetch
+    // once on foreground instead of waiting out the rest of the interval.
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') load();
+    });
     return () => {
       mountedRef.current = false;
       clearInterval(interval);
+      sub.remove();
     };
   }, [load]);
 

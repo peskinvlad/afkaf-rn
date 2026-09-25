@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { fetchUserPreviews } from '../lib/userPreviews';
 import { haversine, LatLng } from '../lib/geo';
@@ -81,7 +82,15 @@ export function useNearbyDogs(userLocation: LatLng | null) {
   useEffect(() => {
     load();
     const id = setInterval(load, POLL_MS);
-    return () => clearInterval(id);
+    // Coming back from the background: iOS suspends the poll timer, so refetch
+    // once on foreground instead of waiting out the rest of the interval.
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') load();
+    });
+    return () => {
+      clearInterval(id);
+      sub.remove();
+    };
   }, [load]);
 
   return { dogs, hiddenCount, locationAvailable: userLocation != null, refresh: load };

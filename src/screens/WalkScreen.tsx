@@ -118,7 +118,7 @@ export function WalkScreen({ navigation }: Props) {
 
   // ── Markers + water sources (same shared data as MapScreen) ────────────
   const { markers, waterSources } = useMapMarkers();
-  const { dogs: nearbyDogs, hiddenCount: nearbyHiddenCount, locationAvailable: nearbyLocationAvailable } = useNearbyDogs(userLocation);
+  const { dogs: nearbyDogs, hiddenCount: nearbyHiddenCount, locationAvailable: nearbyLocationAvailable, refresh: refreshNearby } = useNearbyDogs(userLocation);
   const nearbyTotal = nearbyDogs.length + nearbyHiddenCount;
   const { statusByUser: friendStatusByUser, refresh: refreshFriends } = useFriends();
   const [nearbySheetVisible, setNearbySheetVisible] = useState(false);
@@ -222,15 +222,20 @@ export function WalkScreen({ navigation }: Props) {
     if (!trackingStarted) return; // no live tracking → no timer
     const tick = () => setSeconds(Math.floor((Date.now() - walkStartedAtMs) / 1000));
     const id = setInterval(tick, 1000);
-    // Coming back to the foreground: catch up now, not on the next tick.
+    // Coming back to the foreground: catch up now, not on the next tick — and
+    // pull fresh friends + nearby walks instead of waiting out their 30s poll.
     const appStateSub = AppState.addEventListener('change', (s) => {
-      if (s === 'active') tick();
+      if (s === 'active') {
+        tick();
+        refreshNearby();
+        refreshFriends();
+      }
     });
     return () => {
       clearInterval(id);
       appStateSub.remove();
     };
-  }, [walkStartedAtMs, trackingStarted]);
+  }, [walkStartedAtMs, trackingStarted, refreshNearby, refreshFriends]);
   const timeStr = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 
   // ── Steps — Pedometer (real, 0 if unavailable) ─────────────────────────
