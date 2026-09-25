@@ -13,7 +13,8 @@ import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Bell, SlidersHorizontal, MapPinPlusInside } from 'lucide-react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { Bell, SlidersHorizontal, MapPinPlusInside, Users } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { colors, radii, shadows, heatVis } from '../theme/tokens';
 import { haversine, LatLng, isValidCoord, START_COORD, START_DELTA } from '../lib/geo';
@@ -120,7 +121,7 @@ export function WalkScreen({ navigation }: Props) {
   const { markers, waterSources } = useMapMarkers();
   const { dogs: nearbyDogs, hiddenCount: nearbyHiddenCount, locationAvailable: nearbyLocationAvailable, refresh: refreshNearby } = useNearbyDogs(userLocation);
   const nearbyTotal = nearbyDogs.length + nearbyHiddenCount;
-  const { statusByUser: friendStatusByUser, refresh: refreshFriends } = useFriends();
+  const { statusByUser: friendStatusByUser, incomingCount, refresh: refreshFriends } = useFriends();
   const [nearbySheetVisible, setNearbySheetVisible] = useState(false);
   const [sendingFriendId, setSendingFriendId] = useState<string | null>(null);
   const [shareVisible, setShareVisible] = useState(false);
@@ -133,6 +134,21 @@ export function WalkScreen({ navigation }: Props) {
     await refreshFriends();
     setSendingFriendId(null);
   }
+
+  // Returning from the Friends screen (e.g. after accepting a request) refreshes
+  // the incoming-count badge without waiting out the 30s poll. Skip the very
+  // first focus — useFriends already load()s on mount, so refetching here too
+  // would be a redundant back-to-back request on startup.
+  const didInitialFocus = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!didInitialFocus.current) {
+        didInitialFocus.current = true;
+        return;
+      }
+      refreshFriends();
+    }, [refreshFriends])
+  );
 
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [detailMarker, setDetailMarker] = useState<import('../lib/markerConfig').MapMarker | null>(null);
@@ -715,6 +731,22 @@ export function WalkScreen({ navigation }: Props) {
             {isPublishing ? t('map.live') : t('map.hidden')}
           </Text>
         </View>
+
+        {/* ── Friends — top left (no burger here, unlike MapScreen) ── */}
+        <TouchableOpacity
+          onPress={() => { setDetailMarker(null); setSelectedFriendId(null); navigation.navigate('Friends'); }}
+          style={[styles.iconBtn, shadows.sm, { position: 'absolute', zIndex: 30, top: insets.top + 8, left: 14 }]}
+          activeOpacity={0.8}
+          accessibilityLabel={t('menu.friends')}
+          hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
+        >
+          <Users size={20} color={colors.ink} />
+          {incomingCount > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeTxt}>{incomingCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
 
         {/* ── Filter — top right group ── */}
         <TouchableOpacity
