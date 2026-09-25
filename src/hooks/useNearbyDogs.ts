@@ -49,10 +49,22 @@ export function useNearbyDogs(userLocation: LatLng | null) {
       return;
     }
 
-    const [{ data: walks }, { data: hidden }] = await Promise.all([
-      supabase.from('active_walks').select('user_id, lat, lng, updated_at'),
+    // get_nearby_walks (SECURITY DEFINER) replaces the direct active_walks read:
+    // it rounds non-friends' coordinates server-side (~111 m) and rate-limits the
+    // call. Shape stays {user_id, lat, lng, updated_at} (+ is_friend, unused for
+    // now) so MapScreen/WalkScreen/NearbyDogsSheet don't change.
+    const [walksRes, { data: hidden }] = await Promise.all([
+      supabase.rpc('get_nearby_walks', { user_lat: loc.latitude, user_lng: loc.longitude }),
       supabase.rpc('get_hidden_walks_count', { user_lat: loc.latitude, user_lng: loc.longitude }),
     ]);
+
+    // RPC failed (rate limit PT429 / transient network) → keep the last good
+    // list instead of wiping it, and no Alert. Next poll/foreground retries.
+    if (walksRes.error) {
+      console.warn('[useNearbyDogs] get_nearby_walks error:', walksRes.error.message);
+      return;
+    }
+    const walks = walksRes.data;
 
     const nearby = ((walks ?? []) as WalkRow[])
       .filter((w) => w.user_id !== myUserId)
