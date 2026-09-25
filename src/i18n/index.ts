@@ -347,6 +347,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'dogProfile.sociability.reactive': 'תגובתי',
     'dogProfile.save': 'שמור והמשך',
     'dogProfile.nameRequired': 'איך קוראים לכלב? הזינו שם כדי להמשיך.',
+    'dogProfile.photoUploadFailed': 'הכלב נשמר, אך לא הצלחנו להעלות את התמונה. ({error})',
 
     'auth.subtitle': 'מדריך הטיולים של השכונה שלך',
     'auth.continueGoogle': 'המשך עם Google',
@@ -783,6 +784,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'dogProfile.sociability.reactive': 'Reactive',
     'dogProfile.save': 'Save and continue',
     'dogProfile.nameRequired': "What's your dog's name? Add it to continue.",
+    'dogProfile.photoUploadFailed': "Dog saved, but we couldn't upload the photo. ({error})",
 
     'auth.subtitle': 'Your neighborhood walk guide',
     'auth.continueGoogle': 'Continue with Google',
@@ -1219,6 +1221,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'dogProfile.sociability.reactive': 'Реактивный',
     'dogProfile.save': 'Сохранить и продолжить',
     'dogProfile.nameRequired': 'Как зовут собаку? Впиши имя, чтобы продолжить.',
+    'dogProfile.photoUploadFailed': 'Собака сохранена, но фото загрузить не удалось. ({error})',
 
     'auth.subtitle': 'Твой гид по прогулкам в районе',
     'auth.continueGoogle': 'Продолжить с Google',

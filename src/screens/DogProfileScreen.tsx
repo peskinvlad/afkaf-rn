@@ -149,6 +149,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
 
       // ── Upload photo ──
       let photoUrl: string | null = null;
+      let photoUploadErrorMsg: string | null = null;
       if (photoUri && userId) {
         // Strip query params before extracting extension (iOS URIs can have ?token=...)
         const cleanUri = photoUri.split('?')[0];
@@ -160,12 +161,19 @@ export function DogProfileScreen({ navigation, route }: Props) {
           encoding: FileSystem.EncodingType.Base64,
         });
         const bytes = toByteArray(base64);
+        // Upload an ArrayBuffer, not the Uint8Array — the RN Blob wrapper around
+        // a typed array sent a broken/empty body (no photo ever landed in
+        // storage, see git: the only file predates this code). Slice to the
+        // view's exact window so a Uint8Array with a byteOffset/short length
+        // can't drag extra bytes from the backing buffer into the upload.
+        const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
         const { error: uploadError } = await supabase.storage
           .from('dog-photos')
-          .upload(path, bytes, { upsert: true, contentType: `image/${safeExt}` });
+          .upload(path, arrayBuffer, { upsert: true, contentType: `image/${safeExt}` });
 
         if (uploadError) {
           console.warn('[DogProfile] photo upload error:', uploadError.message);
+          photoUploadErrorMsg = uploadError.message;
         } else {
           const { data: urlData } = supabase.storage
             .from('dog-photos')
@@ -203,6 +211,12 @@ export function DogProfileScreen({ navigation, route }: Props) {
           .from('dogs')
           .insert(payload);
         if (error) throw error;
+      }
+      // Dog saved fine; only the photo failed. Tell the user (don't block the
+      // save) and surface the raw storage message — temporary, for diagnosing
+      // why uploads never land in the dog-photos bucket.
+      if (photoUploadErrorMsg) {
+        Alert.alert(t('dogProfile.photoUploadFailed', { error: photoUploadErrorMsg }));
       }
       navigation.goBack();
     } catch (e) {
