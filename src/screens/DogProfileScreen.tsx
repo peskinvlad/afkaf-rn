@@ -178,7 +178,13 @@ export function DogProfileScreen({ navigation, route }: Props) {
           const { data: urlData } = supabase.storage
             .from('dog-photos')
             .getPublicUrl(path);
-          photoUrl = urlData.publicUrl;
+          // Cache-bust: the path is stable (userId/dog.ext), so a replaced photo
+          // keeps the same public URL — RN's Image cache and Supabase's CDN
+          // (Cache-Control max-age) would otherwise keep serving the old file.
+          // A fresh ?v= on every successful upload forces a re-fetch. The extra
+          // query param is harmless everywhere the URL is shown (Profile/Dog
+          // profile use it as-is; the extension parse above strips '?').
+          photoUrl = `${urlData.publicUrl}?v=${Date.now()}`;
         }
       }
 
