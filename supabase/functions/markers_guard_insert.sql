@@ -47,7 +47,10 @@ BEGIN
     AND created_at > now() - interval '1 hour';
 
   IF recent_count >= 20 THEN
-    RAISE EXCEPTION 'markers_rate_limit'
+    -- RAISE без строки формата: строка формата + USING MESSAGE вместе дают
+    -- «RAISE option already specified: MESSAGE», и лимит падал бы не тем
+    -- исключением вместо PT429.
+    RAISE EXCEPTION
       USING ERRCODE = 'PT429',
             MESSAGE = 'markers_rate_limit',
             DETAIL  = 'more than 20 markers created in the last hour',
