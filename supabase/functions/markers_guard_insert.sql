@@ -34,7 +34,10 @@ BEGIN
 
   -- Инфраструктурные (кураторские) типы — только через service_role / SQL.
   IF NEW.type IN ('water', 'park', 'dog_park') THEN
-    RAISE EXCEPTION 'markers_type_forbidden'
+    -- RAISE без строки формата: строка формата + USING MESSAGE вместе дают
+    -- «RAISE option already specified: MESSAGE» — вместо PT403 вылезало бы не то
+    -- исключение.
+    RAISE EXCEPTION
       USING ERRCODE = 'PT403',
             MESSAGE = 'markers_type_forbidden',
             DETAIL  = 'infrastructure marker types are curated-only',
