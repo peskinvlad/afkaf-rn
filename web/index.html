@@ -78,17 +78,16 @@
   .card .ico{font-size:34px;line-height:1;flex:0 0 auto}
   .card .label{font-weight:900;font-size:22px}
   .card .sub{display:block;font-weight:700;font-size:13px;color:var(--muted);margin-top:2px}
-  .card .badge{
-    display:none;margin-inline-start:auto;background:var(--green);color:#fff;
-    font-weight:800;font-size:12px;padding:5px 11px;border-radius:999px;white-space:nowrap;
+  .card .check{
+    display:none;margin-inline-start:auto;flex:0 0 auto;width:24px;height:24px;
   }
-  /* Selected / recommended platform card */
+  /* Selected platform card: green border + checkmark. */
   .js[data-plat="ios"] .card--ios,
   .js[data-plat="android"] .card--android{
     border-color:var(--green);background:var(--card-ios);
   }
-  .js[data-plat="ios"] .card--ios .badge,
-  .js[data-plat="android"] .card--android .badge{display:inline-block}
+  .js[data-plat="ios"] .card--ios .check,
+  .js[data-plat="android"] .card--android .check{display:block}
 
   /* Platform steps */
   .platform{
@@ -157,8 +156,8 @@
       <span class="t en">Choose your device</span>
     </p>
 
-    <div class="cards">
-      <a class="card card--ios" href="#sec-ios" data-plat="ios">
+    <div class="cards" role="radiogroup">
+      <a class="card card--ios" href="#sec-ios" data-plat="ios" role="radio" aria-checked="false">
         <span class="ico">📱</span>
         <span>
           <span class="label">iPhone</span>
@@ -168,14 +167,13 @@
             <span class="t en">iPhone / iOS</span>
           </span>
         </span>
-        <span class="badge">
-          <span class="t he">מומלץ עבורכם</span>
-          <span class="t ru">рекомендуем</span>
-          <span class="t en">recommended</span>
-        </span>
+        <svg class="check" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="12" fill="#2c5f25"/>
+          <path d="M6.5 12.5l3.2 3.2 7-7" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
       </a>
 
-      <a class="card card--android" href="#sec-android" data-plat="android">
+      <a class="card card--android" href="#sec-android" data-plat="android" role="radio" aria-checked="false">
         <span class="ico">🤖</span>
         <span>
           <span class="label">Android</span>
@@ -185,11 +183,10 @@
             <span class="t en">Android</span>
           </span>
         </span>
-        <span class="badge">
-          <span class="t he">מומלץ עבורכם</span>
-          <span class="t ru">рекомендуем</span>
-          <span class="t en">recommended</span>
-        </span>
+        <svg class="check" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="12" fill="#2c5f25"/>
+          <path d="M6.5 12.5l3.2 3.2 7-7" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
       </a>
     </div>
 
@@ -301,15 +298,25 @@
       });
       setLang(el.lang);
 
-      // Platform cards select which step block is shown.
-      [].slice.call(document.querySelectorAll('.card')).forEach(function (c) {
+      // Platform cards behave as a radio group.
+      var cards = [].slice.call(document.querySelectorAll('.card'));
+      function selectPlat(plat, scroll) {
+        el.dataset.plat = plat;
+        cards.forEach(function (c) {
+          c.setAttribute('aria-checked', c.dataset.plat === plat ? 'true' : 'false');
+        });
+        if (scroll) {
+          var sec = document.getElementById(plat === 'android' ? 'sec-android' : 'sec-ios');
+          if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+      cards.forEach(function (c) {
         c.addEventListener('click', function (e) {
           e.preventDefault();
-          el.dataset.plat = c.dataset.plat;
-          var sec = document.getElementById(c.dataset.plat === 'android' ? 'sec-android' : 'sec-ios');
-          if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          selectPlat(c.dataset.plat, true);
         });
       });
+      selectPlat(el.dataset.plat === 'android' ? 'android' : 'ios', false);
     })();
   </script>
 </body>
