@@ -1,66 +1,316 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he" dir="rtl" class="nojs">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="index,follow">
-<title>afkaf — Safe dog walks in the heat</title>
+<title>afkaf — beta · Safe dog walks in the heat</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<script>
+  // Progressive enhancement only: no trackers, no external scripts.
+  // Runs before body paint to avoid a flash of the wrong language / platform.
+  (function () {
+    var el = document.documentElement;
+    el.className = 'js';
+    // Language: browser first, Hebrew default (matches lang="he" fallback).
+    var lang = (navigator.language || 'he').slice(0, 2).toLowerCase();
+    if (lang !== 'ru' && lang !== 'en') lang = 'he';
+    el.lang = lang;
+    el.dir = lang === 'he' ? 'rtl' : 'ltr';
+    // Platform: Android UA → android, everything else defaults to iOS.
+    var ua = navigator.userAgent || '';
+    el.dataset.plat = /android/i.test(ua) ? 'android' : 'ios';
+  })();
+</script>
 <style>
   :root{
     --green:#2c5f25;
+    --green-soft:#3d7a33;
     --bg:#e8f0e6;
+    --card:#ffffff;
+    --card-ios:#eaf3e8;
     --ink:#1d2b1a;
     --muted:#5a6b55;
+    --line:#d3e0cf;
+    --gold:#e8b53d;
   }
   *{box-sizing:border-box}
-  html,body{margin:0;padding:0;min-height:100%}
+  html,body{margin:0;padding:0}
   body{
     background:var(--bg);
     color:var(--ink);
     font-family:'Nunito',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     min-height:100vh;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
-    text-align:center;padding:40px 20px;
+    display:flex;flex-direction:column;align-items:center;
+    padding:20px 16px 32px;
+    -webkit-font-smoothing:antialiased;
   }
-  .brand{display:flex;align-items:center;gap:12px;font-weight:800;color:var(--green);font-size:44px;letter-spacing:-1px}
-  .brand .paw{font-size:44px}
-  .taglines{margin:24px 0 32px}
-  .taglines p{margin:5px 0;font-size:19px;font-weight:600;color:var(--ink)}
-  .taglines p.he{direction:rtl}
-  .cta{
-    display:inline-block;background:var(--green);color:#fff;text-decoration:none;
-    font-weight:800;font-size:17px;border-radius:999px;padding:14px 36px;
-    box-shadow:0 2px 6px rgba(44,95,37,.25);
+  .wrap{width:100%;max-width:440px}
+
+  /* Language switch */
+  .langbar{display:flex;justify-content:center;gap:6px;margin:4px 0 18px}
+  .langbar a{
+    text-decoration:none;color:var(--muted);font-weight:800;font-size:14px;
+    padding:7px 14px;border-radius:999px;border:1.5px solid transparent;line-height:1;
   }
-  .hint{margin-top:16px;color:var(--muted);font-size:13px;line-height:1.4;max-width:320px}
-  .hint p{margin:3px 0}
-  .hint p.he{direction:rtl}
-  footer{margin-top:36px;color:var(--muted);font-size:14px}
-  footer a{color:var(--green);text-decoration:none;font-weight:700}
+  .langbar a.active{color:var(--green);background:#fff;border-color:var(--line)}
+
+  /* Brand */
+  .brand{display:flex;align-items:center;justify-content:center;gap:10px;
+    font-weight:900;color:var(--green);font-size:42px;letter-spacing:-1px}
+  .brand .paw{font-size:40px}
+  .tagline{margin:12px 0 26px;text-align:center;font-size:19px;font-weight:700;color:var(--ink)}
+
+  /* Section heading */
+  .pick-title{text-align:center;font-size:15px;font-weight:800;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.5px;margin:0 0 12px}
+
+  /* Platform cards */
+  .cards{display:flex;flex-direction:column;gap:12px;margin-bottom:26px}
+  .card{
+    display:flex;align-items:center;gap:14px;text-decoration:none;color:var(--ink);
+    background:var(--card);border:2px solid var(--line);border-radius:20px;
+    padding:18px 20px;transition:border-color .15s,transform .05s;
+  }
+  .card:active{transform:scale(.99)}
+  .card .ico{font-size:34px;line-height:1;flex:0 0 auto}
+  .card .label{font-weight:900;font-size:22px}
+  .card .sub{display:block;font-weight:700;font-size:13px;color:var(--muted);margin-top:2px}
+  .card .badge{
+    display:none;margin-inline-start:auto;background:var(--green);color:#fff;
+    font-weight:800;font-size:12px;padding:5px 11px;border-radius:999px;white-space:nowrap;
+  }
+  /* Selected / recommended platform card */
+  .js[data-plat="ios"] .card--ios,
+  .js[data-plat="android"] .card--android{
+    border-color:var(--green);background:var(--card-ios);
+  }
+  .js[data-plat="ios"] .card--ios .badge,
+  .js[data-plat="android"] .card--android .badge{display:inline-block}
+
+  /* Platform steps */
+  .platform{
+    background:#fff;border:2px solid var(--line);border-radius:22px;
+    padding:20px 20px 22px;margin-bottom:16px;
+  }
+  .platform h2{margin:0 0 4px;font-size:22px;font-weight:900;color:var(--green);
+    display:flex;align-items:center;gap:9px}
+  .platform h2 .ico{font-size:24px}
+  .platform .lede{margin:6px 0 16px;font-size:15.5px;font-weight:600;color:var(--ink);line-height:1.5}
+
+  .step{display:flex;gap:12px;margin:14px 0}
+  .step .n{
+    flex:0 0 auto;width:28px;height:28px;border-radius:50%;background:var(--green);
+    color:#fff;font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;
+  }
+  .step .body{flex:1;min-width:0}
+  .step p{margin:0 0 10px;font-size:15.5px;font-weight:600;line-height:1.5}
+
+  .btn{
+    display:block;text-align:center;background:var(--green);color:#fff;text-decoration:none;
+    font-weight:800;font-size:16px;border-radius:14px;padding:14px 18px;line-height:1.2;
+    box-shadow:0 2px 5px rgba(44,95,37,.22);
+  }
+  .btn:active{background:var(--green-soft)}
+  .btn.ghost{background:#fff;color:var(--green);border:2px solid var(--green);box-shadow:none}
+
+  .tip{margin:2px 0 0;font-size:13.5px;color:var(--muted);line-height:1.45;font-weight:600}
+
+  /* Show only current-language strings. */
+  .t{display:none}
+  html[lang="he"] .t.he,
+  html[lang="ru"] .t.ru,
+  html[lang="en"] .t.en{display:inline}
+
+  /* Section visibility: with JS one platform at a time; without JS, both. */
+  .js .platform{display:none}
+  .js[data-plat="ios"] #sec-ios{display:block}
+  .js[data-plat="android"] #sec-android{display:block}
+  .nojs .platform{display:block}
+  .nojs .cards{display:none}
+
+  footer{margin-top:26px;text-align:center;color:var(--muted);font-size:14px;font-weight:700}
+  footer a{color:var(--green);text-decoration:none;font-weight:800}
 </style>
 </head>
 <body>
-  <div class="brand"><span class="paw">🐾</span> afkaf</div>
+  <div class="wrap">
 
-  <div class="taglines">
-    <p class="he" dir="rtl">טיולים בטוחים עם הכלב בחום</p>
-    <p>Safe dog walks in the heat</p>
-    <p>Безопасные прогулки с собакой в жару</p>
+    <nav class="langbar" aria-label="language">
+      <a href="#" data-lang="he">HE</a>
+      <a href="#" data-lang="ru">RU</a>
+      <a href="#" data-lang="en">EN</a>
+    </nav>
+
+    <div class="brand"><span class="paw">🐾</span> afkaf</div>
+    <p class="tagline">
+      <span class="t he">טיולים בטוחים עם הכלב בחום</span>
+      <span class="t ru">Безопасные прогулки с собакой в жару</span>
+      <span class="t en">Safe dog walks in the heat</span>
+    </p>
+
+    <p class="pick-title">
+      <span class="t he">בחרו את המכשיר</span>
+      <span class="t ru">Выберите устройство</span>
+      <span class="t en">Choose your device</span>
+    </p>
+
+    <div class="cards">
+      <a class="card card--ios" href="#sec-ios" data-plat="ios">
+        <span class="ico">📱</span>
+        <span>
+          <span class="label">iPhone</span>
+          <span class="sub">
+            <span class="t he">אייפון / iOS</span>
+            <span class="t ru">iPhone / iOS</span>
+            <span class="t en">iPhone / iOS</span>
+          </span>
+        </span>
+        <span class="badge">
+          <span class="t he">מומלץ עבורכם</span>
+          <span class="t ru">рекомендуем</span>
+          <span class="t en">recommended</span>
+        </span>
+      </a>
+
+      <a class="card card--android" href="#sec-android" data-plat="android">
+        <span class="ico">🤖</span>
+        <span>
+          <span class="label">Android</span>
+          <span class="sub">
+            <span class="t he">אנדרואיד</span>
+            <span class="t ru">Android</span>
+            <span class="t en">Android</span>
+          </span>
+        </span>
+        <span class="badge">
+          <span class="t he">מומלץ עבורכם</span>
+          <span class="t ru">рекомендуем</span>
+          <span class="t en">recommended</span>
+        </span>
+      </a>
+    </div>
+
+    <!-- iPhone -->
+    <section class="platform" id="sec-ios">
+      <h2><span class="ico">📱</span>iPhone</h2>
+
+      <div class="step">
+        <div class="n">1</div>
+        <div class="body">
+          <p>
+            <span class="t he">התקינו את TestFlight מ‑App Store — האפליקציה החינמית של אפל לגרסאות בטא.</span>
+            <span class="t ru">Установите TestFlight из App Store — бесплатное приложение Apple для бета-версий.</span>
+            <span class="t en">Install TestFlight from the App Store — Apple’s free app for betas.</span>
+          </p>
+          <a class="btn ghost" href="https://apps.apple.com/app/testflight/id899247664">
+            <span class="t he">התקינו TestFlight</span>
+            <span class="t ru">Установить TestFlight</span>
+            <span class="t en">Install TestFlight</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="n">2</div>
+        <div class="body">
+          <p>
+            <span class="t he">הצטרפו לגרסת הבטא של afkaf.</span>
+            <span class="t ru">Присоединитесь к бете afkaf.</span>
+            <span class="t en">Join the afkaf beta.</span>
+          </p>
+          <a class="btn" href="https://testflight.apple.com/join/ukr1FwEv">
+            <span class="t he">הצטרפו לבטא</span>
+            <span class="t ru">Присоединиться к бете</span>
+            <span class="t en">Join the beta</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="n">3</div>
+        <div class="body">
+          <p>
+            <span class="t he">לחצו “Install”. בפתיחה הראשונה אשרו גישה למיקום — “בעת השימוש באפליקציה”.</span>
+            <span class="t ru">Нажмите «Install». При первом запуске разрешите доступ к геолокации — «При использовании приложения».</span>
+            <span class="t en">Tap “Install”. On first launch, allow location access — “While Using the App”.</span>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Android -->
+    <section class="platform" id="sec-android">
+      <h2><span class="ico">🤖</span>Android</h2>
+
+      <p class="lede">
+        <span class="t he">הבטא ב‑Google Play כרגע בהזמנות בלבד. השאירו את כתובת ה‑Gmail המשויכת ל‑Play Store, ואשלח לכם קישור להתקנה במהלך היום.</span>
+        <span class="t ru">Бета в Google Play пока по приглашениям. Оставьте Gmail, привязанный к Play Store, и я пришлю ссылку на установку в течение дня.</span>
+        <span class="t en">The Google Play beta is invite-only for now. Leave the Gmail linked to your Play Store and I’ll send you an install link within the day.</span>
+      </p>
+
+      <a class="btn" href="https://forms.gle/FdHm8WPFAzGLynXn7" target="_blank" rel="noopener noreferrer">
+        <span class="t he">השאירו Gmail</span>
+        <span class="t ru">Оставить Gmail</span>
+        <span class="t en">Leave your Gmail</span>
+      </a>
+
+      <p class="tip">
+        <span class="t he">איך למצוא את ה‑Gmail: פתחו את Play Store ← אייקון הפרופיל בפינה הימנית העליונה.</span>
+        <span class="t ru">Как узнать свой Gmail: откройте Play Store → иконка профиля вверху справа.</span>
+        <span class="t en">How to find your Gmail: open Play Store → profile icon, top right.</span>
+      </p>
+    </section>
+
+    <footer>
+      <a href="/privacy">
+        <span class="t he">פרטיות</span>
+        <span class="t ru">Конфиденциальность</span>
+        <span class="t en">Privacy</span>
+      </a>
+      ·
+      <a href="/terms">
+        <span class="t he">תנאים</span>
+        <span class="t ru">Условия</span>
+        <span class="t en">Terms</span>
+      </a>
+    </footer>
+
   </div>
 
-  <a class="cta" href="https://testflight.apple.com/join/ukr1FwEv">TestFlight</a>
+  <script>
+    (function () {
+      var el = document.documentElement;
 
-  <div class="hint">
-    <p class="he" dir="rtl">צריך אייפון ואת האפליקציה החינמית TestFlight. אנדרואיד — בהמשך.</p>
-    <p>Needs an iPhone and the free TestFlight app. Android coming later.</p>
-    <p>Нужен iPhone и бесплатное приложение TestFlight. Android — позже.</p>
-  </div>
+      function setLang(lang) {
+        el.lang = lang;
+        el.dir = lang === 'he' ? 'rtl' : 'ltr';
+        links.forEach(function (a) {
+          a.classList.toggle('active', a.dataset.lang === lang);
+        });
+      }
 
-  <footer>
-    <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
-  </footer>
+      var links = [].slice.call(document.querySelectorAll('.langbar a'));
+      links.forEach(function (a) {
+        a.addEventListener('click', function (e) {
+          e.preventDefault();
+          setLang(a.dataset.lang);
+        });
+      });
+      setLang(el.lang);
+
+      // Platform cards select which step block is shown.
+      [].slice.call(document.querySelectorAll('.card')).forEach(function (c) {
+        c.addEventListener('click', function (e) {
+          e.preventDefault();
+          el.dataset.plat = c.dataset.plat;
+          var sec = document.getElementById(c.dataset.plat === 'android' ? 'sec-android' : 'sec-ios');
+          if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
+    })();
+  </script>
 </body>
 </html>
