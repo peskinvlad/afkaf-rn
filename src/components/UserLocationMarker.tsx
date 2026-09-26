@@ -100,6 +100,11 @@ export function UserLocationMarker({ headingAnim, accuracy }: Props) {
   return content;
 }
 
+// Центр-заглушка для круга точности до первого фикса: круг остаётся
+// смонтированным (постоянный key), но с радиусом 0 он невидим, а <Circle> не
+// двигает камеру, поэтому 0,0 безвреден.
+const ZERO_COORD: LatLng = { latitude: 0, longitude: 0 };
+
 interface AndroidProps {
   // AnimatedRegion, как и у iOS-маркера — координата едет за фиксом (слайд).
   coordinate: AnimatedRegion;
@@ -107,12 +112,15 @@ interface AndroidProps {
   center: LatLng | null;
   headingAnim: Animated.Value;
   accuracy?: number;
+  // false до первого GPS-фикса: узлы не размонтируем (симптом a), а прячем —
+  // стрелку/лапу через opacity, круг через радиус 0.
+  visible: boolean;
 }
 
 // Android-версия своего маркера: три оверлея карты вместо SVG-детей одного
 // маркера. iOS сюда не заходит (см. ветку Platform.OS в экранах) — та версия
 // байт в байт прежняя.
-export function UserLocationMarkerAndroid({ coordinate, center, headingAnim, accuracy }: AndroidProps) {
+export function UserLocationMarkerAndroid({ coordinate, center, headingAnim, accuracy, visible }: AndroidProps) {
   // Логика сглаживания направления не меняется: headingAnim по-прежнему считает
   // useHeading (native driver). Здесь только зеркалим его в JS-value, которым
   // MarkerAnimated крутит нативный проп `rotation` (он не transform → его нельзя
@@ -124,23 +132,31 @@ export function UserLocationMarkerAndroid({ coordinate, center, headingAnim, acc
     return () => headingAnim.removeListener(id);
   }, [headingAnim, rotation]);
 
-  const showRing = center != null && accuracy != null && accuracy > 0 && accuracy <= RING_MAX_M;
+  // Круг рисуем только при валидной точности в пределах RING_MAX_M и когда
+  // метка видима (есть фикс). Вне этих условий не размонтируем, а гасим радиус.
+  const ringActive = visible && center != null && accuracy != null && accuracy > 0 && accuracy <= RING_MAX_M;
+  const markerOpacity = visible ? 1 : 0;
 
+  // Все три оверлея всегда в дереве под постоянными key, чтобы переключение
+  // типов в фильтре (или отсутствие фикса) не размонтировало/пересоздавало их —
+  // именно этот churn ронял стрелку (симптом a). До фикса: стрелка/лапа скрыты
+  // opacity 0, круг — радиусом 0 (центр-заглушка 0,0, камеру круг не двигает).
   return (
     <>
-      {showRing && (
-        <MapCircle
-          center={center}
-          radius={accuracy}
-          fillColor="rgba(44, 95, 37, 0.10)"
-          strokeColor="rgba(44, 95, 37, 0.22)"
-          strokeWidth={1}
-        />
-      )}
+      <MapCircle
+        key="ring"
+        center={ringActive ? (center as LatLng) : ZERO_COORD}
+        radius={ringActive ? (accuracy as number) : 0}
+        fillColor="rgba(44, 95, 37, 0.10)"
+        strokeColor="rgba(44, 95, 37, 0.22)"
+        strokeWidth={1}
+      />
       {/* Стрелка-капля: нативное вращение по курсу, flat = лежит на карте,
           anchor по центру = точка GPS. PNG смотрит строго вверх (север). */}
       <MarkerAnimated
+        key="arrow"
         coordinate={coordinate}
+        opacity={markerOpacity}
         anchor={{ x: 0.5, y: 0.5 }}
         flat
         rotation={rotation as unknown as number}
@@ -149,7 +165,9 @@ export function UserLocationMarkerAndroid({ coordinate, center, headingAnim, acc
       />
       {/* Лапа: статична поверх стрелки, тот же центр. */}
       <MarkerAnimated
+        key="paw"
         coordinate={coordinate}
+        opacity={markerOpacity}
         anchor={{ x: 0.5, y: 0.5 }}
         flat
         image={PAW_IMG}

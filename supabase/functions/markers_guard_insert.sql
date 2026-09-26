@@ -34,7 +34,10 @@ BEGIN
 
   -- Инфраструктурные (кураторские) типы — только через service_role / SQL.
   IF NEW.type IN ('water', 'park', 'dog_park') THEN
-    RAISE EXCEPTION 'markers_type_forbidden'
+    -- RAISE без строки формата: строка формата + USING MESSAGE вместе дают
+    -- «RAISE option already specified: MESSAGE» — вместо PT403 вылезало бы не то
+    -- исключение.
+    RAISE EXCEPTION
       USING ERRCODE = 'PT403',
             MESSAGE = 'markers_type_forbidden',
             DETAIL  = 'infrastructure marker types are curated-only',
@@ -47,7 +50,10 @@ BEGIN
     AND created_at > now() - interval '1 hour';
 
   IF recent_count >= 20 THEN
-    RAISE EXCEPTION 'markers_rate_limit'
+    -- RAISE без строки формата: строка формата + USING MESSAGE вместе дают
+    -- «RAISE option already specified: MESSAGE», и лимит падал бы не тем
+    -- исключением вместо PT429.
+    RAISE EXCEPTION
       USING ERRCODE = 'PT429',
             MESSAGE = 'markers_rate_limit',
             DETAIL  = 'more than 20 markers created in the last hour',

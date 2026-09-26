@@ -61,6 +61,13 @@ const DEFAULT_CATEGORIES: Record<string, boolean> = {
   park: true, dog_park: true, water: true, danger: true, hazard: true, aggressive_dog: true, forbidden: true,
 };
 
+// Marker filter (radius + per-category toggles) is persisted so it survives a
+// cold start — before this it lived only in memory, so any relaunch (iOS
+// evicting the app from background, an OTA update applying on next launch, a
+// crash) silently reset every toggle back to "everything on". Bump the suffix
+// if the stored shape changes.
+const MARKER_FILTER_KEY = 'marker_filter_v1';
+
 const AppContext = createContext<AppState | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -146,6 +153,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toggleCategory = useCallback((key: string) => {
     setActiveCategories((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
+
+  // ── Persist the marker filter across cold starts ──────────────────────────
+  // Gate writes on hydration: the first render holds the in-memory defaults, so
+  // persisting before the restore completes would clobber the saved value with
+  // "everything on". Once hydrated, every change is written back.
+  const filterHydrated = useRef(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(MARKER_FILTER_KEY)
+      .then((raw) => {
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (saved?.radius) setRadius(saved.radius);
+          if (saved?.activeCategories && typeof saved.activeCategories === 'object') {
+            // Merge over the defaults: a marker type added in a later release is
+            // absent from an old saved blob and must default to visible, not
+            // vanish for anyone who saved a filter before it existed.
+            setActiveCategories({ ...DEFAULT_CATEGORIES, ...saved.activeCategories });
+          }
+        }
+      })
+      .catch(() => {
+        // Corrupt JSON or a read error → keep the in-memory defaults silently.
+      })
+      .finally(() => {
+        filterHydrated.current = true;
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!filterHydrated.current) return;
+    AsyncStorage.setItem(
+      MARKER_FILTER_KEY,
+      JSON.stringify({ radius, activeCategories }),
+    ).catch(() => {
+      // Best-effort persistence; a failed write just means the next cold start
+      // falls back to defaults, same as before this existed.
+    });
+  }, [radius, activeCategories]);
 
   useEffect(() => {
     loadSavedLang().then((savedLang) => {

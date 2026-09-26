@@ -91,7 +91,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   } = useApp();
 
   const { markers, waterSources } = useMapMarkers();
-  const { dogs: nearbyDogs, hiddenCount: nearbyHiddenCount, locationAvailable: nearbyLocationAvailable } = useNearbyDogs(userLocation);
+  const { dogs: nearbyDogs, hiddenCount: nearbyHiddenCount, locationAvailable: nearbyLocationAvailable, refresh: refreshNearby } = useNearbyDogs(userLocation);
   const nearbyTotal = nearbyDogs.length + nearbyHiddenCount;
   const { statusByUser: friendStatusByUser, refresh: refreshFriends } = useFriends();
   const [sendingFriendId, setSendingFriendId] = useState<string | null>(null);
@@ -360,6 +360,22 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     }, [isGuest])
   );
 
+  // Returning to the map (e.g. after accepting a friend elsewhere) pulls fresh
+  // friends + nearby walks instead of waiting out the 30s poll. Skip the very
+  // first focus — both hooks already load() on mount, so refetching here too
+  // would be a redundant back-to-back request on startup.
+  const didInitialFocus = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!didInitialFocus.current) {
+        didInitialFocus.current = true;
+        return;
+      }
+      refreshFriends();
+      refreshNearby();
+    }, [refreshFriends, refreshNearby])
+  );
+
   // Geolocation is fetched lazily — only once the user picks a radius other than "all"
   async function handleRadiusChange(next: RadiusFilter) {
     if (next !== 'all' && !userLocation) {
@@ -561,18 +577,27 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           refreshFriendAnchor();
         }}
       >
-        {hasUserFix && (Platform.OS === 'android' ? (
-          // Android: стрелка (нативное вращение) + лапа + круг точности вместо
-          // SVG-детей одного маркера (Fabric режет children bitmap).
+        {/* Своя метка позиции. Всегда смонтирована под стабильным key="me":
+            переключение типов в фильтре не должно размонтировать/пересоздать
+            узел — этот churn и ронял стрелку (симптом a). До первого фикса
+            userCoord = 0,0, метку не размонтируем, а прячем (iOS — opacity 0,
+            Android — visible=false внутри компонента). Ветвление по платформе:
+            на Android рисуем отдельными оверлеями карты (Fabric режет SVG-детей
+            одного маркера), на iOS — прежнее дерево из main. */}
+        {Platform.OS === 'android' ? (
           <UserLocationMarkerAndroid
+            key="me"
             coordinate={userCoord}
             center={userLocation}
             headingAnim={headingAnim}
             accuracy={accuracy}
+            visible={hasUserFix}
           />
         ) : (
           <MarkerAnimated
+            key="me"
             coordinate={userCoord}
+            opacity={hasUserFix ? 1 : 0}
             anchor={{ x: 0.5, y: 0.5 }}
             flat
             // Above every other marker (friend pins are 2, hazards/water 1).
@@ -583,7 +608,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           >
             <UserLocationMarker headingAnim={headingAnim} accuracy={accuracy} />
           </MarkerAnimated>
-        ))}
+        )}
 
         {markersToRender.map((m) => (
           <MapMarkerIcon

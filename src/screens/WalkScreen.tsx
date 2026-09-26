@@ -14,7 +14,8 @@ import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Bell, SlidersHorizontal, MapPinPlusInside } from 'lucide-react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { Bell, SlidersHorizontal, MapPinPlusInside, Users } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { colors, radii, shadows, heatVis } from '../theme/tokens';
 import { haversine, LatLng, isValidCoord, START_COORD, START_DELTA } from '../lib/geo';
@@ -129,9 +130,9 @@ export function WalkScreen({ navigation }: Props) {
 
   // ── Markers + water sources (same shared data as MapScreen) ────────────
   const { markers, waterSources } = useMapMarkers();
-  const { dogs: nearbyDogs, hiddenCount: nearbyHiddenCount, locationAvailable: nearbyLocationAvailable } = useNearbyDogs(userLocation);
+  const { dogs: nearbyDogs, hiddenCount: nearbyHiddenCount, locationAvailable: nearbyLocationAvailable, refresh: refreshNearby } = useNearbyDogs(userLocation);
   const nearbyTotal = nearbyDogs.length + nearbyHiddenCount;
-  const { statusByUser: friendStatusByUser, refresh: refreshFriends } = useFriends();
+  const { statusByUser: friendStatusByUser, incomingCount, refresh: refreshFriends } = useFriends();
   const [nearbySheetVisible, setNearbySheetVisible] = useState(false);
   const [sendingFriendId, setSendingFriendId] = useState<string | null>(null);
   const [shareVisible, setShareVisible] = useState(false);
@@ -144,6 +145,21 @@ export function WalkScreen({ navigation }: Props) {
     await refreshFriends();
     setSendingFriendId(null);
   }
+
+  // Returning from the Friends screen (e.g. after accepting a request) refreshes
+  // the incoming-count badge without waiting out the 30s poll. Skip the very
+  // first focus — useFriends already load()s on mount, so refetching here too
+  // would be a redundant back-to-back request on startup.
+  const didInitialFocus = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!didInitialFocus.current) {
+        didInitialFocus.current = true;
+        return;
+      }
+      refreshFriends();
+    }, [refreshFriends])
+  );
 
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [detailMarker, setDetailMarker] = useState<import('../lib/markerConfig').MapMarker | null>(null);
@@ -251,15 +267,20 @@ export function WalkScreen({ navigation }: Props) {
     if (!trackingStarted) return; // no live tracking → no timer
     const tick = () => setSeconds(Math.floor((Date.now() - walkStartedAtMs) / 1000));
     const id = setInterval(tick, 1000);
-    // Coming back to the foreground: catch up now, not on the next tick.
+    // Coming back to the foreground: catch up now, not on the next tick — and
+    // pull fresh friends + nearby walks instead of waiting out their 30s poll.
     const appStateSub = AppState.addEventListener('change', (s) => {
-      if (s === 'active') tick();
+      if (s === 'active') {
+        tick();
+        refreshNearby();
+        refreshFriends();
+      }
     });
     return () => {
       clearInterval(id);
       appStateSub.remove();
     };
-  }, [walkStartedAtMs, trackingStarted]);
+  }, [walkStartedAtMs, trackingStarted, refreshNearby, refreshFriends]);
   const timeStr = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 
   // ── Steps — Pedometer (real, 0 if unavailable) ─────────────────────────
@@ -741,22 +762,32 @@ export function WalkScreen({ navigation }: Props) {
             refreshFriendAnchor();
           }}
         >
-          {route.length > 1 && (
-            <Polyline coordinates={route} strokeColor={colors.primary} strokeWidth={4} />
-          )}
+          {/* Always mounted under a stable key. An empty/short route becomes an
+              MKPolyline with 0/1 points (count 0 → no deref natively), so there
+              is no churn as route crosses length 1 mid-walk. */}
+          <Polyline key="route" coordinates={route} strokeColor={colors.primary} strokeWidth={4} />
 
-          {hasUserFix && (Platform.OS === 'android' ? (
-            // Android: стрелка (нативное вращение) + лапа + круг точности вместо
-            // SVG-детей одного маркера (Fabric режет children bitmap).
+          {/* Своя метка позиции. Всегда смонтирована под стабильным key="me":
+              переключение типов в фильтре не должно размонтировать/пересоздать
+              узел — этот churn и ронял стрелку (симптом a). До первого фикса
+              userCoord = 0,0, метку не размонтируем, а прячем (iOS — opacity 0,
+              Android — visible=false внутри компонента). Ветвление по платформе:
+              на Android рисуем отдельными оверлеями карты (Fabric режет
+              SVG-детей одного маркера), на iOS — прежнее дерево из main. */}
+          {Platform.OS === 'android' ? (
             <UserLocationMarkerAndroid
+              key="me"
               coordinate={userCoord}
               center={userLocation}
               headingAnim={headingAnim}
               accuracy={accuracy}
+              visible={hasUserFix}
             />
           ) : (
             <MarkerAnimated
+              key="me"
               coordinate={userCoord}
+              opacity={hasUserFix ? 1 : 0}
               anchor={{ x: 0.5, y: 0.5 }}
               flat
               // Above every other marker (friend pins are 2, hazards/water 1).
@@ -767,7 +798,7 @@ export function WalkScreen({ navigation }: Props) {
             >
               <UserLocationMarker headingAnim={headingAnim} accuracy={accuracy} />
             </MarkerAnimated>
-          ))}
+          )}
 
           {markersToRender.map((m) => (
             <MapMarkerIcon
@@ -810,6 +841,22 @@ export function WalkScreen({ navigation }: Props) {
             {isPublishing ? t('map.live') : t('map.hidden')}
           </Text>
         </View>
+
+        {/* ── Friends — top left (no burger here, unlike MapScreen) ── */}
+        <TouchableOpacity
+          onPress={() => { setDetailMarker(null); setSelectedFriendId(null); navigation.navigate('Friends'); }}
+          style={[styles.iconBtn, shadows.sm, { position: 'absolute', zIndex: 30, top: insets.top + 8, left: 14 }]}
+          activeOpacity={0.8}
+          accessibilityLabel={t('menu.friends')}
+          hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
+        >
+          <Users size={20} color={colors.ink} />
+          {incomingCount > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeTxt}>{incomingCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
 
         {/* ── Filter — top right group ── */}
         <TouchableOpacity
