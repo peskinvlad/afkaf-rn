@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="index,follow">
 <title>afkaf — beta · Safe dog walks in the heat</title>
+<link rel="icon" href="/afkaf-logo.png">
+<link rel="apple-touch-icon" href="/afkaf-logo.png">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://afkaf.netlify.app/">
+<meta property="og:image" content="https://afkaf.netlify.app/afkaf-logo.png">
+<meta property="og:title" content="afkaf — your neighborhood's dog map">
+<meta property="og:description" content="Pavement heat, hazards on the way and friends already out — all on one map.">
+<meta name="twitter:card" content="summary">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
@@ -58,10 +66,12 @@
   .langbar a.active{color:var(--green);background:#fff;border-color:var(--line)}
 
   /* Brand */
-  .brand{display:flex;align-items:center;justify-content:center;gap:10px;
-    font-weight:900;color:var(--green);font-size:42px;letter-spacing:-1px}
-  .brand .paw{font-size:40px}
-  .tagline{margin:12px 0 26px;text-align:center;font-size:19px;font-weight:700;color:var(--ink)}
+  .brand{display:flex;flex-direction:column;align-items:center;gap:6px;
+    font-weight:900;color:var(--green);font-size:38px;letter-spacing:-1px;line-height:1}
+  .brand .logo{height:48px;width:auto;display:block}
+  .headline{margin:14px 0 4px;text-align:center;font-size:22px;font-weight:900;color:var(--ink);line-height:1.2}
+  .subhead{margin:0 0 26px;text-align:center;font-size:14.5px;font-weight:600;color:var(--muted);line-height:1.5;
+    max-width:340px;margin-inline:auto}
 
   /* Section heading */
   .pick-title{text-align:center;font-size:15px;font-weight:800;color:var(--muted);
@@ -143,11 +153,16 @@
       <a href="#" data-lang="en">EN</a>
     </nav>
 
-    <div class="brand"><span class="paw">🐾</span> afkaf</div>
-    <p class="tagline">
-      <span class="t he">טיולים בטוחים עם הכלב בחום</span>
-      <span class="t ru">Безопасные прогулки с собакой в жару</span>
-      <span class="t en">Safe dog walks in the heat</span>
+    <div class="brand"><img class="logo" src="/afkaf-logo.svg" alt="afkaf" width="43" height="48">afkaf</div>
+    <h1 class="headline">
+      <span class="t he">המפה של הכלבים בשכונה</span>
+      <span class="t ru">Карта собак района</span>
+      <span class="t en">Your neighborhood’s dog map</span>
+    </h1>
+    <p class="subhead">
+      <span class="t he">חום האספלט, מפגעים בדרך וחברים שכבר בחוץ — הכל על מפה אחת</span>
+      <span class="t ru">Температура асфальта, опасности на пути и друзья, которые уже гуляют, — на одной карте</span>
+      <span class="t en">Pavement heat, hazards on the way and friends already out — all on one map</span>
     </p>
 
     <p class="pick-title">
