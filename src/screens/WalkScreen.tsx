@@ -44,8 +44,8 @@ import { useFriends } from '../hooks/useFriends';
 import { sendFriendRequest } from '../lib/friendships';
 import { supabase } from '../lib/supabase';
 import { Visibility } from './SettingsScreen';
-import { checkAndAwardBadges } from '../lib/badges';
-import { saveWalkHistory, toWalkPath, getPreviousBestDistanceKm } from '../lib/walkHistory';
+import { toWalkPath } from '../lib/walkHistory';
+import { finalizeWalk } from '../lib/walkFinalize';
 import { subscribeWalkLocations, startWalkTracking, stopWalkTracking } from '../lib/walkTracking';
 
 // Старт — общий START_COORD (Бат-Ям, см. lib/geo). Во время прогулки камера
@@ -65,8 +65,6 @@ const ACTIVE_WALK_PING_MS = 60000;
 const WALK_PANEL_CONTENT = 198;
 const WALK_CHIP_GAP = 12; // gap between the panel's top edge and the chip row
 const HEAT_CHIP_HEIGHT = 54; // fixed heatCard height (matches styles.heatCard)
-const MIN_VALID_DISTANCE_KM = 0.3;
-const MIN_VALID_DURATION_SEC = 300;
 
 interface Props {
   navigation: any;
@@ -445,8 +443,8 @@ export function WalkScreen({ navigation }: Props) {
     await syncActiveWalkRow(pt);
   }
 
-  // A walk only "counts" (walk_history + badges) past a minimum bar, so an
-  // accidental swipe doesn't pollute streaks/totals.
+  // A walk only "counts" (walk_history + badges) past a minimum bar — see
+  // lib/walkFinalize, shared with the recovery card.
   async function handleFinish() {
     if (finishingRef.current) return; // double-tap: the first tap owns the save
     finishingRef.current = true;
@@ -456,10 +454,6 @@ export function WalkScreen({ navigation }: Props) {
     // distance while the save below is in flight.
     stopWalkTracking();
 
-    const isValidWalk = distanceKm >= MIN_VALID_DISTANCE_KM && seconds >= MIN_VALID_DURATION_SEC;
-    let newBadgeIds: string[] = [];
-    let isPersonalBest = false;
-
     // Температурный статус фиксируем ЗДЕСЬ, в момент завершения. heatData
     // приходит из единственного useAsphaltTemp через getEffectiveAsphaltTemp
     // (lib/heat.ts), то есть уже с учётом dev-оверрайда. Экран итогов получает
@@ -467,44 +461,18 @@ export function WalkScreen({ navigation }: Props) {
     // асфальт не должен задним числом отменять вердикт про жару.
     const heatStatusAtFinish = heatData.status;
 
-    if (isValidWalk) {
-      const { data: { session } } = await supabase.auth.getSession();
-      const userId = session?.user?.id;
-      if (userId) {
-        // Dog already resolved on the first GPS fix unless publishing was
-        // skipped (visibility='nobody') — then it's one lookup at finish.
-        let dogId = activeWalkDogId.current;
-        if (!activeWalkContextReady.current) {
-          const { data: dog } = await supabase
-            .from('dogs')
-            .select('id')
-            .eq('owner_id', userId)
-            .limit(1)
-            .maybeSingle();
-          dogId = dog?.id ?? null;
-        }
-        // Строго до вставки текущей прогулки — иначе она побьёт сама себя.
-        const prevBest = await getPreviousBestDistanceKm(userId);
-        isPersonalBest = prevBest.ok
-          ? prevBest.bestKm == null || distanceKm > prevBest.bestKm
-          : false;
-
-        await saveWalkHistory({
-          user_id: userId,
-          distance_km: distanceKm,
-          duration_min: Math.floor(seconds / 60),
-          duration_s: seconds,
-          started_at: walkStartedAt,
-          ended_at: new Date().toISOString(),
-          steps,
-          dog_id: dogId,
-          path: toWalkPath(route),
-          is_valid: isValidWalk,
-        });
-        const newBadges = await checkAndAwardBadges(confirmedCount);
-        newBadgeIds = newBadges.map((b) => b.id);
-      }
-    }
+    const { isValidWalk, newBadgeIds, isPersonalBest } = await finalizeWalk({
+      startedAt: walkStartedAt,
+      durationS: seconds,
+      distanceKm,
+      steps,
+      path: toWalkPath(route),
+      // Dog already resolved on the first GPS fix unless publishing was
+      // skipped (visibility='nobody') — then finalizeWalk looks it up.
+      dogId: activeWalkContextReady.current ? activeWalkDogId.current : undefined,
+      confirmedCount,
+      checkPersonalBest: true,
+    });
 
     navigation.replace('WalkSummary', {
       duration: seconds,

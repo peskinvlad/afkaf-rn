@@ -2,12 +2,8 @@ import React from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useApp } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
-import { checkAndAwardBadges } from '../lib/badges';
-import { saveWalkHistory } from '../lib/walkHistory';
+import { finalizeWalk, isValidWalk } from '../lib/walkFinalize';
 import { colors, radii, shadows } from '../theme/tokens';
-
-const MIN_VALID_DISTANCE_KM = 0.3;
-const MIN_VALID_DURATION_MIN = 5;
 
 export function WalkRecoveryModal() {
   const { t, abandonedWalk, clearAbandonedWalk, confirmedCount } = useApp();
@@ -15,11 +11,12 @@ export function WalkRecoveryModal() {
   if (!abandonedWalk) return null;
 
   const { distanceKm, startedAt, updatedAt } = abandonedWalk;
-  const durationMin = Math.max(
+  const durationS = Math.max(
     0,
-    Math.floor((new Date(updatedAt).getTime() - new Date(startedAt).getTime()) / 60000)
+    Math.floor((new Date(updatedAt).getTime() - new Date(startedAt).getTime()) / 1000)
   );
-  const isValid = distanceKm >= MIN_VALID_DISTANCE_KM && durationMin >= MIN_VALID_DURATION_MIN;
+  const durationMin = Math.floor(durationS / 60);
+  const isValid = isValidWalk(distanceKm, durationS);
 
   async function discard() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -35,30 +32,18 @@ export function WalkRecoveryModal() {
     const userId = session?.user?.id;
     if (userId) {
       if (isValid) {
-        const { data: dog } = await supabase
-          .from('dogs')
-          .select('id')
-          .eq('owner_id', userId)
-          .limit(1)
-          .maybeSingle();
-        await saveWalkHistory({
-          user_id: userId,
-          distance_km: distanceKm,
-          duration_min: durationMin,
+        await finalizeWalk({
+          startedAt,
           // updatedAt is the last ping of the abandoned walk — the closest
           // real "end" we have. Steps/path weren't persisted → null.
-          duration_s: Math.max(
-            0,
-            Math.floor((new Date(updatedAt).getTime() - new Date(startedAt).getTime()) / 1000)
-          ),
-          started_at: startedAt,
-          ended_at: updatedAt,
+          endedAt: updatedAt,
+          durationS,
+          distanceKm,
           steps: null,
-          dog_id: dog?.id ?? null,
           path: null,
-          is_valid: isValid,
+          confirmedCount,
+          checkPersonalBest: false,
         });
-        await checkAndAwardBadges(confirmedCount);
       }
       await supabase.from('active_walks').delete().eq('user_id', userId);
     }
