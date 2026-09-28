@@ -48,6 +48,25 @@ export async function finalizeWalk(input: FinalizeWalkInput): Promise<FinalizeWa
   const userId = session?.user?.id;
   if (!userId) return result;
 
+  // Защита от дубля: эта прогулка уже сохранена (например, iOS выгрузила
+  // приложение между вставкой и удалением снимка автозавершения, и снимок
+  // финализируется второй раз). Прогулку однозначно задаёт started_at —
+  // вставку и бейджи пропускаем, результат считаем успешным. Если сама
+  // проверка не удалась — сохраняем как обычно: лучше риск дубля, чем
+  // потерянная прогулка.
+  const { data: existing, error: existingError } = await supabase
+    .from('walk_history')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('started_at', input.startedAt)
+    .limit(1)
+    .maybeSingle();
+  if (existingError) {
+    console.warn('[walkFinalize] duplicate check failed:', existingError.message);
+  } else if (existing) {
+    return result;
+  }
+
   let dogId = input.dogId;
   if (dogId === undefined) {
     const { data: dog } = await supabase
