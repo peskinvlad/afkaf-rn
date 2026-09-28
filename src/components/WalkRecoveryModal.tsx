@@ -1,13 +1,17 @@
 import React from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useApp } from '../hooks/useApp';
+import { useApp, AutoFinishedNotice } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
 import { finalizeWalk, isValidWalk } from '../lib/walkFinalize';
+import { formatClock } from '../lib/autoFinish';
 import { colors, radii, shadows } from '../theme/tokens';
 
 export function WalkRecoveryModal() {
-  const { t, abandonedWalk, clearAbandonedWalk, confirmedCount } = useApp();
+  const { t, abandonedWalk, clearAbandonedWalk, confirmedCount, autoFinishedWalk, clearAutoFinishedWalk } = useApp();
 
+  if (autoFinishedWalk) {
+    return <AutoFinishedCard walk={autoFinishedWalk} t={t} onClose={clearAutoFinishedWalk} />;
+  }
   if (!abandonedWalk) return null;
 
   const { distanceKm, startedAt, updatedAt } = abandonedWalk;
@@ -86,6 +90,51 @@ export function WalkRecoveryModal() {
               activeOpacity={0.85}
             >
               <Text style={styles.btnSecondaryTxt}>{t('walkRecovery.discard')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// Auto-finished walk found on a cold start (useApp already saved it, cut at T).
+// Informational only: one button, nothing left to decide.
+function AutoFinishedCard({
+  walk,
+  t,
+  onClose,
+}: {
+  walk: AutoFinishedNotice;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+  onClose: () => void;
+}) {
+  const time = formatClock(new Date(walk.endedAt).getTime());
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.backdrop}>
+        <View style={[styles.card, shadows.lg]}>
+          <Text style={styles.emoji}>🏠</Text>
+          <Text style={styles.title}>{t('walkAuto.title')}</Text>
+          <Text style={styles.message}>{t(`walk.summary.autoFinished.${walk.reason}`, { time })}</Text>
+
+          <View style={styles.statsRow}>
+            <View style={styles.statCol}>
+              <Text style={styles.statValue}>{walk.distanceKm.toFixed(2)}</Text>
+              <Text style={styles.statLabel}>{t('walk.active.km')}</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statCol}>
+              <Text style={styles.statValue}>{Math.floor(walk.durationS / 60)}</Text>
+              <Text style={styles.statLabel}>{t('walk.active.duration')}</Text>
+            </View>
+          </View>
+
+          {!walk.isValidWalk && <Text style={styles.message}>{t('walkAuto.tooShort')}</Text>}
+
+          <View style={styles.actions}>
+            <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={onClose} activeOpacity={0.85}>
+              <Text style={styles.btnPrimaryTxt}>{t('common.done')}</Text>
             </TouchableOpacity>
           </View>
         </View>

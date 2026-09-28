@@ -54,6 +54,9 @@ export const DEV_VOTE_OWN_KEY = 'dev_vote_own_markers';
 // Рантайм-переключатель диагностического оверлея карты (DevPanel). Значение
 // важнее env-дефолта EXPO_PUBLIC_MAP_DEBUG; читается mapDebug при старте.
 export const DEV_MAP_DEBUG_KEY = 'dev_map_debug_overlay';
+// «Тест: порог 1 мин» для автозавершения прогулки (DevPanel). Читается
+// WalkScreen при старте прогулки через getDevAutoFinishTest.
+export const DEV_AUTO_FINISH_TEST_KEY = 'dev_auto_finish_test';
 
 // ── Мини-шина событий ────────────────────────────────────────────────────────
 // DevPanel меняет ключи в AsyncStorage; подписчики (useAsphaltTemp) должны
@@ -99,6 +102,17 @@ export async function getDevVoteOwnMarkers(): Promise<boolean> {
     return (await AsyncStorage.getItem(DEV_VOTE_OWN_KEY)) === 'true';
   } catch (e) {
     console.warn('[dev] getDevVoteOwnMarkers failed:', e);
+    return false;
+  }
+}
+
+export async function getDevAutoFinishTest(): Promise<boolean> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!isDevUser(session?.user?.id)) return false;
+    return (await AsyncStorage.getItem(DEV_AUTO_FINISH_TEST_KEY)) === 'true';
+  } catch (e) {
+    console.warn('[dev] getDevAutoFinishTest failed:', e);
     return false;
   }
 }

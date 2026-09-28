@@ -1,6 +1,9 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import { checkAndAwardBadges } from './badges';
 import { saveWalkHistory, getPreviousBestDistanceKm, WalkPathPoint } from './walkHistory';
+import { HeatStatus } from './heat';
+import type { AutoFinishReason } from './autoFinish';
 
 // A walk only "counts" (walk_history + badges) past a minimum bar, so an
 // accidental swipe doesn't pollute streaks/totals. Single source for every
@@ -80,4 +83,87 @@ export async function finalizeWalk(input: FinalizeWalkInput): Promise<FinalizeWa
   const newBadges = await checkAndAwardBadges(input.confirmedCount);
   result.newBadgeIds = newBadges.map((b) => b.id);
   return result;
+}
+
+// ── Автозавершённая прогулка: снимок до финализации ─────────────────────────
+// Детектор (lib/autoFinish) может сработать в фоне. Сохранять оттуда в
+// Supabase ненадёжно: после stopWalkTracking iOS за секунды усыпляет
+// приложение, а продлить фон без нативного модуля нечем. Поэтому в фоне
+// пишется только этот снимок — уже обрезанный по T, — а финализирует его
+// WalkScreen при возврате в foreground или useApp на следующем холодном
+// старте, если iOS успела выгрузить приложение.
+export const AUTO_FINISHED_KEY = 'auto_finished_walk_v1';
+
+export interface AutoFinishedWalk {
+  userId: string | null; // чей снимок: чужой/гостевой на старте не сохраняем
+  reason: AutoFinishReason;
+  startedAt: string;
+  endedAt: string; // T — момент входа в зону / начала неподвижности
+  durationS: number;
+  distanceKm: number;
+  steps: number | null;
+  path: WalkPathPoint[] | null;
+  dogResolved: boolean; // false → finalizeWalk ищет собаку сам
+  dogId: string | null;
+  heatStatusAtFinish: HeatStatus;
+}
+
+export async function saveAutoFinished(walk: AutoFinishedWalk): Promise<void> {
+  try {
+    await AsyncStorage.setItem(AUTO_FINISHED_KEY, JSON.stringify(walk));
+  } catch (e) {
+    console.warn('[walkFinalize] failed to store auto-finished walk:', e);
+  }
+}
+
+export async function loadAutoFinished(): Promise<AutoFinishedWalk | null> {
+  try {
+    const raw = await AsyncStorage.getItem(AUTO_FINISHED_KEY);
+    return raw ? (JSON.parse(raw) as AutoFinishedWalk) : null;
+  } catch (e) {
+    console.warn('[walkFinalize] failed to read auto-finished walk:', e);
+    return null;
+  }
+}
+
+export async function clearAutoFinished(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(AUTO_FINISHED_KEY);
+  } catch (e) {
+    console.warn('[walkFinalize] failed to clear auto-finished walk:', e);
+  }
+}
+
+// Один процесс — одна финализация снимка: WalkScreen (возврат в foreground) и
+// useApp (холодный старт) не должны сохранить одну прогулку дважды.
+let autoFinalizeInFlight = false;
+
+// Сохраняет снимок как обычную прогулку, но без «личного рекорда»: итог
+// обрезан по T, а рекорд на автозавершении — ровно та ложная похвала, от
+// которой защищаемся. Бейджи — как обычно, по обрезанным данным. Ключ
+// снимается после сохранения (saveWalkHistory сам паркует прогулку в очередь,
+// если сеть не дала вставить). null — снимка нет или его уже финализируют.
+export async function finalizeAutoFinished(
+  walk: AutoFinishedWalk,
+  confirmedCount: number,
+): Promise<FinalizeWalkResult | null> {
+  if (autoFinalizeInFlight) return null;
+  autoFinalizeInFlight = true;
+  try {
+    const result = await finalizeWalk({
+      startedAt: walk.startedAt,
+      endedAt: walk.endedAt,
+      durationS: walk.durationS,
+      distanceKm: walk.distanceKm,
+      steps: walk.steps,
+      path: walk.path,
+      dogId: walk.dogResolved ? walk.dogId : undefined,
+      confirmedCount,
+      checkPersonalBest: false,
+    });
+    await clearAutoFinished();
+    return result;
+  } finally {
+    autoFinalizeInFlight = false;
+  }
 }

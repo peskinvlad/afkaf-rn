@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AppState,
   Alert,
+  Platform,
   View,
   Text,
   TouchableOpacity,
@@ -45,7 +46,19 @@ import { sendFriendRequest } from '../lib/friendships';
 import { supabase } from '../lib/supabase';
 import { Visibility } from './SettingsScreen';
 import { toWalkPath } from '../lib/walkHistory';
-import { finalizeWalk } from '../lib/walkFinalize';
+import {
+  finalizeWalk,
+  finalizeAutoFinished,
+  saveAutoFinished,
+  AutoFinishedWalk,
+} from '../lib/walkFinalize';
+import {
+  createAutoFinishDetector,
+  AutoFinishDetector,
+  AutoFinishHit,
+  PARK_NEAR_M,
+} from '../lib/autoFinish';
+import { getDevAutoFinishTest } from '../constants/dev';
 import { subscribeWalkLocations, startWalkTracking, stopWalkTracking } from '../lib/walkTracking';
 
 // Старт — общий START_COORD (Бат-Ям, см. lib/geo). Во время прогулки камера
@@ -65,6 +78,30 @@ const ACTIVE_WALK_PING_MS = 60000;
 const WALK_PANEL_CONTENT = 198;
 const WALK_CHIP_GAP = 12; // gap between the panel's top edge and the chip row
 const HEAT_CHIP_HEIGHT = 54; // fixed heatCard height (matches styles.heatCard)
+// Auto-finish (lib/autoFinish) is checked on every location callback; this
+// timer covers the foreground stretches when no fix arrives (phone lying still).
+const AUTO_FINISH_CHECK_MS = 30_000;
+// «Неподвижность» не засчитывается, если шагомер за то же окно насчитал
+// столько шагов и больше — человек ходит (по квартире, по кругу у площадки).
+const STILL_MAX_STEPS = 300;
+
+// Steps between two moments from the motion coprocessor (iOS CMPedometer; the
+// live watcher gets no updates in the background, so its count at T would be
+// short). null when unavailable (Android, no permission) or too slow.
+async function pedometerStepsBetween(fromMs: number, toMs: number): Promise<number | null> {
+  if (Platform.OS !== 'ios' || !(toMs > fromMs)) return null;
+  try {
+    if (!(await Pedometer.isAvailableAsync())) return null;
+    const res = await Promise.race([
+      Pedometer.getStepCountAsync(new Date(fromMs), new Date(toMs)),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+    ]);
+    return res?.steps ?? null;
+  } catch (e) {
+    console.warn('[WalkScreen] getStepCountAsync failed:', e);
+    return null;
+  }
+}
 
 interface Props {
   navigation: any;
@@ -254,17 +291,25 @@ export function WalkScreen({ navigation }: Props) {
 
   // ── Steps — Pedometer (real, 0 if unavailable) ─────────────────────────
   const [steps, setSteps] = useState(0);
+  // Mirror for the fix handler's closure — auto-finish snapshots it per fix.
+  const stepsRef = useRef(0);
   useEffect(() => {
     let sub: { remove: () => void } | null = null;
     Pedometer.isAvailableAsync().then((available) => {
       if (!available) return;
-      sub = Pedometer.watchStepCount((result) => setSteps(result.steps));
+      sub = Pedometer.watchStepCount((result) => {
+        stepsRef.current = result.steps;
+        setSteps(result.steps);
+      });
     });
     return () => { sub?.remove(); };
   }, []);
 
   // ── GPS route + Haversine distance ────────────────────────────────────
   const [route, setRoute] = useState<{ latitude: number; longitude: number }[]>([]);
+  // Synchronous source of truth for the route; `route` state is its render copy.
+  // Auto-finish cuts the route by index, so the index must be known at the fix.
+  const routeRef = useRef<LatLng[]>([]);
   const [distanceKm, setDistanceKm] = useState(0);
   // The marker slides to each new fix instead of teleporting there.
   const { coord: userCoord, hasFix: hasUserFix, moveTo: moveUserMarker } = useSmoothedPosition();
@@ -316,7 +361,11 @@ export function WalkScreen({ navigation }: Props) {
   // Second gate, after accuracy: a fix that reports good accuracy but lands
   // somewhere unreachable is held back, and only recorded if the next fix
   // confirms it. Holds this stream's reference position.
-  const glitchFilter = useRef(createGlitchFilter<Location.LocationObjectCoords>()).current;
+  // Each fix carries its timestamp through the filter — a held run is released
+  // later, and auto-finish needs when every point was actually taken.
+  const glitchFilter = useRef(
+    createGlitchFilter<Location.LocationObjectCoords & { timestamp: number }>()
+  ).current;
   // Heading drives the marker via Animated.Value — no per-tick re-renders.
   // Enabled once the GPS effect below confirms permission; that same effect
   // feeds it every accepted fix so it can switch to GPS course while moving.
@@ -486,6 +535,134 @@ export function WalkScreen({ navigation }: Props) {
     });
   }
 
+  // ── Auto-finish of a forgotten walk (lib/autoFinish) ────────────────────
+  // Home rule: confirmed outside the home zone, then inside it for 20 min →
+  // the walk ends at the moment of entry (T). No home zone → stillness rule
+  // (30 min within 50 m, 60 min near a park / dog park). Everything recorded
+  // after T is left out of the distance, time, steps and saved path.
+  //
+  // May fire in the background. Saving to Supabase from there is unreliable
+  // (iOS suspends the app seconds after tracking stops), so the background
+  // only stores a snapshot already cut at T; it is saved and the summary shown
+  // when the app is back in the foreground — or by useApp on the next cold
+  // start if iOS evicted the app meanwhile.
+  const autoDetector = useRef<AutoFinishDetector | null>(null);
+  const autoPendingRef = useRef<AutoFinishedWalk | null>(null);
+  const autoRouteRef = useRef<LatLng[]>([]);
+  const parksRef = useRef<LatLng[]>([]);
+  useEffect(() => {
+    parksRef.current = markers
+      .filter((m) => m.type === 'park' || m.type === 'dog_park')
+      .map((m) => ({ latitude: m.lat, longitude: m.lng }));
+  }, [markers]);
+
+  // Home zone read on its own here: the publish context skips it for guests
+  // and visibility='nobody', but auto-finish applies to every walk.
+  useEffect(() => {
+    let disposed = false;
+    (async () => {
+      const [zone, testMode] = await Promise.all([loadHomeZone(), getDevAutoFinishTest()]);
+      if (disposed) return;
+      autoDetector.current = createAutoFinishDetector({
+        home: zone,
+        testMode,
+        isNearPark: (pt) => parksRef.current.some((p) => haversine(p, pt) * 1000 <= PARK_NEAR_M),
+      });
+    })();
+    return () => {
+      disposed = true;
+      autoDetector.current?.dispose();
+      autoDetector.current = null;
+    };
+  }, []);
+
+  function runAutoFinishCheck() {
+    if (finishingRef.current) return;
+    const hit = autoDetector.current?.check(Date.now());
+    if (hit) handleAutoFinish(hit);
+  }
+
+  async function handleAutoFinish(hit: AutoFinishHit) {
+    if (hit.reason === 'still') {
+      const moved = await pedometerStepsBetween(hit.endAt, Date.now());
+      if (moved != null && moved >= STILL_MAX_STEPS) {
+        autoDetector.current?.rejectStill(Date.now());
+        return;
+      }
+    }
+    // The user tapped Finish while the check above was in flight.
+    if (finishingRef.current) return;
+    finishingRef.current = true;
+    setFinishing(true);
+
+    const cutRoute = routeRef.current.slice(0, hit.mark.routeLen);
+    autoRouteRef.current = cutRoute;
+    const stepsAtT = await pedometerStepsBetween(walkStartedAtMs, hit.endAt);
+    const { data: { session } } = await supabase.auth.getSession();
+    const walk: AutoFinishedWalk = {
+      userId: session?.user?.id ?? null,
+      reason: hit.reason,
+      startedAt: walkStartedAt,
+      endedAt: new Date(hit.endAt).toISOString(),
+      durationS: Math.max(0, Math.floor((hit.endAt - walkStartedAtMs) / 1000)),
+      distanceKm: hit.mark.distanceKm,
+      steps: stepsAtT ?? hit.mark.steps,
+      path: toWalkPath(cutRoute),
+      dogResolved: activeWalkContextReady.current,
+      dogId: activeWalkDogId.current,
+      heatStatusAtFinish: heatData.status,
+    };
+    await saveAutoFinished(walk);
+    await stopActiveWalkRow();
+    await stopWalkTracking();
+    autoPendingRef.current = walk;
+    if (AppState.currentState === 'active') resumeAutoFinish();
+  }
+
+  function resumeAutoFinish() {
+    const walk = autoPendingRef.current;
+    if (!walk) return;
+    autoPendingRef.current = null;
+    finalizeAutoAndShow(walk);
+  }
+
+  async function finalizeAutoAndShow(walk: AutoFinishedWalk) {
+    const result = await finalizeAutoFinished(walk, confirmedCount);
+    if (!result) return; // already being saved elsewhere
+    navigation.replace('WalkSummary', {
+      duration: walk.durationS,
+      steps: walk.steps ?? 0,
+      distanceKm: walk.distanceKm,
+      routeCoordinates: autoRouteRef.current,
+      isValidWalk: result.isValidWalk,
+      newBadgeIds: result.newBadgeIds,
+      isPersonalBest: false,
+      heatStatusAtFinish: walk.heatStatusAtFinish,
+      autoFinishReason: walk.reason,
+      autoFinishedAt: walk.endedAt,
+    });
+  }
+
+  // The fix handler and the timers below are created once; they call through
+  // these refs so they always reach this render's state (confirmedCount, heat).
+  const autoCheckRef = useRef(runAutoFinishCheck);
+  autoCheckRef.current = runAutoFinishCheck;
+  const autoResumeRef = useRef(resumeAutoFinish);
+  autoResumeRef.current = resumeAutoFinish;
+
+  useEffect(() => {
+    const id = setInterval(() => autoCheckRef.current(), AUTO_FINISH_CHECK_MS);
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active') return;
+      autoCheckRef.current();
+      autoResumeRef.current();
+    });
+    return () => {
+      clearInterval(id);
+      sub.remove();
+    };
+  }, []);
+
   // 60s publish tick while walking — the gate decides publish vs unpublish
   // based on whether the current point is inside the home privacy zone.
   useEffect(() => {
@@ -545,23 +722,27 @@ export function WalkScreen({ navigation }: Props) {
       // add tens of metres of phantom distance to the walk and drag the
       // route line with it; the reflection glitches that lie about their
       // accuracy did the same until the second gate went in.
-      if (!isAccurateFix(loc.coords.accuracy)) return;
-      for (const coords of glitchFilter.accept(loc.coords, loc.timestamp)) {
+      if (!isAccurateFix(loc.coords.accuracy)) {
+        // Indoors most fixes land here. They can't move the walk, but they
+        // are the only clock tick the background gets — run the check.
+        autoCheckRef.current();
+        return;
+      }
+      const stamped = { ...loc.coords, timestamp: loc.timestamp };
+      for (const coords of glitchFilter.accept(stamped, loc.timestamp)) {
         const pt = { latitude: coords.latitude, longitude: coords.longitude };
         moveUserMarker(pt);
         reportGpsFix(coords);
         setAccuracy(coords.accuracy ?? undefined);
-        setRoute((prev) => {
-          if (prev.length > 0) {
-            const inc = haversine(prev[prev.length - 1], pt);
-            setDistanceKm((d) => {
-              const next = d + inc;
-              distanceKmRef.current = next;
-              return next;
-            });
-          }
-          return [...prev, pt];
-        });
+        const prev = routeRef.current[routeRef.current.length - 1];
+        if (prev) distanceKmRef.current += haversine(prev, pt);
+        routeRef.current = [...routeRef.current, pt];
+        setRoute(routeRef.current);
+        setDistanceKm(distanceKmRef.current);
+        autoDetector.current?.feed(
+          { ...pt, accuracy: coords.accuracy, timestamp: coords.timestamp },
+          { routeLen: routeRef.current.length, distanceKm: distanceKmRef.current, steps: stepsRef.current },
+        );
         followWith(pt);
         setUserLocation(pt);
 
@@ -571,6 +752,7 @@ export function WalkScreen({ navigation }: Props) {
           startActiveWalkRow(pt);
         }
       }
+      autoCheckRef.current();
     }
   }, []);
 
