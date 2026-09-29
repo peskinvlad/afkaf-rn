@@ -181,3 +181,31 @@ CREATE TABLE public.waitlist (
   created_at  timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT waitlist_pkey PRIMARY KEY (id)
 );
+
+-- ============================================================
+-- park_checkins  (добавлена 2026-09-29, feat/park-checkin)
+-- ============================================================
+-- Чек-ин на собачьих площадках. Строки не удаляются (история для сводки района):
+-- чек-ин закрывается через ended_at + end_reason. Писать — только через
+-- SECURITY DEFINER RPC (functions/park_checkin.sql, park_checkout.sql),
+-- читать чужое — только через functions/get_park_presence.sql.
+CREATE TABLE public.park_checkins (
+  id          uuid        NOT NULL DEFAULT gen_random_uuid(),
+  user_id     uuid        NOT NULL,
+  marker_id   uuid        NOT NULL,
+  started_at  timestamptz NOT NULL DEFAULT now(),
+  expires_at  timestamptz NOT NULL DEFAULT (now() + '02:00:00'::interval),
+  ended_at    timestamptz NULL,
+  manual      boolean     NOT NULL DEFAULT false,
+  end_reason  text        NULL,
+  CONSTRAINT park_checkins_pkey PRIMARY KEY (id),
+  CONSTRAINT park_checkins_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  CONSTRAINT park_checkins_marker_id_fkey FOREIGN KEY (marker_id) REFERENCES public.markers(id),
+  CONSTRAINT park_checkins_end_reason_check CHECK (end_reason IS NULL OR end_reason = ANY (ARRAY['left'::text, 'walk_end'::text, 'expired'::text, 'switched'::text])),
+  CONSTRAINT park_checkins_ended_consistency CHECK ((ended_at IS NULL) = (end_reason IS NULL)),
+  CONSTRAINT park_checkins_expires_after_start CHECK (expires_at > started_at)
+);
+-- NB: индексы (этот файл их обычно не фиксирует, но здесь на них держится логика):
+--   UNIQUE INDEX park_checkins_one_open_per_user ON (user_id) WHERE ended_at IS NULL
+--     — не больше одного открытого чек-ина на пользователя;
+--   INDEX park_checkins_open_by_marker ON (marker_id) WHERE ended_at IS NULL.
