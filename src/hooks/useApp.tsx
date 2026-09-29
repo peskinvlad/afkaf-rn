@@ -9,6 +9,7 @@ import { useAsphaltTemp, HeatStatus, HourlyPoint } from './useAsphaltTemp';
 import { checkAndAwardBadges } from '../lib/badges';
 import { flushPendingWalkHistory } from '../lib/walkHistory';
 import { loadAutoFinished, clearAutoFinished, finalizeAutoFinished } from '../lib/walkFinalize';
+import { closeParkCheckin } from '../lib/parkCheckin';
 import type { AutoFinishReason } from '../lib/autoFinish';
 import { emitDevSettingsChange } from '../constants/dev';
 
@@ -164,6 +165,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // for marker badges, which fetchTrustStatus re-checks on its own.
     const result = await finalizeAutoFinished(walk, 0);
     await supabase.from('active_walks').delete().eq('user_id', userId);
+    closeParkCheckin('walk_end'); // a park check-in left open by that walk
     if (result) {
       setAutoFinishedWalk({
         reason: walk.reason,

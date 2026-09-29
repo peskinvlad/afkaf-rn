@@ -57,6 +57,9 @@ export const DEV_MAP_DEBUG_KEY = 'dev_map_debug_overlay';
 // «Тест: порог 1 мин» для автозавершения прогулки (DevPanel). Читается
 // WalkScreen при старте прогулки через getDevAutoFinishTest.
 export const DEV_AUTO_FINISH_TEST_KEY = 'dev_auto_finish_test';
+// «Тест: порог 1 мин» для авто-чек-ина на площадке (DevPanel): выдержка в зоне
+// dog_park 1 мин вместо 5. Читается WalkScreen при старте прогулки.
+export const DEV_PARK_CHECKIN_TEST_KEY = 'dev_park_checkin_test';
 
 // ── Мини-шина событий ────────────────────────────────────────────────────────
 // DevPanel меняет ключи в AsyncStorage; подписчики (useAsphaltTemp) должны
@@ -113,6 +116,17 @@ export async function getDevAutoFinishTest(): Promise<boolean> {
     return (await AsyncStorage.getItem(DEV_AUTO_FINISH_TEST_KEY)) === 'true';
   } catch (e) {
     console.warn('[dev] getDevAutoFinishTest failed:', e);
+    return false;
+  }
+}
+
+export async function getDevParkCheckinTest(): Promise<boolean> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!isDevUser(session?.user?.id)) return false;
+    return (await AsyncStorage.getItem(DEV_PARK_CHECKIN_TEST_KEY)) === 'true';
+  } catch (e) {
+    console.warn('[dev] getDevParkCheckinTest failed:', e);
     return false;
   }
 }

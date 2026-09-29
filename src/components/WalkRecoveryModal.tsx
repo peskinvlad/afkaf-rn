@@ -4,6 +4,7 @@ import { useApp, AutoFinishedNotice } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
 import { finalizeWalk, isValidWalk } from '../lib/walkFinalize';
 import { formatClock } from '../lib/autoFinish';
+import { closeParkCheckin } from '../lib/parkCheckin';
 import { colors, radii, shadows } from '../theme/tokens';
 
 export function WalkRecoveryModal() {
@@ -27,6 +28,7 @@ export function WalkRecoveryModal() {
     const userId = session?.user?.id;
     if (userId) {
       await supabase.from('active_walks').delete().eq('user_id', userId);
+      closeParkCheckin('walk_end'); // a park check-in left open by that walk
     }
     clearAbandonedWalk();
   }
@@ -50,6 +52,7 @@ export function WalkRecoveryModal() {
         });
       }
       await supabase.from('active_walks').delete().eq('user_id', userId);
+      closeParkCheckin('walk_end'); // a park check-in left open by that walk
     }
     clearAbandonedWalk();
   }

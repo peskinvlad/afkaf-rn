@@ -58,7 +58,14 @@ import {
   AutoFinishHit,
   PARK_NEAR_M,
 } from '../lib/autoFinish';
-import { getDevAutoFinishTest } from '../constants/dev';
+import { getDevAutoFinishTest, getDevParkCheckinTest } from '../constants/dev';
+import {
+  startParkCheckinSession,
+  endParkCheckinSession,
+  feedParkFix,
+  tickParkCheckin,
+  DogPark,
+} from '../lib/parkCheckin';
 import { subscribeWalkLocations, startWalkTracking, stopWalkTracking } from '../lib/walkTracking';
 
 // Старт — общий START_COORD (Бат-Ям, см. lib/geo). Во время прогулки камера
@@ -498,6 +505,7 @@ export function WalkScreen({ navigation }: Props) {
     if (finishingRef.current) return; // double-tap: the first tap owns the save
     finishingRef.current = true;
     setFinishing(true);
+    endParkCheckinSession();
     stopActiveWalkRow();
     // The walk is over from this tap on — no fix may extend the route or the
     // distance while the save below is in flight.
@@ -576,6 +584,43 @@ export function WalkScreen({ navigation }: Props) {
     };
   }, []);
 
+  // ── Park check-in (lib/parkCheckin) ─────────────────────────────────────
+  // Signed-in walks only. Auto check-in after PARK_DWELL_MS inside a dog_park
+  // zone, checkout on a confirmed exit and at the end of the walk; the park
+  // card's "I'm here" goes through the same session. visibility='nobody' still
+  // tracks the zone (so the card can explain why "I'm here" is off) but never
+  // checks in. The session is closed by Finish / auto-finish and on unmount.
+  const dogParksRef = useRef<DogPark[]>([]);
+  useEffect(() => {
+    dogParksRef.current = markers
+      .filter((m) => m.type === 'dog_park')
+      .map((m) => ({ id: m.id, latitude: m.lat, longitude: m.lng }));
+  }, [markers]);
+
+  useEffect(() => {
+    let disposed = false;
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) return; // guest — no check-in
+      const [zone, testMode, stored] = await Promise.all([
+        loadHomeZone(),
+        getDevParkCheckinTest(),
+        AsyncStorage.getItem('privacy_visibility'),
+      ]);
+      if (disposed || finishingRef.current) return;
+      startParkCheckinSession({
+        parks: () => dogParksRef.current,
+        homeZone: zone,
+        eligibility: (stored as Visibility | null) === 'nobody' ? 'nobody' : 'ok',
+        testMode,
+      });
+    })();
+    return () => {
+      disposed = true;
+      endParkCheckinSession();
+    };
+  }, []);
+
   function runAutoFinishCheck() {
     if (finishingRef.current) return;
     const hit = autoDetector.current?.check(Date.now());
@@ -613,6 +658,7 @@ export function WalkScreen({ navigation }: Props) {
       heatStatusAtFinish: heatData.status,
     };
     await saveAutoFinished(walk);
+    endParkCheckinSession();
     await stopActiveWalkRow();
     await stopWalkTracking();
     autoPendingRef.current = walk;
@@ -651,10 +697,14 @@ export function WalkScreen({ navigation }: Props) {
   autoResumeRef.current = resumeAutoFinish;
 
   useEffect(() => {
-    const id = setInterval(() => autoCheckRef.current(), AUTO_FINISH_CHECK_MS);
+    const id = setInterval(() => {
+      autoCheckRef.current();
+      tickParkCheckin(Date.now());
+    }, AUTO_FINISH_CHECK_MS);
     const sub = AppState.addEventListener('change', (s) => {
       if (s !== 'active') return;
       autoCheckRef.current();
+      tickParkCheckin(Date.now());
       autoResumeRef.current();
     });
     return () => {
@@ -685,6 +735,10 @@ export function WalkScreen({ navigation }: Props) {
     let cancelled = false;
     const unsubscribe = subscribeWalkLocations((locations) => {
       for (const loc of locations) handleFix(loc);
+      // Once per batch, not per fix: after the background the batch carries
+      // old timestamps, and an exit at its end must land before the dwell is
+      // judged against Date.now().
+      tickParkCheckin(Date.now());
     });
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -743,6 +797,7 @@ export function WalkScreen({ navigation }: Props) {
           { ...pt, accuracy: coords.accuracy, timestamp: coords.timestamp },
           { routeLen: routeRef.current.length, distanceKm: distanceKmRef.current, steps: stepsRef.current },
         );
+        feedParkFix({ ...pt, accuracy: coords.accuracy, timestamp: coords.timestamp });
         followWith(pt);
         setUserLocation(pt);
 
