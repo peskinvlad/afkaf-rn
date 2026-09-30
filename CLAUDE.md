@@ -5,6 +5,45 @@
 - **Лейаут всегда LTR** (`lockLayoutLTR` в `src/i18n`): `forceRTL` не
   возвращать, пока экраны не прошли RTL-адаптацию (бэклог).
 
+## Ветка exp/mapbox (папка afkaf-rn-mapbox) — ЭКСПЕРИМЕНТ
+
+Отдельный worktree для переезда карты на Mapbox (фаза 1: тестовый экран).
+План и разведка — `docs/MAPBOX-RECON.md` на ветке `feat/park-checkin`.
+
+- **НИКОГДА не запускать `eas update` из этой папки** — ни на `production`, ни
+  на `preview`. `version` здесь та же `0.1.0`, что у TestFlight-сборки:
+  апдейт отсюда долетит до тестеров, а в их сборке нет нативной части Mapbox.
+  Разделы «Обновления по воздуху» ниже к этой папке НЕ применяются.
+- **НИКОГДА не мержить `exp/mapbox` в `main`** (и `main` не ребейзить на неё).
+  Перенос в основную ветку — только отдельным решением владельца, после
+  подъёма `version` и сборки.
+- **`git push` — только явно:** `git push origin exp/mapbox`. Ветка создана от
+  `origin/main`; голый `git push` с привязкой к `main` недопустим.
+- **Отдельное dev-приложение:** `APP_VARIANT=dev` (`app.config.js`) → имя
+  «afkaf dev», bundle id `com.afkaf.app.dev`, плагин `@rnmapbox/maps`,
+  `extra.appVariant = 'dev'`. Без переменной конфиг совпадает с `app.json` байт
+  в байт — проверять `npx expo config --type public --json`. `APP_VARIANT=dev`
+  нужен и при `expo prebuild`, и при `expo start` (иначе JS не узнает
+  dev-приложение и DevPanel не откроется без входа).
+- **`@rnmapbox/maps` статически не импортировать.** Только через
+  `src/lib/mapbox.ts` (`getMapbox()`): библиотека бросает исключение при
+  импорте, если в сборке нет её нативной части. `import type` — можно.
+- **Координаты Mapbox — `[долгота, широта]`**, обратно нашему `LatLng`.
+- **`LocationPuck` и `followUserLocation` не использовать** (утечка
+  rnmapbox/maps#4225, идут мимо нашего GPS-фильтра) — своя позиция через
+  `MarkerView` из `expo-location`.
+- **Слои Mapbox всегда смонтированы под постоянными `id`** — меняются только
+  данные источника (rnmapbox/maps#3891).
+- **Логотип и кнопку «i» Mapbox не прятать** (условия Mapbox; в «i» — отказ от
+  телеметрии). Телеметрия выключена в `initMapbox()`.
+- **scheme `afkaf://` не менять и Supabase не трогать** без решения владельца:
+  вход Google в dev-приложении идёт через тот же `afkaf://auth/callback`.
+- **Локальная сборка:** после `expo prebuild` папка `ios/` создаётся заново —
+  ручные правки возвращает `node scripts/patch-ios-local-build.js`
+  (deployment target подов 15.1 для Xcode 27, пробел в пути, `NODE_BINARY`).
+- `react-native-maps` и его patch не удалять: все экраны, кроме
+  `MapboxTestScreen`, работают на нём.
+
 ## Перед production-билдом
 
 - **Обязательный ручной прогон на dev-клиенте перед каждым
