@@ -14,6 +14,10 @@
 //      ломаются на пробеле в пути проекта.
 //   3. ios/.xcode.env.local: NODE_BINARY — абсолютный путь к node, чтобы
 //      скрипты сборки Xcode нашли его вне терминала.
+//   4. ios/<проект>.xcodeproj, фаза «Bundle React Native code and images»:
+//      путь к react-native-xcode.sh берётся в кавычки. Без них shell режет путь
+//      по пробелу и сборка падает («/Users/…/afkaf: No such file or directory»).
+//      Эту правку НЕ надо повторять через pod install — она в проекте приложения.
 //
 // Ничего не собирает и ничего не ставит.
 
@@ -81,6 +85,38 @@ if (podfile.includes(MARKER)) {
   podfile = podfile.slice(0, at) + PATCH + podfile.slice(at);
   fs.writeFileSync(podfilePath, podfile);
   console.log('Podfile: правки внесены (deployment target подов, пробел в пути).');
+}
+
+// Фаза «Bundle React Native code and images» в проекте приложения. Шаблон Expo
+// запускает скрипт через обратные кавычки без внешних кавычек:
+//   `"$NODE_BINARY" --print "…/scripts/react-native-xcode.sh"`
+// — результат (путь с пробелом) режется на два слова. Заменяем на "$(…)".
+// Строки ниже — в том виде, как они записаны в project.pbxproj (с \" внутри).
+const XCODE_SH =
+  `\\"$NODE_BINARY\\" --print \\"require('path').dirname(require.resolve('react-native/package.json')) + '/scripts/react-native-xcode.sh'\\"`;
+const BUNDLE_PHASE_BROKEN = '`' + XCODE_SH + '`';
+const BUNDLE_PHASE_FIXED = '\\"$(' + XCODE_SH + ')\\"';
+
+const xcodeprojs = fs.readdirSync(iosDir).filter((name) => name.endsWith('.xcodeproj'));
+if (xcodeprojs.length === 0) {
+  console.error('ios/*.xcodeproj не найден — prebuild не завершился?');
+  process.exit(1);
+}
+for (const name of xcodeprojs) {
+  const pbxPath = path.join(iosDir, name, 'project.pbxproj');
+  const pbx = fs.readFileSync(pbxPath, 'utf8');
+  if (pbx.includes(BUNDLE_PHASE_FIXED)) {
+    console.log(`${name}: фаза Bundle React Native — кавычки уже на месте.`);
+  } else if (pbx.includes(BUNDLE_PHASE_BROKEN)) {
+    fs.writeFileSync(pbxPath, pbx.split(BUNDLE_PHASE_BROKEN).join(BUNDLE_PHASE_FIXED));
+    console.log(`${name}: фаза Bundle React Native — путь взят в кавычки.`);
+  } else {
+    console.error(
+      `${name}: не нашёл строку запуска react-native-xcode.sh — шаблон Expo изменился. ` +
+        'Правка НЕ внесена; сверь фазу «Bundle React Native code and images» вручную.',
+    );
+    process.exit(1);
+  }
 }
 
 // NODE_BINARY: стабильная ссылка Homebrew (как в сентябрьской сборке), если она
