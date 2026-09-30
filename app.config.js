@@ -57,6 +57,8 @@ module.exports = ({ config }) => {
       // task-manager указан явно, иначе Expo подключит его сам в конце.
       withoutBackgroundFetch,
       'expo-task-manager',
+      // ЭКСПЕРИМЕНТ exp/mapbox-sdk58: нативная часть Mapbox.
+      '@rnmapbox/maps',
     ],
   };
 
