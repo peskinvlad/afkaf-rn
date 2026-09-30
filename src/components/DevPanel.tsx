@@ -29,10 +29,13 @@ import {
   isBackgroundTrackingAvailable,
   TrackDiagnostics,
 } from '../lib/walkTracking';
+import { isMapboxAvailable, MAPBOX_TOKEN } from '../lib/mapbox';
+import { navigationRef } from '../lib/navigationRef';
+import { IS_DEV_VARIANT } from '../constants/appVariant';
 import { colors, radii, shadows, typography } from '../theme/tokens';
 
 // Панель только для DEV_USER_IDS (гейт — в AboutScreen, сюда без него не
-// попасть). Строки по-русски хардкодом — осознанное исключение из правила
+// попасть; в отдельном dev-приложении APP_VARIANT=dev гейт открыт всем). Строки по-русски хардкодом — осознанное исключение из правила
 // i18n: обычные пользователи этот экран не видят.
 
 const FIRST_WALK_TIP_KEY = 'first_walk_tip_shown';       // FirstWalkTipCard.tsx
@@ -175,6 +178,13 @@ export function DevPanel({ visible, onClose }: Props) {
   async function toggleMapDebug(next: boolean) {
     setMapDebugOn(next);
     await mapDebug.setEnabled(next); // применяется сразу + persist, без перезапуска
+  }
+
+  // Панель — Modal поверх About: сначала закрываем её, потом открываем экран,
+  // иначе он окажется под модалкой.
+  function openMapboxTest() {
+    onClose();
+    if (navigationRef.isReady()) navigationRef.navigate('MapboxTest' as never);
   }
 
   // Живой индикатор домашней зоны — та же формула, что в гейте active_walks
@@ -363,6 +373,25 @@ export function DevPanel({ visible, onClose }: Props) {
             <Text style={styles.note}>
               Диагностический оверлей карты (RC / PAD / ANIM / DATA) на Map и Walk.
               Меняется сразу, без перезапуска. Виден только dev-пользователю.
+            </Text>
+          </View>
+
+          {/* ── Mapbox (exp/mapbox, фаза 1) ── */}
+          <Text style={styles.sectionTitle}>Mapbox</Text>
+          <View style={styles.card}>
+            <InfoRow label="Приложение" value={IS_DEV_VARIANT ? 'afkaf dev (APP_VARIANT=dev)' : 'обычное'} />
+            <InfoRow
+              label="Нативный модуль Mapbox в сборке"
+              value={isMapboxAvailable ? 'ДА' : 'НЕТ'}
+              highlight={isMapboxAvailable}
+            />
+            <InfoRow label="EXPO_PUBLIC_MAPBOX_TOKEN" value={MAPBOX_TOKEN ? 'задан' : 'НЕ задан'} />
+            <TouchableOpacity style={styles.btnPrimary} onPress={openMapboxTest} activeOpacity={0.8}>
+              <Text style={styles.btnPrimaryTxt}>Открыть тестовый экран Mapbox</Text>
+            </TouchableOpacity>
+            <Text style={styles.note}>
+              Метки и вода одним слоем, кластеры, своя позиция, логотип. Остальные
+              экраны по-прежнему на react-native-maps.
             </Text>
           </View>
         </ScrollView>
