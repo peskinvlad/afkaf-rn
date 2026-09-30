@@ -4,7 +4,7 @@
 // правки, которые понадобились для сентябрьской сборки. Этот скрипт возвращает
 // их — запускать ПОСЛЕ `expo prebuild --no-install` и ДО `pod install`:
 //
-//   node scripts/patch-ios-local-build.js
+//   APP_VARIANT=dev node scripts/patch-ios-local-build.js
 //
 // Что делает (повторный запуск безопасен — уже внесённое не дублируется):
 //   1. ios/Podfile, post_install: поднимает deployment target всех подов до
@@ -89,11 +89,17 @@ if (podfile.includes(MARKER)) {
 const HOMEBREW_NODE = '/opt/homebrew/bin/node';
 const nodeBinary = fs.existsSync(HOMEBREW_NODE) ? HOMEBREW_NODE : process.execPath;
 const envLocalPath = path.join(iosDir, '.xcode.env.local');
-const envLine = `export NODE_BINARY=${nodeBinary}\n`;
+// APP_VARIANT: если скрипт запущен с ним (APP_VARIANT=dev node scripts/…),
+// кладём его туда же — скрипты сборки Xcode читают конфиг приложения заново и
+// без переменной вшили бы обычный конфиг вместо dev-варианта.
+const variant = process.env.APP_VARIANT;
+const envLine =
+  `export NODE_BINARY=${nodeBinary}\n` +
+  (variant && /^[a-z0-9_-]+$/i.test(variant) ? `export APP_VARIANT=${variant}\n` : '');
 const current = fs.existsSync(envLocalPath) ? fs.readFileSync(envLocalPath, 'utf8') : '';
 if (current === envLine) {
   console.log('.xcode.env.local: уже на месте.');
 } else {
   fs.writeFileSync(envLocalPath, envLine);
-  console.log(`.xcode.env.local: NODE_BINARY=${nodeBinary}`);
+  console.log(`.xcode.env.local: ${envLine.trim().replace(/\n/g, '; ')}`);
 }

@@ -39,7 +39,7 @@
 - **scheme `afkaf://` не менять и Supabase не трогать** без решения владельца:
   вход Google в dev-приложении идёт через тот же `afkaf://auth/callback`.
 - **Локальная сборка:** после `expo prebuild` папка `ios/` создаётся заново —
-  ручные правки возвращает `node scripts/patch-ios-local-build.js`
+  ручные правки возвращает `APP_VARIANT=dev node scripts/patch-ios-local-build.js`
   (deployment target подов 15.1 для Xcode 27, пробел в пути, `NODE_BINARY`).
 - `react-native-maps` и его patch не удалять: все экраны, кроме
   `MapboxTestScreen`, работают на нём.
