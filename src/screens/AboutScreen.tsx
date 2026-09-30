@@ -13,6 +13,7 @@ import Constants from 'expo-constants';
 import { useApp } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
 import { isDevUser } from '../constants/dev';
+import { IS_DEV_VARIANT } from '../constants/appVariant';
 import { DevPanel } from '../components/DevPanel';
 
 // Keep in sync with app.json → expo.version
@@ -312,7 +313,9 @@ export default function AboutScreen({ navigation }: any) {
     }
 
     // Gate unchanged: not on DEV_USER_IDS → nothing happens, no UI trace.
-    if (!isDevUser(userId)) return;
+    // Исключение — отдельное dev-приложение (APP_VARIANT=dev): там панель
+    // открыта и без входа, чтобы тестовый экран Mapbox был доступен гостю.
+    if (!IS_DEV_VARIANT && !isDevUser(userId)) return;
     tapCount.current = 0;
     setDevPanelVisible(true);
   }
