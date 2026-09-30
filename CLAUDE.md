@@ -8,7 +8,8 @@
 ## Ветка exp/mapbox (папка afkaf-rn-mapbox) — ЭКСПЕРИМЕНТ
 
 Отдельный worktree для переезда карты на Mapbox (фаза 1: тестовый экран).
-План и разведка — `docs/MAPBOX-RECON.md` на ветке `feat/park-checkin`.
+План, разведка и результат фазы 1 — `docs/MAPBOX-RECON.md` (копия в этой
+ветке; исходник — на `feat/park-checkin`).
 
 - **НИКОГДА не запускать `eas update` из этой папки** — ни на `production`, ни
   на `preview`. `version` здесь та же `0.1.0`, что у TestFlight-сборки:
@@ -34,6 +35,11 @@
   `src/lib/mapbox.ts` (`getMapbox()`): библиотека бросает исключение при
   импорте, если в сборке нет её нативной части. `import type` — можно.
 - **Координаты Mapbox — `[долгота, широта]`**, обратно нашему `LatLng`.
+- **Язык подписей — только `mapLabelLayers(Mapbox, lang)`** из
+  `src/lib/mapbox.ts` (he/ru → иврит, en → английский), стиль —
+  `MAPBOX_STYLE_URL`. Проп `localizeLabels` не использовать: иврит он не умеет.
+  Эти слои держать смонтированными всегда — размонтирование удаляет слой из
+  стиля.
 - **`LocationPuck` и `followUserLocation` не использовать** (утечка
   rnmapbox/maps#4225, идут мимо нашего GPS-фильтра) — своя позиция через
   `MarkerView` из `expo-location`.
