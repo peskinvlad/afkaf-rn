@@ -7,7 +7,13 @@ import { useMapMarkers } from '../hooks/useMapMarkers';
 import { INFRA_MARKER_TYPES } from '../lib/markerConfig';
 import { ANDROID_MARKER_IMAGES } from '../lib/markerImages';
 import { START_COORD, isValidCoord } from '../lib/geo';
-import { getMapbox, MapboxModule, MAPBOX_TOKEN } from '../lib/mapbox';
+import {
+  getMapbox,
+  mapLabelLayers,
+  MapboxModule,
+  MAPBOX_STYLE_URL,
+  MAPBOX_TOKEN,
+} from '../lib/mapbox';
 import { colors, radii, shadows, typography } from '../theme/tokens';
 
 // Фаза 1 переезда на Mapbox (docs/MAPBOX-RECON.md): тестовый экран, вход из
@@ -159,7 +165,6 @@ function MapboxMap({ Mapbox }: { Mapbox: MapboxModule }) {
     () => ({ bottom: insets.bottom + 10, left: 104 }),
     [insets.bottom],
   );
-  const localize = useMemo(() => ({ locale: lang }), [lang]);
 
   async function handlePointPress(e: { features: GeoJSON.Feature[] }) {
     const feature = e.features[0];
@@ -199,8 +204,7 @@ function MapboxMap({ Mapbox }: { Mapbox: MapboxModule }) {
     <>
       <MapView
         style={StyleSheet.absoluteFill}
-        styleURL={Mapbox.StyleURL.Street}
-        localizeLabels={localize}
+        styleURL={MAPBOX_STYLE_URL}
         logoEnabled
         logoPosition={logoPosition}
         attributionEnabled
@@ -212,6 +216,9 @@ function MapboxMap({ Mapbox }: { Mapbox: MapboxModule }) {
         onMapLoadingError={() => setMapStatus('ошибка загрузки карты')}
       >
         <Camera ref={cameraRef} defaultSettings={CAMERA_DEFAULTS} />
+
+        {/* Подписи: he/ru → иврит, en → английский (lib/mapbox.ts). */}
+        {mapLabelLayers(Mapbox, lang)}
 
         <Images images={MARKER_IMAGES} />
 
