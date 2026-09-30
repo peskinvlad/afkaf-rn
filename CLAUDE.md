@@ -25,6 +25,11 @@
   в байт — проверять `npx expo config --type public --json`. `APP_VARIANT=dev`
   нужен и при `expo prebuild`, и при `expo start` (иначе JS не узнает
   dev-приложение и DevPanel не откроется без входа).
+- **Android dev-сборка в облаке:** профиль `development-mapbox` в `eas.json`
+  (dev client, apk, `APP_VARIANT=dev`, окружение EAS `development`) → package
+  `com.afkaf.app.dev` + ключ Google Maps из `GOOGLE_MAPS_ANDROID_API_KEY`
+  (без него react-native-maps роняет приложение на главной карте). JS и
+  `EXPO_PUBLIC_*` dev client берёт из Metro на маке (`.env`), не из сборки.
 - **`@rnmapbox/maps` статически не импортировать.** Только через
   `src/lib/mapbox.ts` (`getMapbox()`): библиотека бросает исключение при
   импорте, если в сборке нет её нативной части. `import type` — можно.

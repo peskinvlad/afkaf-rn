@@ -10,6 +10,17 @@
       "environment": "development",
       "ios": {}
     },
+    "development-mapbox": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "environment": "development",
+      "env": {
+        "APP_VARIANT": "dev"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "preview": {
       "distribution": "internal",
       "environment": "preview",
