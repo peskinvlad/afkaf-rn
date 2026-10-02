@@ -592,6 +592,9 @@ export function WalkScreen({ navigation }: Props) {
   const autoPendingRef = useRef<AutoFinishedWalk | null>(null);
   const autoRouteRef = useRef<LatLng[]>([]);
   const parksRef = useRef<LatLng[]>([]);
+  // Источник — ПОЛНЫЙ markers, НЕ filteredMarkers: фильтр карты (activeCategories/
+  // радиус) скрывает только пины. Фолбэк автозавершения «около парка» не должен
+  // зависеть от того, что тестер снял галочку с парков в фильтре.
   useEffect(() => {
     parksRef.current = markers
       .filter((m) => m.type === 'park' || m.type === 'dog_park')
@@ -625,6 +628,9 @@ export function WalkScreen({ navigation }: Props) {
   // tracks the zone (so the card can explain why "I'm here" is off) but never
   // checks in. The session is closed by Finish / auto-finish and on unmount.
   const dogParksRef = useRef<DogPark[]>([]);
+  // Источник — ПОЛНЫЙ markers, НЕ filteredMarkers: фильтр карты (activeCategories/
+  // радиус) влияет только на показ пинов. Зоны чек-ина (авто-отметка, «Я здесь»,
+  // nearestPark) должны работать, даже если юзер снял галочку с парков в фильтре.
   useEffect(() => {
     dogParksRef.current = markers
       .filter((m) => m.type === 'dog_park')
