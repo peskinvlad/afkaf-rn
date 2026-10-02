@@ -674,7 +674,9 @@ export function WalkScreen({ navigation }: Props) {
     finishingRef.current = true;
     setFinishing(true);
 
-    const cutRoute = routeRef.current.slice(0, hit.mark.routeLen);
+    // Трек режем на ВХОДЕ в домашнюю зону (routeCutLen), даже если время/дистанция
+    // посчитаны до прибытия к двери: точки внутри зоны в сохранённый трек не идут.
+    const cutRoute = routeRef.current.slice(0, hit.routeCutLen);
     autoRouteRef.current = cutRoute;
     const stepsAtT = await pedometerStepsBetween(walkStartedAtMs, hit.endAt);
     const { data: { session } } = await supabase.auth.getSession();
