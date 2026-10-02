@@ -1,4 +1,6 @@
 -- Снимок от 2026-09-29 (feat/park-checkin). Чек-ин на собачьей площадке.
+-- Обновлено 2026-10-02: порог свежести active_walks 10 → 30 мин (как в
+-- get_park_presence; фоновый пинг при погашенном экране реже раза в 10 мин).
 -- SECURITY DEFINER: у park_checkins нет write-политик, писать можно только здесь.
 --
 -- Вызывается клиентом в двух случаях:
@@ -7,7 +9,7 @@
 --
 -- Проверки:
 --   • метка — постоянная dog_park (expires_at IS NULL), иначе PT422 not_a_dog_park;
---   • у вызывающего свежая active_walks (≤10 мин) с visibility <> 'nobody'.
+--   • у вызывающего свежая active_walks (≤30 мин) с visibility <> 'nobody'.
 --     Нет строки = «никто» / домашняя зона / не на прогулке → PT409 no_active_walk.
 --     Это серверная гарантия правила «чек-ин только во время прогулки»;
 --   • последняя позиция active_walks не дальше 150 м от площадки (пинг раз в 60 с,
@@ -56,7 +58,7 @@ BEGIN
   SELECT lat, lng INTO aw
   FROM active_walks
   WHERE user_id = uid
-    AND updated_at > now() - interval '10 minutes'
+    AND updated_at > now() - interval '30 minutes'
     AND visibility <> 'nobody'
   FOR UPDATE;
   IF NOT FOUND THEN

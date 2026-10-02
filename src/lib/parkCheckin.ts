@@ -119,13 +119,18 @@ export function startParkCheckinSession(config: ParkSessionConfig) {
 
 // Конец прогулки / уход с экрана. Открытый чек-ин закрывается сразу, не ждём
 // сервера (его фильтр по свежей active_walks всё равно уберёт нас из счётчика).
-export function endParkCheckinSession() {
+export function endParkCheckinSession(): Promise<void> {
   const wasActive = session != null;
   const wasCheckedIn = state.checkedIn;
   session = null;
   state = EMPTY;
   listeners.forEach((l) => l());
-  if (wasActive && wasCheckedIn) closeParkCheckin('walk_end');
+  // Возвращаем промис park_checkout, чтобы вызывающий (handleFinish /
+  // handleAutoFinish) мог дождаться его ДО остановки трекинга: в фоне iOS
+  // усыпляет приложение сразу после stopWalkTracking и fire-and-forget checkout
+  // терялся — чек-ин висел «в парке» до expires_at (2 ч).
+  if (wasActive && wasCheckedIn) return closeParkCheckin('walk_end');
+  return Promise.resolve();
 }
 
 // Закрыть свой чек-ин на сервере без сессии — для путей восстановления

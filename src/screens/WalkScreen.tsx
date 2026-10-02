@@ -72,6 +72,12 @@ import { subscribeWalkLocations, startWalkTracking, stopWalkTracking } from '../
 // прыгает на пользователя первым же фиксом, так что этот регион виден лишь миг.
 const INITIAL_REGION = { ...START_COORD, latitudeDelta: START_DELTA, longitudeDelta: START_DELTA };
 const ACTIVE_WALK_PING_MS = 60000;
+// Фоновый GPS-колбэк и 60-с таймер шлют active_walks через один троттл-гейт,
+// чтобы в форграунде не было двойных запросов. Гейт чуть меньше интервала —
+// иначе регулярный тик таймера глох бы о собственную частоту.
+const ACTIVE_WALK_SYNC_GATE_MS = 50000;
+// park_checkout при финише ждём не дольше этого, потом всё равно глушим трекинг.
+const PARK_CHECKOUT_TIMEOUT_MS = 5000;
 // WalkScreen bottom-panel height ABOVE the safe-area inset (measured from the
 // styles: paddingTop 16 + stats ~46 + gap 10 + nearby row 48 + gap 10 + finish
 // ~59 + paddingBottom-non-safe 8 ≈ 198). The guest banner is intentionally NOT
@@ -108,6 +114,17 @@ async function pedometerStepsBetween(fromMs: number, toMs: number): Promise<numb
     console.warn('[WalkScreen] getStepCountAsync failed:', e);
     return null;
   }
+}
+
+// Дожидаемся промиса, но не дольше ms — чтобы висящий в фоне сетевой запрос
+// (park_checkout) не задерживал остановку трекинга сверх окна пробуждения iOS.
+function raceWithTimeout(p: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const done = () => { if (!settled) { settled = true; resolve(); } };
+    const id = setTimeout(done, ms);
+    p.then(() => { clearTimeout(id); done(); }, () => { clearTimeout(id); done(); });
+  });
 }
 
 interface Props {
@@ -391,6 +408,9 @@ export function WalkScreen({ navigation }: Props) {
   // activeWalkRowExists (создание/удаление строки active_walks).
   const [isPublishing, setIsPublishing] = useState(false);
   const activeWalkStartAttempted = useRef(false);
+  // Последняя отправка active_walks (создание/пинг/снятие) — общий троттл для
+  // фонового GPS-колбэка и 60-с таймера, чтобы в форграунде не слать дубль.
+  const lastActiveWalkSyncAt = useRef(0);
   const latestPos = useRef<LatLng | null>(null);
   const distanceKmRef = useRef(0);
   // Publish context resolved once on the first fix, reused by every publish
@@ -448,6 +468,7 @@ export function WalkScreen({ navigation }: Props) {
     if (!error) {
       activeWalkRowExists.current = true;
       setIsPublishing(true);
+      lastActiveWalkSyncAt.current = Date.now();
     }
   }
 
@@ -492,6 +513,16 @@ export function WalkScreen({ navigation }: Props) {
     }
   }
 
+  // Троттл-обёртка над syncActiveWalkRow: общий гейт для фонового GPS-пути и
+  // 60-с таймера (без дублей в форграунде). Во время финиша не шлём — иначе
+  // поздний фикс мог бы заново создать строку, которую мы только что удалили.
+  function maybeSyncActiveWalk(pt: LatLng, nowMs: number) {
+    if (finishingRef.current) return;
+    if (nowMs - lastActiveWalkSyncAt.current < ACTIVE_WALK_SYNC_GATE_MS) return;
+    lastActiveWalkSyncAt.current = nowMs;
+    syncActiveWalkRow(pt);
+  }
+
   // First GPS fix: resolve context once, then run the publish gate.
   async function startActiveWalkRow(pt: LatLng) {
     const ok = await resolveActiveWalkContext();
@@ -505,11 +536,14 @@ export function WalkScreen({ navigation }: Props) {
     if (finishingRef.current) return; // double-tap: the first tap owns the save
     finishingRef.current = true;
     setFinishing(true);
-    endParkCheckinSession();
-    stopActiveWalkRow();
+    // park_checkout ДО остановки трекинга (с таймаутом), тем же порядком, что и в
+    // авто-финише: пока трекинг жив, у приложения есть время доставить запрос.
+    await raceWithTimeout(endParkCheckinSession(), PARK_CHECKOUT_TIMEOUT_MS);
+    await stopActiveWalkRow();
     // The walk is over from this tap on — no fix may extend the route or the
-    // distance while the save below is in flight.
-    stopWalkTracking();
+    // distance while the save below is in flight. finalizeWalk берёт снимок
+    // route/distanceKm/seconds из замыкания, так что ожидание выше их не меняет.
+    await stopWalkTracking();
 
     // Температурный статус фиксируем ЗДЕСЬ, в момент завершения. heatData
     // приходит из единственного useAsphaltTemp через getEffectiveAsphaltTemp
@@ -658,7 +692,9 @@ export function WalkScreen({ navigation }: Props) {
       heatStatusAtFinish: heatData.status,
     };
     await saveAutoFinished(walk);
-    endParkCheckinSession();
+    // park_checkout ДО остановки трекинга (с таймаутом): в фоне iOS усыпляет
+    // приложение сразу после stopWalkTracking — fire-and-forget checkout терялся.
+    await raceWithTimeout(endParkCheckinSession(), PARK_CHECKOUT_TIMEOUT_MS);
     await stopActiveWalkRow();
     await stopWalkTracking();
     autoPendingRef.current = walk;
@@ -717,7 +753,7 @@ export function WalkScreen({ navigation }: Props) {
   // based on whether the current point is inside the home privacy zone.
   useEffect(() => {
     const id = setInterval(() => {
-      if (latestPos.current) syncActiveWalkRow(latestPos.current);
+      if (latestPos.current) maybeSyncActiveWalk(latestPos.current, Date.now());
     }, ACTIVE_WALK_PING_MS);
     return () => clearInterval(id);
   }, []);
@@ -739,6 +775,11 @@ export function WalkScreen({ navigation }: Props) {
       // old timestamps, and an exit at its end must land before the dwell is
       // judged against Date.now().
       tickParkCheckin(Date.now());
+      // Публикуем active_walks и из фонового пути (не только 60-с таймер, который
+      // iOS не крутит при погашенном экране) — тем же троттл-гейтом. Иначе
+      // updated_at протухает: нас теряют в «гуляют рядом» и сервер режет
+      // park-чек-ин (обе функции требуют свежую active_walks).
+      if (latestPos.current) maybeSyncActiveWalk(latestPos.current, Date.now());
     });
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
