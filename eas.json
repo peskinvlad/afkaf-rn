@@ -4,6 +4,14 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "park-test": {
+      "distribution": "internal",
+      "environment": "preview",
+      "channel": "park-test",
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-26.0"
+      }
+    },
     "development": {
       "developmentClient": true,
       "distribution": "internal",
