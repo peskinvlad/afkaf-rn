@@ -1,31 +1,34 @@
 import React from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useApp } from '../hooks/useApp';
+import { useApp, AutoFinishedNotice } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
-import { checkAndAwardBadges } from '../lib/badges';
-import { saveWalkHistory } from '../lib/walkHistory';
+import { finalizeWalk, isValidWalk } from '../lib/walkFinalize';
+import { formatClock } from '../lib/autoFinish';
+import { closeParkCheckin } from '../lib/parkCheckin';
 import { colors, radii, shadows } from '../theme/tokens';
 
-const MIN_VALID_DISTANCE_KM = 0.3;
-const MIN_VALID_DURATION_MIN = 5;
-
 export function WalkRecoveryModal() {
-  const { t, abandonedWalk, clearAbandonedWalk, confirmedCount } = useApp();
+  const { t, abandonedWalk, clearAbandonedWalk, confirmedCount, autoFinishedWalk, clearAutoFinishedWalk } = useApp();
 
+  if (autoFinishedWalk) {
+    return <AutoFinishedCard walk={autoFinishedWalk} t={t} onClose={clearAutoFinishedWalk} />;
+  }
   if (!abandonedWalk) return null;
 
   const { distanceKm, startedAt, updatedAt } = abandonedWalk;
-  const durationMin = Math.max(
+  const durationS = Math.max(
     0,
-    Math.floor((new Date(updatedAt).getTime() - new Date(startedAt).getTime()) / 60000)
+    Math.floor((new Date(updatedAt).getTime() - new Date(startedAt).getTime()) / 1000)
   );
-  const isValid = distanceKm >= MIN_VALID_DISTANCE_KM && durationMin >= MIN_VALID_DURATION_MIN;
+  const durationMin = Math.floor(durationS / 60);
+  const isValid = isValidWalk(distanceKm, durationS);
 
   async function discard() {
     const { data: { session } } = await supabase.auth.getSession();
     const userId = session?.user?.id;
     if (userId) {
       await supabase.from('active_walks').delete().eq('user_id', userId);
+      closeParkCheckin('walk_end'); // a park check-in left open by that walk
     }
     clearAbandonedWalk();
   }
@@ -35,32 +38,21 @@ export function WalkRecoveryModal() {
     const userId = session?.user?.id;
     if (userId) {
       if (isValid) {
-        const { data: dog } = await supabase
-          .from('dogs')
-          .select('id')
-          .eq('owner_id', userId)
-          .limit(1)
-          .maybeSingle();
-        await saveWalkHistory({
-          user_id: userId,
-          distance_km: distanceKm,
-          duration_min: durationMin,
+        await finalizeWalk({
+          startedAt,
           // updatedAt is the last ping of the abandoned walk — the closest
           // real "end" we have. Steps/path weren't persisted → null.
-          duration_s: Math.max(
-            0,
-            Math.floor((new Date(updatedAt).getTime() - new Date(startedAt).getTime()) / 1000)
-          ),
-          started_at: startedAt,
-          ended_at: updatedAt,
+          endedAt: updatedAt,
+          durationS,
+          distanceKm,
           steps: null,
-          dog_id: dog?.id ?? null,
           path: null,
-          is_valid: isValid,
+          confirmedCount,
+          checkPersonalBest: false,
         });
-        await checkAndAwardBadges(confirmedCount);
       }
       await supabase.from('active_walks').delete().eq('user_id', userId);
+      closeParkCheckin('walk_end'); // a park check-in left open by that walk
     }
     clearAbandonedWalk();
   }
@@ -101,6 +93,51 @@ export function WalkRecoveryModal() {
               activeOpacity={0.85}
             >
               <Text style={styles.btnSecondaryTxt}>{t('walkRecovery.discard')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// Auto-finished walk found on a cold start (useApp already saved it, cut at T).
+// Informational only: one button, nothing left to decide.
+function AutoFinishedCard({
+  walk,
+  t,
+  onClose,
+}: {
+  walk: AutoFinishedNotice;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+  onClose: () => void;
+}) {
+  const time = formatClock(new Date(walk.endedAt).getTime());
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.backdrop}>
+        <View style={[styles.card, shadows.lg]}>
+          <Text style={styles.emoji}>🏠</Text>
+          <Text style={styles.title}>{t('walkAuto.title')}</Text>
+          <Text style={styles.message}>{t(`walk.summary.autoFinished.${walk.reason}`, { time })}</Text>
+
+          <View style={styles.statsRow}>
+            <View style={styles.statCol}>
+              <Text style={styles.statValue}>{walk.distanceKm.toFixed(2)}</Text>
+              <Text style={styles.statLabel}>{t('walk.active.km')}</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statCol}>
+              <Text style={styles.statValue}>{Math.floor(walk.durationS / 60)}</Text>
+              <Text style={styles.statLabel}>{t('walk.active.duration')}</Text>
+            </View>
+          </View>
+
+          {!walk.isValidWalk && <Text style={styles.message}>{t('walkAuto.tooShort')}</Text>}
+
+          <View style={styles.actions}>
+            <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={onClose} activeOpacity={0.85}>
+              <Text style={styles.btnPrimaryTxt}>{t('common.done')}</Text>
             </TouchableOpacity>
           </View>
         </View>

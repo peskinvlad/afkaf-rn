@@ -8,6 +8,9 @@ import { RadiusFilter } from '../components/MarkerFilterSheet';
 import { useAsphaltTemp, HeatStatus, HourlyPoint } from './useAsphaltTemp';
 import { checkAndAwardBadges } from '../lib/badges';
 import { flushPendingWalkHistory } from '../lib/walkHistory';
+import { loadAutoFinished, clearAutoFinished, finalizeAutoFinished } from '../lib/walkFinalize';
+import { closeParkCheckin } from '../lib/parkCheckin';
+import type { AutoFinishReason } from '../lib/autoFinish';
 import { emitDevSettingsChange } from '../constants/dev';
 
 export interface HeatData {
@@ -23,6 +26,16 @@ export interface AbandonedWalk {
   distanceKm: number;
   startedAt: string;
   updatedAt: string;
+}
+
+// A walk auto-finished (lib/autoFinish) while the app was in the background
+// and then evicted — saved on this cold start, shown by WalkRecoveryModal.
+export interface AutoFinishedNotice {
+  reason: AutoFinishReason;
+  endedAt: string;
+  distanceKm: number;
+  durationS: number;
+  isValidWalk: boolean;
 }
 
 export interface AppState {
@@ -47,6 +60,8 @@ export interface AppState {
   setUserLocation: (loc: LatLng) => void;
   abandonedWalk: AbandonedWalk | null;
   clearAbandonedWalk: () => void;
+  autoFinishedWalk: AutoFinishedNotice | null;
+  clearAutoFinishedWalk: () => void;
   feelsLikeC: number | null;
   weatherDescription: string | null;
   weatherIcon: string | null;
@@ -111,9 +126,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     flushPendingWalkHistory();
   }
 
+  const [autoFinishedWalk, setAutoFinishedWalk] = useState<AutoFinishedNotice | null>(null);
+
   async function checkAbandonedWalk(userId: string) {
     if (hasCheckedAbandonedWalk.current) return;
     hasCheckedAbandonedWalk.current = true;
+    // An auto-finished snapshot wins over a leftover active_walks row: it is
+    // the same walk, already cut at T, with its real path and steps.
+    if (await finalizeAutoFinishedOnStart(userId)) return;
     const { data } = await supabase
       .from('active_walks')
       .select('distance_km, started_at, updated_at')
@@ -130,6 +150,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   function clearAbandonedWalk() {
     setAbandonedWalk(null);
+  }
+
+  // true → there was this user's snapshot and it has been handled.
+  async function finalizeAutoFinishedOnStart(userId: string): Promise<boolean> {
+    const walk = await loadAutoFinished();
+    if (!walk) return false;
+    if (walk.userId !== userId) {
+      // Guest walk or another account's — nothing to attach it to.
+      await clearAutoFinished();
+      return false;
+    }
+    // confirmedCount state isn't loaded yet this early; badges only need it
+    // for marker badges, which fetchTrustStatus re-checks on its own.
+    const result = await finalizeAutoFinished(walk, 0);
+    await supabase.from('active_walks').delete().eq('user_id', userId);
+    closeParkCheckin('walk_end'); // a park check-in left open by that walk
+    if (result) {
+      setAutoFinishedWalk({
+        reason: walk.reason,
+        endedAt: walk.endedAt,
+        distanceKm: walk.distanceKm,
+        durationS: walk.durationS,
+        isValidWalk: result.isValidWalk,
+      });
+    }
+    return true;
+  }
+
+  function clearAutoFinishedWalk() {
+    setAutoFinishedWalk(null);
   }
 
   // ── Live asphalt temperature (real OpenWeatherMap data, see useAsphaltTemp) ─
@@ -204,6 +254,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setIsGuest(!session?.user);
+      // A guest's auto-finished walk can't be saved anywhere — drop it.
+      if (!session?.user) clearAutoFinished();
       // Dev-геттеры гейтятся по isDevUser и читаются один раз при монтировании
       // AppProvider — то есть до того, как сессия восстановлена. Без этого
       // пинка оверрайд оставался выключенным до следующего открытия DevPanel.
@@ -267,6 +319,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setUserLocation,
         abandonedWalk,
         clearAbandonedWalk,
+        autoFinishedWalk,
+        clearAutoFinishedWalk,
         feelsLikeC,
         weatherDescription,
         weatherIcon,
