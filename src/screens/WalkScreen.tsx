@@ -127,6 +127,13 @@ const AUTO_FINISH_CHECK_MS = 30_000;
 // столько шагов и больше — человек ходит (по квартире, по кругу у площадки).
 const STILL_MAX_STEPS = 300;
 
+// Сценарий №3 «Опасность рядом» и №5 «Метка ещё актуальна?»: пороги сближения с
+// меткой. Dev-переключатель «радиус 150 м» увеличивает оба для теста.
+const HAZARD_TYPES = ['danger', 'hazard', 'aggressive_dog'];
+const HAZARD_RADIUS_M = 50;
+const MARKER_RADIUS_M = 30;
+const PROXIMITY_TEST_RADIUS_M = 150;
+
 // Steps between two moments from the motion coprocessor (iOS CMPedometer; the
 // live watcher gets no updates in the background, so its count at T would be
 // short). null when unavailable (Android, no permission) or too slow.
@@ -627,6 +634,16 @@ export function WalkScreen({ navigation }: Props) {
   const homePromptThresholdMs = useRef<number>(HOME_PROMPT_MS);
   const homePromptScheduledId = useRef<string | null>(null);
   const homePromptForSince = useRef<number | null>(null);
+  // ── Сценарии №3/№5: сближение с метками ────────────────────────────────────
+  // Общий флаг «радиус 150 м» для теста обоих. currentUserId / домашняя зона —
+  // чтобы не предупреждать о своих метках и о метках у дома (приватность).
+  const hazardsRef = useRef<
+    Array<{ id: string; lat: number; lng: number; userId: string | null; type: string }>
+  >([]);
+  const notifiedHazards = useRef<Set<string>>(new Set());
+  const proximityTestRef = useRef<boolean>(false);
+  const currentUserIdRef = useRef<string | null>(null);
+  const notifHomeZoneRef = useRef<HomeZone | null>(null);
   // Источник — ПОЛНЫЙ markers, НЕ filteredMarkers: фильтр карты (activeCategories/
   // радиус) скрывает только пины. Фолбэк автозавершения «около парка» не должен
   // зависеть от того, что тестер снял галочку с парков в фильтре.
@@ -636,18 +653,46 @@ export function WalkScreen({ navigation }: Props) {
       .map((m) => ({ latitude: m.lat, longitude: m.lng }));
   }, [markers]);
 
+  // Метки-опасности для №3 (полный markers, не filteredMarkers — фильтр карты на
+  // предупреждения не влияет).
+  useEffect(() => {
+    hazardsRef.current = markers
+      .filter((m) => HAZARD_TYPES.includes(m.type))
+      .map((m) => ({ id: m.id, lat: m.lat, lng: m.lng, userId: m.user_id, type: m.type }));
+  }, [markers]);
+
+  // Кто я и где мой дом — для фильтра «не предупреждать о своих метках и о метках
+  // в домашней зоне». Нужно и гостю (у него userId=null, своих меток нет).
+  useEffect(() => {
+    let disposed = false;
+    (async () => {
+      const [{ data: { session } }, zone] = await Promise.all([
+        supabase.auth.getSession(),
+        loadHomeZone(),
+      ]);
+      if (disposed) return;
+      currentUserIdRef.current = session?.user?.id ?? null;
+      notifHomeZoneRef.current = zone;
+    })();
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
   // Home zone read on its own here: the publish context skips it for guests
   // and visibility='nobody', but auto-finish applies to every walk.
   useEffect(() => {
     let disposed = false;
     (async () => {
-      const [zone, testMode, homePromptTest] = await Promise.all([
+      const [zone, testMode, homePromptTest, proximityTest] = await Promise.all([
         loadHomeZone(),
         getDevAutoFinishTest(),
         getDevHomePromptTest(),
+        getDevProximityTest(),
       ]);
       if (disposed) return;
       homePromptThresholdMs.current = homePromptTest ? HOME_PROMPT_TEST_MS : HOME_PROMPT_MS;
+      proximityTestRef.current = proximityTest;
       autoDetector.current = createAutoFinishDetector({
         home: zone,
         testMode,
@@ -845,6 +890,28 @@ export function WalkScreen({ navigation }: Props) {
 
   const homeEvalRef = useRef(evaluateHomePrompt);
   homeEvalRef.current = evaluateHomePrompt;
+
+  // ── Сценарий №3: предупреждение при сближении с меткой-опасностью ───────────
+  // Раз на метку за прогулку, без кнопок, работает и у гостя. Не предупреждаем о
+  // своих метках и о метках в домашней зоне.
+  function evaluateHazards(pt: LatLng) {
+    if (!isNotificationsAvailable) return;
+    const radius = proximityTestRef.current ? PROXIMITY_TEST_RADIUS_M : HAZARD_RADIUS_M;
+    const zone = notifHomeZoneRef.current;
+    const uid = currentUserIdRef.current;
+    for (const h of hazardsRef.current) {
+      if (notifiedHazards.current.has(h.id)) continue;
+      if (uid && h.userId === uid) continue;
+      if (zone && isInsideHomeZone(h.lat, h.lng, zone)) continue;
+      if (haversine(pt, { latitude: h.lat, longitude: h.lng }) * 1000 > radius) continue;
+      notifiedHazards.current.add(h.id);
+      const key = `marker.type.${h.type}`;
+      const label = t(key) !== key ? t(key) : t('hazard.notif.generic');
+      presentWalkNotice(t('hazard.notif.title'), t('hazard.notif.body', { type: label }));
+    }
+  }
+  const hazardEvalRef = useRef(evaluateHazards);
+  hazardEvalRef.current = evaluateHazards;
 
   // Кнопки подсказки №2: «Завершить» → forceHome + handleAutoFinish (завершение с
   // прибытием к двери); «Ещё гуляю» → rejectHome (до следующего выхода из зоны).
@@ -1068,6 +1135,7 @@ export function WalkScreen({ navigation }: Props) {
           { routeLen: routeRef.current.length, distanceKm: distanceKmRef.current, steps: stepsRef.current },
         );
         feedParkFix({ ...pt, accuracy: coords.accuracy, timestamp: coords.timestamp });
+        hazardEvalRef.current(pt); // №3: предупреждение при сближении с опасностью
         followWith(pt);
         setUserLocation(pt);
 
