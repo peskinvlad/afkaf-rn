@@ -19,8 +19,13 @@ export function shortDuration(ms: number, t: TFn): string {
   return `${Math.round(min / 60)} ${t('unit.hr')}`;
 }
 
-// Подпись типа метки: локализованная (marker.type.*), иначе — запасной текст.
+// Подпись типа метки для УВЕДОМЛЕНИЙ: сначала существительное notif.type.*
+// (напр. «Ядовитая приманка», «Запретная зона» — отдельно от подписей на карте),
+// иначе подпись карты marker.type.*, иначе запасной текст.
 export function typeLabel(type: string, t: TFn, genericKey: string): string {
+  const notifKey = `notif.type.${type}`;
+  const notifLabel = t(notifKey);
+  if (notifLabel !== notifKey) return notifLabel;
   const key = `marker.type.${type}`;
   const label = t(key);
   return label !== key ? label : t(genericKey);
