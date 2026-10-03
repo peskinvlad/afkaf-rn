@@ -119,7 +119,18 @@ function dispatchResponse(
   // прогулки уже нет). Тап по телу (DEFAULT) открывает приложение — не наше дело.
   if (data?.kind) {
     const handler = actionHandlers.get(data.kind);
-    if (source === 'listener' && handler) handler(data, response.actionIdentifier);
+    if (source === 'listener' && handler) {
+      handler(data, response.actionIdentifier);
+      return;
+    }
+    // Нет обработчика (не на прогулке / кнопка «Показать сейчас» из DevPanel) или
+    // холодный старт — залогируем нажатие, чтобы show-now был проверяем дома.
+    void recordResponse(
+      response.actionIdentifier,
+      response.notification.request.identifier,
+      response.notification.date,
+      source,
+    );
     return;
   }
 

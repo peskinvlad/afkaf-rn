@@ -103,6 +103,12 @@ import {
   ACT_MARKER_GONE,
 } from '../lib/notifications';
 import { castMarkerVote } from '../lib/markerVotes';
+import {
+  NotifType,
+  QUIET_EXEMPT,
+  inQuietHours,
+  loadNotifEnabled,
+} from '../lib/notifPrefs';
 
 // Старт — общий START_COORD (Бат-Ям, см. lib/geo). Во время прогулки камера
 // прыгает на пользователя первым же фиксом, так что этот регион виден лишь миг.
@@ -677,6 +683,14 @@ export function WalkScreen({ navigation }: Props) {
   >([]);
   const notifiedMarkers = useRef<Set<string>>(new Set());
   const markerPromptCount = useRef<number>(0);
+  // Выключатели типов уведомлений (Настройки) + тихие часы. canShow() — единый гейт.
+  const notifEnabledRef = useRef<Record<NotifType, boolean>>({
+    park: true,
+    home: true,
+    hazard: true,
+    still: true,
+    marker: true,
+  });
   // Источник — ПОЛНЫЙ markers, НЕ filteredMarkers: фильтр карты (activeCategories/
   // радиус) скрывает только пины. Фолбэк автозавершения «около парка» не должен
   // зависеть от того, что тестер снял галочку с парков в фильтре.
@@ -719,6 +733,28 @@ export function WalkScreen({ navigation }: Props) {
       disposed = true;
     };
   }, []);
+
+  // Выключатели типов уведомлений: читаем при входе и при возврате в foreground
+  // (пользователь мог переключить в Настройках, не завершая прогулку).
+  useEffect(() => {
+    const load = () => {
+      loadNotifEnabled().then((e) => {
+        notifEnabledRef.current = e;
+      });
+    };
+    load();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') load();
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Единый гейт показа: выключатель типа в Настройках + тихие часы (кроме home/still).
+  function canShow(type: NotifType): boolean {
+    if (!notifEnabledRef.current[type]) return false;
+    if (!QUIET_EXEMPT.includes(type) && inQuietHours()) return false;
+    return true;
+  }
 
   // Home zone read on its own here: the publish context skips it for guests
   // and visibility='nobody', but auto-finish applies to every walk.
@@ -867,6 +903,7 @@ export function WalkScreen({ navigation }: Props) {
       }
       if (parkPromptForParkId.current === s.parkId) return; // уже запланировано на этот парк
       if (parkPromptedParks.current.has(s.parkId)) return; // уже показывали за прогулку
+      if (!canShow('park')) return; // тип выключен в настройках / тихие часы
       cancelPrompt(); // снять возможную подсказку прошлого парка
       void schedulePrompt(s.parkId, s.insideSince);
     }
@@ -908,6 +945,10 @@ export function WalkScreen({ navigation }: Props) {
 
   async function evaluateHomePrompt() {
     if (!isNotificationsAvailable) return;
+    if (!canShow('home')) {
+      cancelHomePrompt();
+      return;
+    }
     const since = finishingRef.current ? null : autoDetector.current?.homeCandidateSince() ?? null;
     if (since == null) {
       cancelHomePrompt();
@@ -943,6 +984,7 @@ export function WalkScreen({ navigation }: Props) {
   // своих метках и о метках в домашней зоне.
   function evaluateHazards(pt: LatLng) {
     if (!isNotificationsAvailable) return;
+    if (!canShow('hazard')) return;
     const radius = proximityTestRef.current ? PROXIMITY_TEST_RADIUS_M : HAZARD_RADIUS_M;
     const zone = notifHomeZoneRef.current;
     const uid = currentUserIdRef.current;
@@ -965,6 +1007,7 @@ export function WalkScreen({ navigation }: Props) {
   // прогулку, не своя метка, только для залогиненных (голос требует аккаунт).
   function evaluateMarkerPrompts(pt: LatLng) {
     if (!isNotificationsAvailable) return;
+    if (!canShow('marker')) return;
     const uid = currentUserIdRef.current;
     if (!uid) return; // гость голосовать не может
     if (markerPromptCount.current >= MARKER_PROMPT_MAX) return;
@@ -1042,7 +1085,7 @@ export function WalkScreen({ navigation }: Props) {
 
   function evaluateStillWalking(now: number) {
     if (!isNotificationsAvailable) return;
-    if (!noHomeZoneRef.current || finishingRef.current) {
+    if (!noHomeZoneRef.current || finishingRef.current || !canShow('still')) {
       cancelStillWalking();
       return;
     }
