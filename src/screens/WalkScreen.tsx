@@ -665,7 +665,14 @@ export function WalkScreen({ navigation }: Props) {
   // Общий флаг «радиус 150 м» для теста обоих. currentUserId / домашняя зона —
   // чтобы не предупреждать о своих метках и о метках у дома (приватность).
   const hazardsRef = useRef<
-    Array<{ id: string; lat: number; lng: number; userId: string | null; type: string }>
+    Array<{
+      id: string;
+      lat: number;
+      lng: number;
+      userId: string | null;
+      type: string;
+      temporary: boolean;
+    }>
   >([]);
   const notifiedHazards = useRef<Set<string>>(new Set());
   const proximityTestRef = useRef<boolean>(false);
@@ -705,7 +712,14 @@ export function WalkScreen({ navigation }: Props) {
   useEffect(() => {
     hazardsRef.current = markers
       .filter((m) => HAZARD_TYPES.includes(m.type))
-      .map((m) => ({ id: m.id, lat: m.lat, lng: m.lng, userId: m.user_id, type: m.type }));
+      .map((m) => ({
+        id: m.id,
+        lat: m.lat,
+        lng: m.lng,
+        userId: m.user_id,
+        type: m.type,
+        temporary: m.expires_at != null, // временная (пользовательская) vs постоянная
+      }));
   }, [markers]);
 
   // Временные метки для №5: не инфраструктура (вода/парки — постоянные, голоса нет)
@@ -996,7 +1010,28 @@ export function WalkScreen({ navigation }: Props) {
       notifiedHazards.current.add(h.id);
       const key = `marker.type.${h.type}`;
       const label = t(key) !== key ? t(key) : t('hazard.notif.generic');
-      presentWalkNotice(t('hazard.notif.title'), t('hazard.notif.body', { type: label }));
+      const title = t('hazard.notif.title');
+      const body = t('hazard.notif.body', { type: label });
+      // Временная опасная метка + залогинен → одно уведомление: предупреждение С
+      // кнопками-голосом (castMarkerVote через обработчик KIND_MARKER). Лимит ≤3
+      // из №5 сюда НЕ применяется — опасность важнее. Постоянная опасная метка или
+      // гость → без кнопок, как раньше.
+      if (h.temporary && uid) {
+        void scheduleNotif({
+          kind: KIND_MARKER,
+          categoryId: CAT_MARKER,
+          actions: [
+            { identifier: ACT_MARKER_STILL, buttonTitle: t('marker.notif.still') },
+            { identifier: ACT_MARKER_GONE, buttonTitle: t('marker.notif.gone') },
+          ],
+          title,
+          body,
+          data: { markerId: h.id },
+          fireInSeconds: 1,
+        });
+      } else {
+        presentWalkNotice(title, body);
+      }
     }
   }
   const hazardEvalRef = useRef(evaluateHazards);

@@ -20,7 +20,7 @@ import { mapDebug } from '../lib/mapDebug';
 // (addLocalMarker below puts their own marker on the map immediately).
 const REFRESH_MS = 60_000;
 
-export const MARKER_COLUMNS = 'id, type, lat, lng, description, user_id, created_at';
+export const MARKER_COLUMNS = 'id, type, lat, lng, description, user_id, created_at, expires_at';
 
 let markerCache: MapMarker[] = [];
 let waterCache: WaterSource[] = [];

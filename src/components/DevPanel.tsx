@@ -319,6 +319,23 @@ export function DevPanel({ visible, onClose }: Props) {
       presentWalkNotice(t('hazard.notif.title'), t('hazard.notif.body', { type: t('marker.type.danger') })),
     );
 
+  // №3 для ВРЕМЕННОЙ опасной метки — предупреждение С кнопками-голосом.
+  const showNowHazardVote = () =>
+    showNow(() =>
+      scheduleNotif({
+        kind: KIND_MARKER,
+        categoryId: CAT_MARKER,
+        actions: [
+          { identifier: ACT_MARKER_STILL, buttonTitle: t('marker.notif.still') },
+          { identifier: ACT_MARKER_GONE, buttonTitle: t('marker.notif.gone') },
+        ],
+        title: t('hazard.notif.title'),
+        body: t('hazard.notif.body', { type: t('marker.type.danger') }),
+        data: { markerId: 'dev-test' },
+        fireInSeconds: 1,
+      }),
+    );
+
   const showNowStill = () =>
     showNow(() =>
       scheduleNotif({
@@ -615,7 +632,9 @@ export function DevPanel({ visible, onClose }: Props) {
               <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={showNowMarker} activeOpacity={0.8}>
                 <Text style={styles.btnPrimaryTxt}>№5 сейчас</Text>
               </TouchableOpacity>
-              <View style={{ flex: 1 }} />
+              <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={showNowHazardVote} activeOpacity={0.8}>
+                <Text style={styles.btnPrimaryTxt}>№3 врем.</Text>
+              </TouchableOpacity>
             </View>
             {flash.notif && <Text style={styles.flash}>{flash.notif}</Text>}
           </View>

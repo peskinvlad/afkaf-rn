@@ -44,6 +44,7 @@ export interface MapMarker {
   description: string | null;
   user_id: string | null;  // author — used for "own marker" check in voting
   created_at?: string | null; // freshness label in MarkerCallout
+  expires_at?: string | null; // null = постоянная (инфраструктура); иначе временная
 }
 
 export interface WaterSource {
