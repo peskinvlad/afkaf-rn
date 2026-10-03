@@ -7,13 +7,15 @@
 
 ## iOS-тулчейн (Xcode / UIScene)
 
-- **Локальные iOS-сборки — только Xcode 26 до апгрейда Expo на 57+.** Сборка,
-  собранная Xcode 27 (iOS 27 SDK), **не стартует на устройствах с iOS 27**:
-  приложение убивается до `didFinishLaunching` с «UIScene life cycle is required
-  for apps built with this SDK» (`_UIApplicationEvaluateRuntimeIssueForNoScene
-  LifecycleAdoption`). На iOS 26 та же сборка пока работает (только варнинг). Ни
-  RN 0.81, ни Expo SDK 54 сцены не поддерживают. Для device-теста на iOS 27
-  собирать Xcode 26 или ставить EAS preview (образ Xcode 26, см. ниже).
+- **Локально на этом Mac — только Xcode 27 (macOS 27 блокирует запуск Xcode 26),
+  и такая сборка годится ТОЛЬКО для устройств на iOS 26.** Сборка из Xcode 27
+  (iOS 27 SDK) **не стартует на устройствах с iOS 27**: приложение убивается до
+  `didFinishLaunching` с «UIScene life cycle is required for apps built with this
+  SDK» (`_UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`). На iOS
+  26 та же сборка работает (только варнинг). Ни RN 0.81, ни Expo SDK 54 сцены не
+  поддерживают. **Для device-теста на iOS 27 — только EAS** (образ Xcode 26, см.
+  ниже): локально Xcode 26 на этом Mac недоступен. iPhone владельца на iOS 26 —
+  локальная Xcode-27-сборка для него рабочая.
 - **EAS-образ iOS закреплён на Xcode 26.** В `eas.json` во всех iOS-профилях
   (`development`/`preview`/`production`) `ios.image = macos-sequoia-15.6-xcode-26.0`
   (дефолт EAS для SDK 54), чтобы автопереезд дефолта на Xcode 27 не уронил

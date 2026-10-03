@@ -34,6 +34,11 @@ import {
   isBackgroundTrackingAvailable,
   TrackDiagnostics,
 } from '../lib/walkTracking';
+import {
+  isNotificationsAvailable,
+  scheduleTestNotification,
+  getTestLog,
+} from '../lib/notifications';
 import { colors, radii, shadows, typography } from '../theme/tokens';
 
 // Панель только для DEV_USER_IDS (гейт — в AboutScreen, сюда без него не
@@ -72,6 +77,8 @@ export function DevPanel({ visible, onClose }: Props) {
   const [track, setTrack] = useState<TrackDiagnostics>(getTrackDiagnostics());
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   const [nowTick, setNowTick] = useState(Date.now());
+  // Риск-чек уведомлений: лог последних нажатий по тестовой кнопке.
+  const [notifLog, setNotifLog] = useState<string[]>([]);
   // Линкован ли нативный модуль Sign in with Apple в этот билд. Если модуля в
   // бинарнике нет — isAvailableAsync бросает, и мы показываем «НЕТ».
   const [appleLinked, setAppleLinked] = useState<boolean | null>(null);
@@ -117,6 +124,8 @@ export function DevPanel({ visible, onClose }: Props) {
 
       // Текущее рантайм-состояние оверлея карты (env-дефолт или сохранённое).
       setMapDebugOn(mapDebug.enabled);
+
+      setNotifLog(await getTestLog());
     })();
   }, [visible]);
 
@@ -130,6 +139,7 @@ export function DevPanel({ visible, onClose }: Props) {
       setTrack(getTrackDiagnostics());
       setAutoDiag(getAutoFinishDiagnostics());
       setNowTick(Date.now());
+      getTestLog().then(setNotifLog);
     }, 1000);
     const sub = AppState.addEventListener('change', setAppState);
     return () => {
@@ -207,6 +217,17 @@ export function DevPanel({ visible, onClose }: Props) {
   async function toggleMapDebug(next: boolean) {
     setMapDebugOn(next);
     await mapDebug.setEnabled(next); // применяется сразу + persist, без перезапуска
+  }
+
+  async function runNotifTest(seconds: number) {
+    const res = await scheduleTestNotification(seconds);
+    const msg =
+      res === 'ok'
+        ? `Запланировано на +${seconds} с — заблокируй экран`
+        : res === 'denied'
+          ? 'Нет разрешения на уведомления'
+          : 'Модуль уведомлений не в этой сборке';
+    showFlash('notif', msg);
   }
 
   // Живой индикатор домашней зоны — та же формула, что в гейте active_walks
@@ -353,6 +374,49 @@ export function DevPanel({ visible, onClose }: Props) {
               Авто-чек-ин после 1 мин в зоне dog_park (40 м) вместо 5 мин.
               Применяется со следующей прогулки. Только для DEV_USER_IDS.
             </Text>
+          </View>
+
+          {/* ── Уведомления (риск-чек) ── */}
+          <Text style={styles.sectionTitle}>Уведомления</Text>
+          <View style={styles.card}>
+            <InfoRow
+              label="expo-notifications в билде"
+              value={isNotificationsAvailable ? 'да' : 'НЕТ (модуль не в билде)'}
+              highlight={!isNotificationsAvailable}
+            />
+            <View style={styles.tempRow}>
+              <TouchableOpacity
+                style={[styles.btnPrimary, { flex: 1 }]}
+                onPress={() => runNotifTest(10)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.btnPrimaryTxt}>Тест (10 с)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btnPrimary, { flex: 1 }]}
+                onPress={() => runNotifTest(60)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.btnPrimaryTxt}>Тест (60 с)</Text>
+              </TouchableOpacity>
+            </View>
+            {flash.notif && <Text style={styles.flash}>{flash.notif}</Text>}
+            <Text style={styles.note}>
+              Через 10 / 60 с — локальное уведомление с кнопкой «Я здесь» (не
+              открывает приложение, не требует разблокировки). 60 с — чтобы успеть
+              начать прогулку и убрать телефон. Заблокируй экран и нажми кнопку:
+              строка в логе покажет время уведомления, время обработки, AppState и
+              источник (слушатель / getLast при запуске) — так видно, сработало ли
+              сразу в фоне или только при открытии. Плюс Alert при открытии.
+            </Text>
+            {notifLog.length > 0 && (
+              <>
+                <Text style={styles.rowLabel}>Последние нажатия</Text>
+                {notifLog.map((line, i) => (
+                  <Text key={i} style={styles.mono}>{line}</Text>
+                ))}
+              </>
+            )}
           </View>
 
           {/* ── Оверрайды ── */}
