@@ -5,6 +5,26 @@
 - **Лейаут всегда LTR** (`lockLayoutLTR` в `src/i18n`): `forceRTL` не
   возвращать, пока экраны не прошли RTL-адаптацию (бэклог).
 
+## iOS-тулчейн (Xcode / UIScene)
+
+- **Локальные iOS-сборки — только Xcode 26 до апгрейда Expo на 57+.** Сборка,
+  собранная Xcode 27 (iOS 27 SDK), **не стартует на устройствах с iOS 27**:
+  приложение убивается до `didFinishLaunching` с «UIScene life cycle is required
+  for apps built with this SDK» (`_UIApplicationEvaluateRuntimeIssueForNoScene
+  LifecycleAdoption`). На iOS 26 та же сборка пока работает (только варнинг). Ни
+  RN 0.81, ни Expo SDK 54 сцены не поддерживают. Для device-теста на iOS 27
+  собирать Xcode 26 или ставить EAS preview (образ Xcode 26, см. ниже).
+- **EAS-образ iOS закреплён на Xcode 26.** В `eas.json` во всех iOS-профилях
+  (`development`/`preview`/`production`) `ios.image = macos-sequoia-15.6-xcode-26.0`
+  (дефолт EAS для SDK 54), чтобы автопереезд дефолта на Xcode 27 не уронил
+  релизные сборки. Метку менять только осознанно.
+- **Апгрейд Expo 54 → 57/58 с `expo-build-properties → ios.enableSceneSupport:
+  true` (в 58 — по умолчанию) — обязательный проект до ~апреля 2027.** Это
+  официальная поддержка UIScene (включая фоновый перезапуск, диплинки, OAuth-
+  редиректы); к следующему годовому Apple-дедлайну (сборка на iOS 27 SDK)
+  понадобится в любом случае. Самодельный scene-плагин на SDK 54 — не делать,
+  кроме случая, когда вынуждают выпустить iOS-27-SDK-билд раньше апгрейда.
+
 ## Перед production-билдом
 
 - **Обязательный ручной прогон на dev-клиенте перед каждым

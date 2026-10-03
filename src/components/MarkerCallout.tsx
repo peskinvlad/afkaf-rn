@@ -31,6 +31,7 @@ import {
 } from '../lib/calloutLayout';
 import { animation, colors, radii, shadows, typography } from '../theme/tokens';
 import { useApp } from '../hooks/useApp';
+import { ParkPresenceBlock } from './ParkPresenceBlock';
 
 type VoteValue = 'still_there' | 'gone';
 
@@ -488,8 +489,13 @@ function CalloutBubble({
         ) : null}
 
         {/* Voting — только для временных меток. У постоянных мест голосования и
-            заметки «Твоя метка» нет: вместо них ничего. */}
-        {isPermanentPlace ? null : loading ? (
+            заметки «Твоя метка» нет. Вместо них у собачьей площадки — «Сейчас
+            здесь» и «Я здесь» (только залогиненным), у остальных — ничего. */}
+        {isPermanentPlace ? (
+          marker.type === 'dog_park' && !isGuest ? (
+            <ParkPresenceBlock markerId={marker.id} t={t} rtl={rtl} onClose={onClose} />
+          ) : null
+        ) : loading ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator color={colors.primary} />
           </View>

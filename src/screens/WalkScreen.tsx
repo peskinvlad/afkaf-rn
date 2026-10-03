@@ -46,15 +46,33 @@ import { useFriends } from '../hooks/useFriends';
 import { sendFriendRequest } from '../lib/friendships';
 import { supabase } from '../lib/supabase';
 import { Visibility } from './SettingsScreen';
-import { checkAndAwardBadges } from '../lib/badges';
-import { saveWalkHistory, toWalkPath, getPreviousBestDistanceKm } from '../lib/walkHistory';
+import { toWalkPath } from '../lib/walkHistory';
+import {
+  finalizeWalk,
+  finalizeAutoFinished,
+  saveAutoFinished,
+  AutoFinishedWalk,
+} from '../lib/walkFinalize';
+import {
+  createAutoFinishDetector,
+  AutoFinishDetector,
+  AutoFinishHit,
+  PARK_NEAR_M,
+} from '../lib/autoFinish';
+import { getDevAutoFinishTest, getDevParkCheckinTest } from '../constants/dev';
+import {
+  startParkCheckinSession,
+  endParkCheckinSession,
+  feedParkFix,
+  tickParkCheckin,
+  DogPark,
+} from '../lib/parkCheckin';
 import { subscribeWalkLocations, startWalkTracking, stopWalkTracking } from '../lib/walkTracking';
 
 // Старт — общий START_COORD (Бат-Ям, см. lib/geo). Во время прогулки камера
 // прыгает на пользователя первым же фиксом, так что этот регион виден лишь миг.
 const INITIAL_REGION = { ...START_COORD, latitudeDelta: START_DELTA, longitudeDelta: START_DELTA };
 const ACTIVE_WALK_PING_MS = 60000;
-
 // Android: animateCamera сохраняет текущий зум, если поле `zoom` не передано, а
 // стартовая нативная камера на Android сидит на «не-разложенном» фолбэке
 // react-native-maps (newLatLngZoom zoom 10 = «полстраны»; MapView.java:588) —
@@ -63,6 +81,12 @@ const ACTIVE_WALK_PING_MS = 60000;
 // поле `zoom` не читает (использует altitude) — ветка ниже под Platform.OS.
 const STREET_ZOOM = 17; // ≈ MapScreen animateToRegion delta 0.005 (уровень улицы)
 const ANDROID_CAMERA_ZOOM = Platform.OS === 'android' ? { zoom: STREET_ZOOM } : {};
+// Фоновый GPS-колбэк и 60-с таймер шлют active_walks через один троттл-гейт,
+// чтобы в форграунде не было двойных запросов. Гейт чуть меньше интервала —
+// иначе регулярный тик таймера глох бы о собственную частоту.
+const ACTIVE_WALK_SYNC_GATE_MS = 50000;
+// park_checkout при финише ждём не дольше этого, потом всё равно глушим трекинг.
+const PARK_CHECKOUT_TIMEOUT_MS = 5000;
 // WalkScreen bottom-panel height ABOVE the safe-area inset (measured from the
 // styles: paddingTop 16 + stats ~46 + gap 10 + nearby row 48 + gap 10 + finish
 // ~59 + paddingBottom-non-safe 8 ≈ 198). The guest banner is intentionally NOT
@@ -76,8 +100,41 @@ const ANDROID_CAMERA_ZOOM = Platform.OS === 'android' ? { zoom: STREET_ZOOM } : 
 const WALK_PANEL_CONTENT = 198;
 const WALK_CHIP_GAP = 12; // gap between the panel's top edge and the chip row
 const HEAT_CHIP_HEIGHT = 54; // fixed heatCard height (matches styles.heatCard)
-const MIN_VALID_DISTANCE_KM = 0.3;
-const MIN_VALID_DURATION_SEC = 300;
+// Auto-finish (lib/autoFinish) is checked on every location callback; this
+// timer covers the foreground stretches when no fix arrives (phone lying still).
+const AUTO_FINISH_CHECK_MS = 30_000;
+// «Неподвижность» не засчитывается, если шагомер за то же окно насчитал
+// столько шагов и больше — человек ходит (по квартире, по кругу у площадки).
+const STILL_MAX_STEPS = 300;
+
+// Steps between two moments from the motion coprocessor (iOS CMPedometer; the
+// live watcher gets no updates in the background, so its count at T would be
+// short). null when unavailable (Android, no permission) or too slow.
+async function pedometerStepsBetween(fromMs: number, toMs: number): Promise<number | null> {
+  if (Platform.OS !== 'ios' || !(toMs > fromMs)) return null;
+  try {
+    if (!(await Pedometer.isAvailableAsync())) return null;
+    const res = await Promise.race([
+      Pedometer.getStepCountAsync(new Date(fromMs), new Date(toMs)),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+    ]);
+    return res?.steps ?? null;
+  } catch (e) {
+    console.warn('[WalkScreen] getStepCountAsync failed:', e);
+    return null;
+  }
+}
+
+// Дожидаемся промиса, но не дольше ms — чтобы висящий в фоне сетевой запрос
+// (park_checkout) не задерживал остановку трекинга сверх окна пробуждения iOS.
+function raceWithTimeout(p: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const done = () => { if (!settled) { settled = true; resolve(); } };
+    const id = setTimeout(done, ms);
+    p.then(() => { clearTimeout(id); done(); }, () => { clearTimeout(id); done(); });
+  });
+}
 
 interface Props {
   navigation: any;
@@ -285,6 +342,8 @@ export function WalkScreen({ navigation }: Props) {
 
   // ── Steps — Pedometer (real, 0 if unavailable) ─────────────────────────
   const [steps, setSteps] = useState(0);
+  // Mirror for the fix handler's closure — auto-finish snapshots it per fix.
+  const stepsRef = useRef(0);
   // iOS: подписка на маунте (как было). Motion-разрешение iOS берёт системно при
   // первом обращении к CMPedometer (NSMotionUsageDescription).
   useEffect(() => {
@@ -293,7 +352,10 @@ export function WalkScreen({ navigation }: Props) {
     let cancelled = false;
     Pedometer.isAvailableAsync().then((available) => {
       if (!available || cancelled) return;
-      sub = Pedometer.watchStepCount((result) => setSteps(result.steps));
+      sub = Pedometer.watchStepCount((result) => {
+        stepsRef.current = result.steps;
+        setSteps(result.steps);
+      });
     });
     return () => { cancelled = true; sub?.remove(); };
   }, []);
@@ -320,13 +382,19 @@ export function WalkScreen({ navigation }: Props) {
         console.warn('[WalkScreen] pedometer permission request failed:', e);
       }
       if (cancelled) return;
-      sub = Pedometer.watchStepCount((result) => setSteps(result.steps));
+      sub = Pedometer.watchStepCount((result) => {
+        stepsRef.current = result.steps;
+        setSteps(result.steps);
+      });
     })();
     return () => { cancelled = true; sub?.remove(); };
   }, [trackingStarted]);
 
   // ── GPS route + Haversine distance ────────────────────────────────────
   const [route, setRoute] = useState<{ latitude: number; longitude: number }[]>([]);
+  // Synchronous source of truth for the route; `route` state is its render copy.
+  // Auto-finish cuts the route by index, so the index must be known at the fix.
+  const routeRef = useRef<LatLng[]>([]);
   const [distanceKm, setDistanceKm] = useState(0);
   // The marker slides to each new fix instead of teleporting there.
   const { coord: userCoord, hasFix: hasUserFix, moveTo: moveUserMarker } = useSmoothedPosition();
@@ -402,7 +470,11 @@ export function WalkScreen({ navigation }: Props) {
   // Second gate, after accuracy: a fix that reports good accuracy but lands
   // somewhere unreachable is held back, and only recorded if the next fix
   // confirms it. Holds this stream's reference position.
-  const glitchFilter = useRef(createGlitchFilter<Location.LocationObjectCoords>()).current;
+  // Each fix carries its timestamp through the filter — a held run is released
+  // later, and auto-finish needs when every point was actually taken.
+  const glitchFilter = useRef(
+    createGlitchFilter<Location.LocationObjectCoords & { timestamp: number }>()
+  ).current;
   // Heading drives the marker via Animated.Value — no per-tick re-renders.
   // Enabled once the GPS effect below confirms permission; that same effect
   // feeds it every accepted fix so it can switch to GPS course while moving.
@@ -421,6 +493,9 @@ export function WalkScreen({ navigation }: Props) {
   // activeWalkRowExists (создание/удаление строки active_walks).
   const [isPublishing, setIsPublishing] = useState(false);
   const activeWalkStartAttempted = useRef(false);
+  // Последняя отправка active_walks (создание/пинг/снятие) — общий троттл для
+  // фонового GPS-колбэка и 60-с таймера, чтобы в форграунде не слать дубль.
+  const lastActiveWalkSyncAt = useRef(0);
   const latestPos = useRef<LatLng | null>(null);
   const distanceKmRef = useRef(0);
   // Publish context resolved once on the first fix, reused by every publish
@@ -478,6 +553,7 @@ export function WalkScreen({ navigation }: Props) {
     if (!error) {
       activeWalkRowExists.current = true;
       setIsPublishing(true);
+      lastActiveWalkSyncAt.current = Date.now();
     }
   }
 
@@ -522,6 +598,16 @@ export function WalkScreen({ navigation }: Props) {
     }
   }
 
+  // Троттл-обёртка над syncActiveWalkRow: общий гейт для фонового GPS-пути и
+  // 60-с таймера (без дублей в форграунде). Во время финиша не шлём — иначе
+  // поздний фикс мог бы заново создать строку, которую мы только что удалили.
+  function maybeSyncActiveWalk(pt: LatLng, nowMs: number) {
+    if (finishingRef.current) return;
+    if (nowMs - lastActiveWalkSyncAt.current < ACTIVE_WALK_SYNC_GATE_MS) return;
+    lastActiveWalkSyncAt.current = nowMs;
+    syncActiveWalkRow(pt);
+  }
+
   // First GPS fix: resolve context once, then run the publish gate.
   async function startActiveWalkRow(pt: LatLng) {
     const ok = await resolveActiveWalkContext();
@@ -529,20 +615,20 @@ export function WalkScreen({ navigation }: Props) {
     await syncActiveWalkRow(pt);
   }
 
-  // A walk only "counts" (walk_history + badges) past a minimum bar, so an
-  // accidental swipe doesn't pollute streaks/totals.
+  // A walk only "counts" (walk_history + badges) past a minimum bar — see
+  // lib/walkFinalize, shared with the recovery card.
   async function handleFinish() {
     if (finishingRef.current) return; // double-tap: the first tap owns the save
     finishingRef.current = true;
     setFinishing(true);
-    stopActiveWalkRow();
+    // park_checkout ДО остановки трекинга (с таймаутом), тем же порядком, что и в
+    // авто-финише: пока трекинг жив, у приложения есть время доставить запрос.
+    await raceWithTimeout(endParkCheckinSession(), PARK_CHECKOUT_TIMEOUT_MS);
+    await stopActiveWalkRow();
     // The walk is over from this tap on — no fix may extend the route or the
-    // distance while the save below is in flight.
-    stopWalkTracking();
-
-    const isValidWalk = distanceKm >= MIN_VALID_DISTANCE_KM && seconds >= MIN_VALID_DURATION_SEC;
-    let newBadgeIds: string[] = [];
-    let isPersonalBest = false;
+    // distance while the save below is in flight. finalizeWalk берёт снимок
+    // route/distanceKm/seconds из замыкания, так что ожидание выше их не меняет.
+    await stopWalkTracking();
 
     // Температурный статус фиксируем ЗДЕСЬ, в момент завершения. heatData
     // приходит из единственного useAsphaltTemp через getEffectiveAsphaltTemp
@@ -551,44 +637,18 @@ export function WalkScreen({ navigation }: Props) {
     // асфальт не должен задним числом отменять вердикт про жару.
     const heatStatusAtFinish = heatData.status;
 
-    if (isValidWalk) {
-      const { data: { session } } = await supabase.auth.getSession();
-      const userId = session?.user?.id;
-      if (userId) {
-        // Dog already resolved on the first GPS fix unless publishing was
-        // skipped (visibility='nobody') — then it's one lookup at finish.
-        let dogId = activeWalkDogId.current;
-        if (!activeWalkContextReady.current) {
-          const { data: dog } = await supabase
-            .from('dogs')
-            .select('id')
-            .eq('owner_id', userId)
-            .limit(1)
-            .maybeSingle();
-          dogId = dog?.id ?? null;
-        }
-        // Строго до вставки текущей прогулки — иначе она побьёт сама себя.
-        const prevBest = await getPreviousBestDistanceKm(userId);
-        isPersonalBest = prevBest.ok
-          ? prevBest.bestKm == null || distanceKm > prevBest.bestKm
-          : false;
-
-        await saveWalkHistory({
-          user_id: userId,
-          distance_km: distanceKm,
-          duration_min: Math.floor(seconds / 60),
-          duration_s: seconds,
-          started_at: walkStartedAt,
-          ended_at: new Date().toISOString(),
-          steps,
-          dog_id: dogId,
-          path: toWalkPath(route),
-          is_valid: isValidWalk,
-        });
-        const newBadges = await checkAndAwardBadges(confirmedCount);
-        newBadgeIds = newBadges.map((b) => b.id);
-      }
-    }
+    const { isValidWalk, newBadgeIds, isPersonalBest } = await finalizeWalk({
+      startedAt: walkStartedAt,
+      durationS: seconds,
+      distanceKm,
+      steps,
+      path: toWalkPath(route),
+      // Dog already resolved on the first GPS fix unless publishing was
+      // skipped (visibility='nobody') — then finalizeWalk looks it up.
+      dogId: activeWalkContextReady.current ? activeWalkDogId.current : undefined,
+      confirmedCount,
+      checkPersonalBest: true,
+    });
 
     navigation.replace('WalkSummary', {
       duration: seconds,
@@ -602,11 +662,191 @@ export function WalkScreen({ navigation }: Props) {
     });
   }
 
+  // ── Auto-finish of a forgotten walk (lib/autoFinish) ────────────────────
+  // Home rule: confirmed outside the home zone, then inside it for 20 min →
+  // the walk ends at the moment of entry (T). No home zone → stillness rule
+  // (30 min within 50 m, 60 min near a park / dog park). Everything recorded
+  // after T is left out of the distance, time, steps and saved path.
+  //
+  // May fire in the background. Saving to Supabase from there is unreliable
+  // (iOS suspends the app seconds after tracking stops), so the background
+  // only stores a snapshot already cut at T; it is saved and the summary shown
+  // when the app is back in the foreground — or by useApp on the next cold
+  // start if iOS evicted the app meanwhile.
+  const autoDetector = useRef<AutoFinishDetector | null>(null);
+  const autoPendingRef = useRef<AutoFinishedWalk | null>(null);
+  const autoRouteRef = useRef<LatLng[]>([]);
+  const parksRef = useRef<LatLng[]>([]);
+  // Источник — ПОЛНЫЙ markers, НЕ filteredMarkers: фильтр карты (activeCategories/
+  // радиус) скрывает только пины. Фолбэк автозавершения «около парка» не должен
+  // зависеть от того, что тестер снял галочку с парков в фильтре.
+  useEffect(() => {
+    parksRef.current = markers
+      .filter((m) => m.type === 'park' || m.type === 'dog_park')
+      .map((m) => ({ latitude: m.lat, longitude: m.lng }));
+  }, [markers]);
+
+  // Home zone read on its own here: the publish context skips it for guests
+  // and visibility='nobody', but auto-finish applies to every walk.
+  useEffect(() => {
+    let disposed = false;
+    (async () => {
+      const [zone, testMode] = await Promise.all([loadHomeZone(), getDevAutoFinishTest()]);
+      if (disposed) return;
+      autoDetector.current = createAutoFinishDetector({
+        home: zone,
+        testMode,
+        isNearPark: (pt) => parksRef.current.some((p) => haversine(p, pt) * 1000 <= PARK_NEAR_M),
+      });
+    })();
+    return () => {
+      disposed = true;
+      autoDetector.current?.dispose();
+      autoDetector.current = null;
+    };
+  }, []);
+
+  // ── Park check-in (lib/parkCheckin) ─────────────────────────────────────
+  // Signed-in walks only. Auto check-in after PARK_DWELL_MS inside a dog_park
+  // zone, checkout on a confirmed exit and at the end of the walk; the park
+  // card's "I'm here" goes through the same session. visibility='nobody' still
+  // tracks the zone (so the card can explain why "I'm here" is off) but never
+  // checks in. The session is closed by Finish / auto-finish and on unmount.
+  const dogParksRef = useRef<DogPark[]>([]);
+  // Источник — ПОЛНЫЙ markers, НЕ filteredMarkers: фильтр карты (activeCategories/
+  // радиус) влияет только на показ пинов. Зоны чек-ина (авто-отметка, «Я здесь»,
+  // nearestPark) должны работать, даже если юзер снял галочку с парков в фильтре.
+  useEffect(() => {
+    dogParksRef.current = markers
+      .filter((m) => m.type === 'dog_park')
+      .map((m) => ({ id: m.id, latitude: m.lat, longitude: m.lng }));
+  }, [markers]);
+
+  useEffect(() => {
+    let disposed = false;
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) return; // guest — no check-in
+      const [zone, testMode, stored] = await Promise.all([
+        loadHomeZone(),
+        getDevParkCheckinTest(),
+        AsyncStorage.getItem('privacy_visibility'),
+      ]);
+      if (disposed || finishingRef.current) return;
+      startParkCheckinSession({
+        parks: () => dogParksRef.current,
+        homeZone: zone,
+        eligibility: (stored as Visibility | null) === 'nobody' ? 'nobody' : 'ok',
+        testMode,
+      });
+    })();
+    return () => {
+      disposed = true;
+      endParkCheckinSession();
+    };
+  }, []);
+
+  function runAutoFinishCheck() {
+    if (finishingRef.current) return;
+    const hit = autoDetector.current?.check(Date.now());
+    if (hit) handleAutoFinish(hit);
+  }
+
+  async function handleAutoFinish(hit: AutoFinishHit) {
+    if (hit.reason === 'still') {
+      const moved = await pedometerStepsBetween(hit.endAt, Date.now());
+      if (moved != null && moved >= STILL_MAX_STEPS) {
+        autoDetector.current?.rejectStill(Date.now());
+        return;
+      }
+    }
+    // The user tapped Finish while the check above was in flight.
+    if (finishingRef.current) return;
+    finishingRef.current = true;
+    setFinishing(true);
+
+    // Трек режем на ВХОДЕ в домашнюю зону (routeCutLen), даже если время/дистанция
+    // посчитаны до прибытия к двери: точки внутри зоны в сохранённый трек не идут.
+    const cutRoute = routeRef.current.slice(0, hit.routeCutLen);
+    autoRouteRef.current = cutRoute;
+    const stepsAtT = await pedometerStepsBetween(walkStartedAtMs, hit.endAt);
+    const { data: { session } } = await supabase.auth.getSession();
+    const walk: AutoFinishedWalk = {
+      userId: session?.user?.id ?? null,
+      reason: hit.reason,
+      startedAt: walkStartedAt,
+      endedAt: new Date(hit.endAt).toISOString(),
+      durationS: Math.max(0, Math.floor((hit.endAt - walkStartedAtMs) / 1000)),
+      distanceKm: hit.mark.distanceKm,
+      steps: stepsAtT ?? hit.mark.steps,
+      path: toWalkPath(cutRoute),
+      dogResolved: activeWalkContextReady.current,
+      dogId: activeWalkDogId.current,
+      heatStatusAtFinish: heatData.status,
+    };
+    await saveAutoFinished(walk);
+    // park_checkout ДО остановки трекинга (с таймаутом): в фоне iOS усыпляет
+    // приложение сразу после stopWalkTracking — fire-and-forget checkout терялся.
+    await raceWithTimeout(endParkCheckinSession(), PARK_CHECKOUT_TIMEOUT_MS);
+    await stopActiveWalkRow();
+    await stopWalkTracking();
+    autoPendingRef.current = walk;
+    if (AppState.currentState === 'active') resumeAutoFinish();
+  }
+
+  function resumeAutoFinish() {
+    const walk = autoPendingRef.current;
+    if (!walk) return;
+    autoPendingRef.current = null;
+    finalizeAutoAndShow(walk);
+  }
+
+  async function finalizeAutoAndShow(walk: AutoFinishedWalk) {
+    const result = await finalizeAutoFinished(walk, confirmedCount);
+    if (!result) return; // already being saved elsewhere
+    navigation.replace('WalkSummary', {
+      duration: walk.durationS,
+      steps: walk.steps ?? 0,
+      distanceKm: walk.distanceKm,
+      routeCoordinates: autoRouteRef.current,
+      isValidWalk: result.isValidWalk,
+      newBadgeIds: result.newBadgeIds,
+      isPersonalBest: false,
+      heatStatusAtFinish: walk.heatStatusAtFinish,
+      autoFinishReason: walk.reason,
+      autoFinishedAt: walk.endedAt,
+    });
+  }
+
+  // The fix handler and the timers below are created once; they call through
+  // these refs so they always reach this render's state (confirmedCount, heat).
+  const autoCheckRef = useRef(runAutoFinishCheck);
+  autoCheckRef.current = runAutoFinishCheck;
+  const autoResumeRef = useRef(resumeAutoFinish);
+  autoResumeRef.current = resumeAutoFinish;
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      autoCheckRef.current();
+      tickParkCheckin(Date.now());
+    }, AUTO_FINISH_CHECK_MS);
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active') return;
+      autoCheckRef.current();
+      tickParkCheckin(Date.now());
+      autoResumeRef.current();
+    });
+    return () => {
+      clearInterval(id);
+      sub.remove();
+    };
+  }, []);
+
   // 60s publish tick while walking — the gate decides publish vs unpublish
   // based on whether the current point is inside the home privacy zone.
   useEffect(() => {
     const id = setInterval(() => {
-      if (latestPos.current) syncActiveWalkRow(latestPos.current);
+      if (latestPos.current) maybeSyncActiveWalk(latestPos.current, Date.now());
     }, ACTIVE_WALK_PING_MS);
     return () => clearInterval(id);
   }, []);
@@ -624,6 +864,15 @@ export function WalkScreen({ navigation }: Props) {
     let cancelled = false;
     const unsubscribe = subscribeWalkLocations((locations) => {
       for (const loc of locations) handleFix(loc);
+      // Once per batch, not per fix: after the background the batch carries
+      // old timestamps, and an exit at its end must land before the dwell is
+      // judged against Date.now().
+      tickParkCheckin(Date.now());
+      // Публикуем active_walks и из фонового пути (не только 60-с таймер, который
+      // iOS не крутит при погашенном экране) — тем же троттл-гейтом. Иначе
+      // updated_at протухает: нас теряют в «гуляют рядом» и сервер режет
+      // park-чек-ин (обе функции требуют свежую active_walks).
+      if (latestPos.current) maybeSyncActiveWalk(latestPos.current, Date.now());
     });
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -666,23 +915,28 @@ export function WalkScreen({ navigation }: Props) {
       // add tens of metres of phantom distance to the walk and drag the
       // route line with it; the reflection glitches that lie about their
       // accuracy did the same until the second gate went in.
-      if (!isAccurateFix(loc.coords.accuracy)) return;
-      for (const coords of glitchFilter.accept(loc.coords, loc.timestamp)) {
+      if (!isAccurateFix(loc.coords.accuracy)) {
+        // Indoors most fixes land here. They can't move the walk, but they
+        // are the only clock tick the background gets — run the check.
+        autoCheckRef.current();
+        return;
+      }
+      const stamped = { ...loc.coords, timestamp: loc.timestamp };
+      for (const coords of glitchFilter.accept(stamped, loc.timestamp)) {
         const pt = { latitude: coords.latitude, longitude: coords.longitude };
         moveUserMarker(pt);
         reportGpsFix(coords);
         setAccuracy(coords.accuracy ?? undefined);
-        setRoute((prev) => {
-          if (prev.length > 0) {
-            const inc = haversine(prev[prev.length - 1], pt);
-            setDistanceKm((d) => {
-              const next = d + inc;
-              distanceKmRef.current = next;
-              return next;
-            });
-          }
-          return [...prev, pt];
-        });
+        const prev = routeRef.current[routeRef.current.length - 1];
+        if (prev) distanceKmRef.current += haversine(prev, pt);
+        routeRef.current = [...routeRef.current, pt];
+        setRoute(routeRef.current);
+        setDistanceKm(distanceKmRef.current);
+        autoDetector.current?.feed(
+          { ...pt, accuracy: coords.accuracy, timestamp: coords.timestamp },
+          { routeLen: routeRef.current.length, distanceKm: distanceKmRef.current, steps: stepsRef.current },
+        );
+        feedParkFix({ ...pt, accuracy: coords.accuracy, timestamp: coords.timestamp });
         followWith(pt);
         setUserLocation(pt);
 
@@ -692,6 +946,7 @@ export function WalkScreen({ navigation }: Props) {
           startActiveWalkRow(pt);
         }
       }
+      autoCheckRef.current();
     }
   }, []);
 

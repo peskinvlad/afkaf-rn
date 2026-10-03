@@ -20,8 +20,13 @@ import { loadHomeZone, isInsideHomeZone, HomeZone } from '../lib/privacyZone';
 import {
   DEV_ASPHALT_OVERRIDE_KEY,
   DEV_VOTE_OWN_KEY,
+  DEV_AUTO_FINISH_TEST_KEY,
+  DEV_PARK_CHECKIN_TEST_KEY,
   emitDevSettingsChange,
 } from '../constants/dev';
+import { getAutoFinishDiagnostics, AutoFinishDiagnostics } from '../lib/autoFinish';
+import { ParkCheckinState } from '../lib/parkCheckin';
+import { useParkCheckinState } from '../hooks/useParkPresence';
 import { mapDebug } from '../lib/mapDebug';
 import { useApp } from '../hooks/useApp';
 import {
@@ -56,6 +61,10 @@ export function DevPanel({ visible, onClose }: Props) {
   const [overrideActive, setOverrideActive] = useState<string | null>(null);
   const [voteOwn, setVoteOwn] = useState(false);
   const [mapDebugOn, setMapDebugOn] = useState(mapDebug.enabled);
+  const [autoTest, setAutoTest] = useState(false);
+  const [autoDiag, setAutoDiag] = useState<AutoFinishDiagnostics>(getAutoFinishDiagnostics());
+  const [parkTest, setParkTest] = useState(false);
+  const parkState = useParkCheckinState();
   // Короткие подтверждения «сброшено/применено» по ключу строки
   const [flash, setFlash] = useState<Record<string, string>>({});
   // Трек-диагностика: снимок обновляем по таймеру, пока панель открыта, чтобы
@@ -80,6 +89,8 @@ export function DevPanel({ visible, onClose }: Props) {
         'privacy_home_radius',
         DEV_ASPHALT_OVERRIDE_KEY,
         DEV_VOTE_OWN_KEY,
+        DEV_AUTO_FINISH_TEST_KEY,
+        DEV_PARK_CHECKIN_TEST_KEY,
       ]);
       const map = Object.fromEntries(entries) as Record<string, string | null>;
       setVisibility(map[VISIBILITY_KEY]);
@@ -91,6 +102,8 @@ export function DevPanel({ visible, onClose }: Props) {
       setOverrideActive(map[DEV_ASPHALT_OVERRIDE_KEY]);
       setTempInput(map[DEV_ASPHALT_OVERRIDE_KEY] ?? '');
       setVoteOwn(map[DEV_VOTE_OWN_KEY] === 'true');
+      setAutoTest(map[DEV_AUTO_FINISH_TEST_KEY] === 'true');
+      setParkTest(map[DEV_PARK_CHECKIN_TEST_KEY] === 'true');
 
       // Та же функция, что использует гейт active_walks (privacyZone.ts)
       setHomeZone(await loadHomeZone());
@@ -111,9 +124,11 @@ export function DevPanel({ visible, onClose }: Props) {
   useEffect(() => {
     if (!visible) return;
     setTrack(getTrackDiagnostics());
+    setAutoDiag(getAutoFinishDiagnostics());
     setAppState(AppState.currentState);
     const id = setInterval(() => {
       setTrack(getTrackDiagnostics());
+      setAutoDiag(getAutoFinishDiagnostics());
       setNowTick(Date.now());
     }, 1000);
     const sub = AppState.addEventListener('change', setAppState);
@@ -170,6 +185,23 @@ export function DevPanel({ visible, onClose }: Props) {
     if (next) await AsyncStorage.setItem(DEV_VOTE_OWN_KEY, 'true');
     else await AsyncStorage.removeItem(DEV_VOTE_OWN_KEY);
     emitDevSettingsChange();
+  }
+
+  // Пишется только dev-пользователем (панель гейтится DEV_USER_IDS), а
+  // читается через getDevAutoFinishTest, который сам проверяет isDevUser.
+  // Действует со следующей прогулки — детектор берёт пороги на старте.
+  async function toggleAutoTest(next: boolean) {
+    setAutoTest(next);
+    if (next) await AsyncStorage.setItem(DEV_AUTO_FINISH_TEST_KEY, 'true');
+    else await AsyncStorage.removeItem(DEV_AUTO_FINISH_TEST_KEY);
+  }
+
+  // То же для чек-ина на площадке: выдержка в зоне 1 мин вместо 5. Читается
+  // WalkScreen через getDevParkCheckinTest на старте прогулки.
+  async function toggleParkTest(next: boolean) {
+    setParkTest(next);
+    if (next) await AsyncStorage.setItem(DEV_PARK_CHECKIN_TEST_KEY, 'true');
+    else await AsyncStorage.removeItem(DEV_PARK_CHECKIN_TEST_KEY);
   }
 
   async function toggleMapDebug(next: boolean) {
@@ -287,6 +319,42 @@ export function DevPanel({ visible, onClose }: Props) {
             </Text>
           </View>
 
+          {/* ── Автозавершение прогулки ── */}
+          <Text style={styles.sectionTitle}>Автозавершение прогулки</Text>
+          <View style={styles.card}>
+            <InfoRow label="Детектор" value={formatAutoDiag(autoDiag)} highlight={autoDiag.firedAt != null} />
+            <View style={styles.switchRow}>
+              <Text style={styles.rowLabelFlex}>Тест: порог 1 мин</Text>
+              <Switch
+                value={autoTest}
+                onValueChange={toggleAutoTest}
+                trackColor={{ true: colors.primary, false: colors.border }}
+              />
+            </View>
+            <Text style={styles.note}>
+              Вместо 20 мин (дом) / 30 / 60 мин (неподвижность) — 1 мин.
+              Применяется со следующей прогулки. Только для DEV_USER_IDS.
+            </Text>
+          </View>
+
+          {/* ── Чек-ин на площадке ── */}
+          <Text style={styles.sectionTitle}>Чек-ин на площадке</Text>
+          <View style={styles.card}>
+            <InfoRow label="Состояние" value={formatParkState(parkState)} highlight={parkState.checkedIn} />
+            <View style={styles.switchRow}>
+              <Text style={styles.rowLabelFlex}>Тест: порог 1 мин</Text>
+              <Switch
+                value={parkTest}
+                onValueChange={toggleParkTest}
+                trackColor={{ true: colors.primary, false: colors.border }}
+              />
+            </View>
+            <Text style={styles.note}>
+              Авто-чек-ин после 1 мин в зоне dog_park (40 м) вместо 5 мин.
+              Применяется со следующей прогулки. Только для DEV_USER_IDS.
+            </Text>
+          </View>
+
           {/* ── Оверрайды ── */}
           <Text style={styles.sectionTitle}>Оверрайды</Text>
           <View style={styles.card}>
@@ -369,6 +437,45 @@ export function DevPanel({ visible, onClose }: Props) {
       </View>
     </Modal>
   );
+}
+
+function formatTime(at: number | null): string {
+  if (at == null) return '—';
+  const d = new Date(at);
+  return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
+}
+
+function formatAutoDiag(d: AutoFinishDiagnostics): string {
+  if (!d.active && d.firedAt == null) return '— (прогулка не идёт)';
+  const mode = d.mode === 'home' ? 'дом' : 'неподвижность';
+  const test = d.testMode ? ' · ТЕСТ 1 мин' : '';
+  const reason = d.reason === 'home' ? 'дом' : d.reason === 'still' ? 'неподвижность' : '—';
+  const since =
+    d.mode === 'home'
+      ? `снаружи был: ${d.wasOutside ? 'да' : 'нет'} · внутри с: ${formatTime(d.insideSince)}`
+      : `без движения с: ${formatTime(d.stillSince)} (порог ${d.stillThresholdMs != null ? Math.round(d.stillThresholdMs / 60000) : '—'} мин)`;
+  return `режим: ${mode}${test}\n${since}\nT: ${formatTime(d.firedAt)} · причина: ${reason}`;
+}
+
+function formatClockHM(at: number | null): string {
+  if (at == null) return '—';
+  const d = new Date(at);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+// «в зоне площадки: <id>, с HH:MM, чек-ин: да/нет»
+function formatParkState(s: ParkCheckinState): string {
+  if (!s.active) return '— (прогулка не идёт или гость)';
+  const head = s.parkId
+    ? `в зоне площадки: ${s.parkId}, с ${formatClockHM(s.insideSince)}, чек-ин: ${s.checkedIn ? 'да' : 'нет'}`
+    : 'в зоне площадки: нет';
+  const extra = [
+    s.checkedIn ? `отмечен с ${formatClockHM(s.checkedInAt)}${s.manual ? ' · вручную' : ''}` : null,
+    s.eligibility === 'nobody' ? 'видимость: никто — авто-чек-ин выключен' : null,
+    s.testMode ? 'ТЕСТ 1 мин' : null,
+    s.lastError ? `ошибка: ${s.lastError}` : null,
+  ].filter(Boolean);
+  return extra.length ? `${head}\n${extra.join(' · ')}` : head;
 }
 
 function formatAgo(at: number | null, now: number): string {

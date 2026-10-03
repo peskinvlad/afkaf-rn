@@ -16,6 +16,7 @@ import { BADGES } from '../constants/badges';
 import { HeatStatus, HEAT_DANGER_ABOVE_C } from '../lib/heat';
 import { pickWalkVerdict, VERDICT_TITLE_KEY } from '../lib/walkVerdict';
 import { MAP_CAMERA_ZOOM_RANGE } from '../lib/mapConfig';
+import { AutoFinishReason, formatClock } from '../lib/autoFinish';
 
 interface RouteCoord { latitude: number; longitude: number; }
 
@@ -29,12 +30,15 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
     duration = 0, steps = 0, distanceKm = 0, routeCoordinates = [],
     isValidWalk = false, newBadgeIds = [],
     isPersonalBest = false, heatStatusAtFinish = 'ok',
+    autoFinishReason = null, autoFinishedAt = null,
   }: {
     duration: number; steps: number; distanceKm: number; routeCoordinates: RouteCoord[];
     isValidWalk?: boolean; newBadgeIds?: string[];
     // Оба зафиксированы в WalkScreen.handleFinish — здесь ничего не
     // пересчитывается, погода не перечитывается.
     isPersonalBest?: boolean; heatStatusAtFinish?: HeatStatus;
+    // Прогулку закончил детектор (lib/autoFinish), итог обрезан по T.
+    autoFinishReason?: AutoFinishReason | null; autoFinishedAt?: string | null;
   } = route.params ?? {};
   const newBadges = newBadgeIds.map((id: string) => BADGES.find((b) => b.id === id)).filter(Boolean) as typeof BADGES;
   const insets = useSafeAreaInsets();
@@ -172,6 +176,16 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
             </View>
           )}
         </View>
+
+        {autoFinishReason != null && autoFinishedAt != null && (
+          <View style={styles.autoCard}>
+            <Text style={styles.autoTxt}>
+              {t(`walk.summary.autoFinished.${autoFinishReason}`, {
+                time: formatClock(new Date(autoFinishedAt).getTime()),
+              })}
+            </Text>
+          </View>
+        )}
 
         {/* Короткая прогулка в жару — объясняем, почему это правильно, а не
             недоработка. Порог берётся из lib/heat.ts, своей копии числа нет. */}
@@ -368,6 +382,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.safe,
+    lineHeight: 19,
+  },
+
+  autoCard: {
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    padding: 14,
+  },
+  autoTxt: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
     lineHeight: 19,
   },
 
