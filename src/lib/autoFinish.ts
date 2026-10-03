@@ -7,8 +7,12 @@ import { HomeZone } from './privacyZone';
 // по таймеру и при возврате в foreground.
 //
 // Правило «дом»: был подтверждённо СНАРУЖИ домашней зоны, потом вошёл в неё и
-// не выходил homeDwellMs подряд → прогулка заканчивается в момент входа (T), а
-// не в T + 20 мин. Всё, что записано после входа, в итог не идёт.
+// не выходил homeDwellMs подряд → прогулка завершается. Время/дистанция/шаги —
+// на момент ПРИБЫТИЯ (последнего движения внутри зоны: дошёл до двери и встал),
+// включая путь от края зоны до двери; нет надёжного кластера → момент входа.
+// Линия маршрута для сохранения/показа режется на ВХОДЕ в зону — точки внутри
+// зоны живут только в памяти детектора (приватность адреса), в БД / AsyncStorage
+// не уходят.
 //
 // Запасное правило «неподвижность» (только когда дом не задан): stillMs почти
 // без движения (в пределах STILL_RADIUS_M от точки отсчёта) → конец в момент
@@ -31,8 +35,18 @@ export const OUTSIDE_MARGIN_M = 20;
 // выброс GPS у дома 20-минутный таймер не сбрасывает.
 export const OUTSIDE_CONFIRM_FIXES = 2;
 export const OUTSIDE_CONFIRM_MS = 20_000;
-// Вход — два фикса «внутри» подряд; T = время первого из них.
+// Вход — два фикса «внутри» подряд; T входа = время первого из них.
 export const INSIDE_CONFIRM_FIXES = 2;
+
+// Прибытие (конец прогулки внутри зоны) = самая ранняя точка внутри, после
+// которой ВСЕ следующие точки внутри остаются в радиусе ARRIVAL_RADIUS_M
+// (человек дошёл и стоит). Финальный «стоячий» кластер должен содержать не
+// меньше ARRIVAL_MIN_CLUSTER_FIXES точек — иначе данных мало / ещё движется и
+// берём момент входа. Радиус с запасом: в помещении GPS прыгает на 20–50 м.
+// Страховка от дрожания: прибытие не позже входа + ARRIVAL_MAX_AFTER_ENTRY_MS.
+export const ARRIVAL_RADIUS_M = 40;
+export const ARRIVAL_MIN_CLUSTER_FIXES = 2;
+export const ARRIVAL_MAX_AFTER_ENTRY_MS = 10 * 60_000;
 
 // Неподвижность: точка отсчёта переезжает, только когда подряд
 // STILL_MOVE_CONFIRM_FIXES фиксов ушли дальше STILL_RADIUS_M (+ точность).
@@ -58,8 +72,9 @@ export interface DetectorFix extends LatLng {
 
 export interface AutoFinishHit {
   reason: AutoFinishReason;
-  endAt: number; // T, ms epoch
-  mark: TrackMark;
+  endAt: number;        // T, ms epoch (дом: прибытие; still: anchor)
+  mark: TrackMark;      // метрики (дистанция/шаги) на endAt
+  routeCutLen: number;  // длина СОХРАНЯЕМОГО трека: дом — вход в зону; still — anchor
 }
 
 export interface AutoFinishConfig {
@@ -117,6 +132,9 @@ export function createAutoFinishDetector(config: AutoFinishConfig): AutoFinishDe
   let outsideRun: DetectorFix[] = [];
   let insideRun: Stamped[] = [];
   let candidate: Stamped | null = null;
+  // Точки внутри зоны после подтверждённого входа — ТОЛЬКО в памяти, для расчёта
+  // прибытия. В сохраняемый трек не попадают (приватность адреса).
+  let insidePoints: Stamped[] = [];
 
   // Правило «неподвижность»
   let anchor: Stamped | null = null;
@@ -158,10 +176,15 @@ export function createAutoFinishDetector(config: AutoFinishConfig): AutoFinishDe
 
     if (d <= zone.radiusM) {
       outsideRun = [];
-      if (!wasOutside || candidate) return; // старт дома / уже считаем
+      if (!wasOutside) return;            // старт дома — правило неактивно
+      if (candidate) {
+        insidePoints.push(s);            // уже считаем — копим точки внутри для прибытия
+        return;
+      }
       insideRun.push(s);
       if (insideRun.length >= INSIDE_CONFIRM_FIXES) {
         candidate = insideRun[0];
+        insidePoints = insideRun.slice(); // вход + подтверждающие фиксы — первые точки внутри
         insideRun = [];
         diag.insideSince = candidate.fix.timestamp;
       }
@@ -179,6 +202,7 @@ export function createAutoFinishDetector(config: AutoFinishConfig): AutoFinishDe
         // Подтверждённо снаружи: взводим правило и сбрасываем таймер входа.
         wasOutside = true;
         candidate = null;
+        insidePoints = [];
         diag.wasOutside = true;
         diag.insideSince = null;
       }
@@ -203,6 +227,44 @@ export function createAutoFinishDetector(config: AutoFinishConfig): AutoFinishDe
     }
   }
 
+  // Прибытие: самая ранняя точка внутри зоны, после которой ВСЕ следующие точки
+  // внутри в радиусе ARRIVAL_RADIUS_M (момент последнего движения — дошёл до
+  // двери и стоит). Мало точек / нет надёжного кластера → момент входа.
+  function homeArrival(entry: Stamped): Stamped {
+    const pts = insidePoints;
+    const boundary = entry.fix.timestamp + ARRIVAL_MAX_AFTER_ENTRY_MS;
+    let arrival = entry;
+    if (pts.length >= ARRIVAL_MIN_CLUSTER_FIXES) {
+      for (let a = 0; a < pts.length; a++) {
+        let clustered = true;
+        for (let j = a + 1; j < pts.length; j++) {
+          if (haversine(pts[a].fix, pts[j].fix) * 1000 > ARRIVAL_RADIUS_M) {
+            clustered = false;
+            break;
+          }
+        }
+        if (clustered) {
+          // Кластер [a..конец] короче порога → в конце ещё движение, доверять
+          // нечему: берём вход.
+          arrival = pts.length - a >= ARRIVAL_MIN_CLUSTER_FIXES ? pts[a] : entry;
+          break;
+        }
+      }
+    }
+    // Страховка от GPS-дрожания в помещении: прибытие не позже входа + 10 мин.
+    // Позже — берём последнюю точку внутри до этой границы (она же ≤ границы по
+    // времени, т.е. «что раньше»); вход всегда ≤ границы, так что хотя бы он есть.
+    if (arrival.fix.timestamp > boundary) {
+      let capped = entry;
+      for (const p of pts) {
+        if (p.fix.timestamp <= boundary) capped = p;
+        else break;
+      }
+      arrival = capped;
+    }
+    return arrival;
+  }
+
   return {
     feed(fix, mark) {
       if (fired) return;
@@ -217,10 +279,23 @@ export function createAutoFinishDetector(config: AutoFinishConfig): AutoFinishDe
       let hit: AutoFinishHit | null = null;
       if (home) {
         if (candidate && nowMs - candidate.fix.timestamp >= homeDwellMs) {
-          hit = { reason: 'home', endAt: candidate.fix.timestamp, mark: candidate.mark };
+          const arrival = homeArrival(candidate);
+          // Трек для сохранения режем на ВХОДЕ в зону (приватность адреса), а
+          // время/дистанцию/шаги берём на момент прибытия (путь до двери включён).
+          hit = {
+            reason: 'home',
+            endAt: arrival.fix.timestamp,
+            mark: arrival.mark,
+            routeCutLen: candidate.mark.routeLen,
+          };
         }
       } else if (anchor && nowMs - anchor.fix.timestamp >= anchorThresholdMs) {
-        hit = { reason: 'still', endAt: anchor.fix.timestamp, mark: anchor.mark };
+        hit = {
+          reason: 'still',
+          endAt: anchor.fix.timestamp,
+          mark: anchor.mark,
+          routeCutLen: anchor.mark.routeLen,
+        };
       }
       if (hit) {
         fired = hit;

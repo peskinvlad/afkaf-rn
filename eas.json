@@ -4,11 +4,21 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "park-test": {
+      "distribution": "internal",
+      "environment": "preview",
+      "channel": "park-test",
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-26.0"
+      }
+    },
     "development": {
       "developmentClient": true,
       "distribution": "internal",
       "environment": "development",
-      "ios": {}
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-26.0"
+      }
     },
     "preview": {
       "distribution": "internal",
@@ -17,14 +27,18 @@
       "env": {
         "EXPO_PUBLIC_MAP_DEBUG": "1"
       },
-      "ios": {}
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-26.0"
+      }
     },
     "production": {
       "distribution": "store",
       "environment": "production",
       "channel": "production",
       "autoIncrement": true,
-      "ios": {}
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-26.0"
+      }
     }
   },
   "submit": {

@@ -1,7 +1,9 @@
 -- Снимок от 2026-09-29 (feat/park-checkin). «Сейчас здесь» для карточки площадки.
+-- Обновлено 2026-10-02: порог свежести active_walks 10 → 30 мин (фоновый пинг при
+-- погашенном экране реже, чем раз в 10 мин; присутствие держим дольше).
 -- SECURITY DEFINER: park_checkins под RLS отдаёт клиенту только свои строки.
 --
--- Присутствует = открытый непросроченный чек-ин И свежая active_walks (≤10 мин)
+-- Присутствует = открытый непросроченный чек-ин И свежая active_walks (≤30 мин)
 -- с visibility <> 'nobody'. Упавшие/брошенные прогулки выпадают сами (без cron);
 -- «никто» и домашняя зона не попадают даже в счётчик (у них нет строки active_walks).
 --
@@ -66,7 +68,7 @@ BEGIN
     WHERE c.marker_id = p_marker_id
       AND c.ended_at IS NULL
       AND c.expires_at > now()
-      AND aw.updated_at > now() - interval '10 minutes'
+      AND aw.updated_at > now() - interval '30 minutes'
       AND aw.visibility <> 'nobody'
   ),
   classified AS (
