@@ -31,6 +31,27 @@ export const TEST_CATEGORY = 'afkaf_test';
 export const TEST_ACTION_HERE = 'here';
 const TEST_CHANNEL = 'afkaf-test';
 
+// Сценарий №1 «Ты на площадке?»: категория с кнопкой «Я здесь» и общий канал
+// подсказок на прогулке. Текст кнопки локализуется — задаётся при планировании
+// (setNotificationCategoryAsync можно звать повторно).
+export const PARK_CATEGORY = 'afkaf_park';
+export const PARK_ACTION_HERE = 'park_here';
+const WALK_CHANNEL = 'afkaf-walk';
+
+// Мостик до WalkScreen: нажатие «Я здесь» прилетает в глобальный слушатель
+// (initNotifications при загрузке бандла), а checkInHere живёт в активном
+// WalkScreen. Экран регистрирует обработчик на монтировании — как
+// subscribeWalkLocations в walkTracking.
+type ParkPromptHandler = (parkId: string) => void;
+let parkPromptHandler: ParkPromptHandler | null = null;
+
+export function registerParkPromptHandler(fn: ParkPromptHandler): () => void {
+  parkPromptHandler = fn;
+  return () => {
+    if (parkPromptHandler === fn) parkPromptHandler = null;
+  };
+}
+
 const LOG_KEY = 'dev_notif_test_log';       // последние нажатия (для DevPanel)
 const PENDING_KEY = 'dev_notif_test_pending'; // одноразовый Alert при открытии
 const SEEN_KEY = 'dev_notif_test_seen';       // дедуп getLastNotificationResponse
@@ -55,31 +76,50 @@ export function initNotifications(): void {
     }),
   });
 
-  // Нажатие по кнопке, пока JS жив (например, во время прогулки) — доставлено
-  // живым слушателем.
+  // Нажатие, пока JS жив (например, во время прогулки) — доставлено живым
+  // слушателем.
   N.addNotificationResponseReceivedListener((response) => {
-    void recordResponse(
-      response.actionIdentifier,
-      response.notification.request.identifier,
-      response.notification.date,
-      'listener',
-    );
+    dispatchResponse(response, 'listener');
   });
 
   // Нажатие, случившееся пока JS не слушал (холодный старт / приложение спало):
   // iOS отдала его только при запуске через getLastNotificationResponseAsync.
   N.getLastNotificationResponseAsync()
     .then((r) => {
-      if (r) {
-        void recordResponse(
-          r.actionIdentifier,
-          r.notification.request.identifier,
-          r.notification.date,
-          'cold',
-        );
-      }
+      if (r) dispatchResponse(r, 'cold');
     })
     .catch(() => {});
+}
+
+function dispatchResponse(
+  response: import('expo-notifications').NotificationResponse,
+  source: ResponseSource,
+): void {
+  const data = response.notification.request.content.data as
+    | { kind?: string; parkId?: string }
+    | undefined;
+
+  // Сценарий №1: кнопка «Я здесь» → checkInHere в активном WalkScreen. Только
+  // живой слушатель во время прогулки (на холодном старте прогулки уже нет).
+  // Тап по телу уведомления (DEFAULT) открывает приложение — не отмечаем.
+  if (data?.kind === 'park_prompt') {
+    if (
+      source === 'listener' &&
+      response.actionIdentifier === PARK_ACTION_HERE &&
+      data.parkId
+    ) {
+      parkPromptHandler?.(data.parkId);
+    }
+    return;
+  }
+
+  // Риск-чек тестовой категории — пишем в лог.
+  void recordResponse(
+    response.actionIdentifier,
+    response.notification.request.identifier,
+    response.notification.date,
+    source,
+  );
 }
 
 // Откуда пришёл ответ: живой слушатель (JS был жив и получил нажатие сразу) или
@@ -120,11 +160,15 @@ async function recordResponse(
   //   обраб  — когда наш обработчик реально отработал (+Δ от «увед»);
   //   state  — AppState в момент обработки (background/active/inactive);
   //   источник — живой слушатель или getLast при запуске.
+  // iOS отдаёт notification.date в СЕКУНДАХ, Android — в миллисекундах. Date.now()
+  // всегда в мс — приводим date к мс, иначе Δ улетала в ~1.79 млрд «секунд», а
+  // время показывалось из 1970-го.
+  const notifMs = notificationDate < 1e12 ? notificationDate * 1000 : notificationDate;
   const handledAt = Date.now();
-  const delta = Math.round((handledAt - notificationDate) / 1000);
+  const delta = Math.round((handledAt - notifMs) / 1000);
   const srcLabel = source === 'listener' ? 'слушатель' : 'getLast (запуск)';
   const line =
-    `${labelFor(actionIdentifier)} · увед ${clock(notificationDate)} · ` +
+    `${labelFor(actionIdentifier)} · увед ${clock(notifMs)} · ` +
     `обраб ${clock(handledAt)} (+${delta}с) · ${AppState.currentState} · ${srcLabel}`;
 
   const raw = await AsyncStorage.getItem(LOG_KEY);
@@ -144,6 +188,18 @@ export async function ensurePermission(): Promise<PermissionResult> {
   if (!current.canAskAgain) return 'denied';
   const req = await N.requestPermissionsAsync();
   return req.granted ? 'granted' : 'denied';
+}
+
+export type PermissionStatus = 'granted' | 'denied' | 'undetermined' | 'unavailable';
+
+// Статус БЕЗ запроса — чтобы карточка «зачем» показалась только тем, у кого
+// разрешение ещё не спрашивали (системный диалог iOS одноразовый).
+export async function getPermissionStatus(): Promise<PermissionStatus> {
+  const N = lib();
+  if (!N) return 'unavailable';
+  const current = await N.getPermissionsAsync();
+  if (current.granted) return 'granted';
+  return current.canAskAgain ? 'undetermined' : 'denied';
 }
 
 export type ScheduleResult = 'ok' | 'denied' | 'unavailable';
@@ -185,6 +241,85 @@ export async function scheduleTestNotification(seconds = 10): Promise<ScheduleRe
     },
   });
   return 'ok';
+}
+
+// ── Сценарий №1: подсказка «Ты на площадке?» ─────────────────────────────────
+
+async function ensureWalkChannel(N: NotificationsModule): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  await N.setNotificationChannelAsync(WALK_CHANNEL, {
+    name: 'Подсказки на прогулке',
+    importance: N.AndroidImportance.HIGH,
+  });
+}
+
+export interface ParkPromptInput {
+  parkId: string;
+  title: string;
+  body: string;
+  buttonTitle: string;
+  fireInSeconds: number;
+}
+
+// Планирует подсказку на «вход в зону + порог». Возвращает id запланированного
+// уведомления (для отмены) или null, если модуля нет / нет разрешения. Текст и
+// название площадки уже локализованы вызывающим (WalkScreen: есть t и markers).
+export async function scheduleParkPrompt(input: ParkPromptInput): Promise<string | null> {
+  const N = lib();
+  if (!N) return null;
+  const perm = await N.getPermissionsAsync();
+  if (!perm.granted) return null; // мид-прогулки системный диалог не поднимаем
+
+  await N.setNotificationCategoryAsync(PARK_CATEGORY, [
+    {
+      identifier: PARK_ACTION_HERE,
+      buttonTitle: input.buttonTitle,
+      options: { opensAppToForeground: false, isAuthenticationRequired: false },
+    },
+  ]);
+  await ensureWalkChannel(N);
+
+  return N.scheduleNotificationAsync({
+    content: {
+      title: input.title,
+      body: input.body,
+      categoryIdentifier: PARK_CATEGORY,
+      data: { kind: 'park_prompt', parkId: input.parkId },
+    },
+    trigger: {
+      type: N.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: Math.max(1, Math.round(input.fireInSeconds)),
+      channelId: WALK_CHANNEL,
+    },
+  });
+}
+
+export async function cancelScheduledNotification(id: string): Promise<void> {
+  const N = lib();
+  if (!N) return;
+  try {
+    await N.cancelScheduledNotificationAsync(id);
+  } catch {
+    // уже сработало / уже отменено — не важно
+  }
+}
+
+// Короткий результат нажатия «Я здесь» (успех/отказ): приложение не открывалось,
+// иначе человек не узнает, сработало ли.
+export async function presentWalkNotice(title: string, body: string): Promise<void> {
+  const N = lib();
+  if (!N) return;
+  const perm = await N.getPermissionsAsync();
+  if (!perm.granted) return;
+  await ensureWalkChannel(N);
+  await N.scheduleNotificationAsync({
+    content: { title, body },
+    trigger: {
+      type: N.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: 1,
+      channelId: WALK_CHANNEL,
+    },
+  });
 }
 
 // Для Alert «при следующем открытии»: вернуть и очистить последний ответ.

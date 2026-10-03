@@ -35,6 +35,7 @@ import { FriendWalkerMarker, FRIEND_PIN_HIDE_MS } from '../components/FriendWalk
 import { UserLocationMarker } from '../components/UserLocationMarker';
 import { MapMarkerIcon } from '../components/MapMarkerIcon';
 import { FirstWalkTipCard } from '../components/FirstWalkTipCard';
+import { FirstWalkNotifCard } from '../components/FirstWalkNotifCard';
 import { LocateButton } from '../components/LocateButton';
 import NearbyDogsSheet from '../components/NearbyDogsSheet';
 import { ShareProfileSheet } from '../components/ShareProfileSheet';
@@ -58,15 +59,27 @@ import {
   AutoFinishHit,
   PARK_NEAR_M,
 } from '../lib/autoFinish';
-import { getDevAutoFinishTest, getDevParkCheckinTest } from '../constants/dev';
+import { getDevAutoFinishTest, getDevParkCheckinTest, getDevParkPromptTest } from '../constants/dev';
 import {
   startParkCheckinSession,
   endParkCheckinSession,
   feedParkFix,
   tickParkCheckin,
+  checkInHere,
+  subscribeParkCheckin,
+  getParkCheckinState,
+  PARK_PROMPT_MS,
+  PARK_PROMPT_TEST_MS,
   DogPark,
 } from '../lib/parkCheckin';
 import { subscribeWalkLocations, startWalkTracking, stopWalkTracking } from '../lib/walkTracking';
+import {
+  isNotificationsAvailable,
+  scheduleParkPrompt,
+  cancelScheduledNotification,
+  presentWalkNotice,
+  registerParkPromptHandler,
+} from '../lib/notifications';
 
 // Старт — общий START_COORD (Бат-Ям, см. lib/geo). Во время прогулки камера
 // прыгает на пользователя первым же фиксом, так что этот регион виден лишь миг.
@@ -628,26 +641,45 @@ export function WalkScreen({ navigation }: Props) {
   // tracks the zone (so the card can explain why "I'm here" is off) but never
   // checks in. The session is closed by Finish / auto-finish and on unmount.
   const dogParksRef = useRef<DogPark[]>([]);
+  // Название площадки для текста подсказки №1 (marker.description; fallback —
+  // «собачья площадка рядом»). Карта id → имя.
+  const dogParkNamesRef = useRef<Record<string, string | null>>({});
   // Источник — ПОЛНЫЙ markers, НЕ filteredMarkers: фильтр карты (activeCategories/
   // радиус) влияет только на показ пинов. Зоны чек-ина (авто-отметка, «Я здесь»,
   // nearestPark) должны работать, даже если юзер снял галочку с парков в фильтре.
   useEffect(() => {
-    dogParksRef.current = markers
-      .filter((m) => m.type === 'dog_park')
-      .map((m) => ({ id: m.id, latitude: m.lat, longitude: m.lng }));
+    const parks = markers.filter((m) => m.type === 'dog_park');
+    dogParksRef.current = parks.map((m) => ({ id: m.id, latitude: m.lat, longitude: m.lng }));
+    const names: Record<string, string | null> = {};
+    for (const m of parks) names[m.id] = m.description;
+    dogParkNamesRef.current = names;
   }, [markers]);
+
+  // ── Сценарий №1 «Ты на площадке?» ────────────────────────────────────────
+  // Подсказку планируем в ОС на «вход в зону + порог» (система покажет её сама,
+  // даже если JS не получит ни одного фикса). Отменяем при выходе из зоны /
+  // чек-ине / конце прогулки. Один раз за прогулку на парк; не шлём, если уже
+  // отмечен (вручную или авто) или visibility='nobody'. Кнопка «Я здесь» = тот
+  // же checkInHere, что в карточке площадки.
+  const parkPromptThresholdMs = useRef<number>(PARK_PROMPT_MS);
+  const parkPromptScheduledId = useRef<string | null>(null);
+  const parkPromptForParkId = useRef<string | null>(null); // парк текущей запланированной подсказки
+  const parkPromptFireAt = useRef<number | null>(null); // когда подсказка должна показаться
+  const parkPromptedParks = useRef<Set<string>>(new Set()); // уже ПОКАЗАЛИ за эту прогулку
 
   useEffect(() => {
     let disposed = false;
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) return; // guest — no check-in
-      const [zone, testMode, stored] = await Promise.all([
+      const [zone, testMode, promptTest, stored] = await Promise.all([
         loadHomeZone(),
         getDevParkCheckinTest(),
+        getDevParkPromptTest(),
         AsyncStorage.getItem('privacy_visibility'),
       ]);
       if (disposed || finishingRef.current) return;
+      parkPromptThresholdMs.current = promptTest ? PARK_PROMPT_TEST_MS : PARK_PROMPT_MS;
       startParkCheckinSession({
         parks: () => dogParksRef.current,
         homeZone: zone,
@@ -660,6 +692,84 @@ export function WalkScreen({ navigation }: Props) {
       endParkCheckinSession();
     };
   }, []);
+
+  // Планирование/отмена подсказки №1 по состоянию чек-ина (parkCheckin store).
+  useEffect(() => {
+    if (!isNotificationsAvailable) return;
+
+    function cancelPrompt() {
+      const pid = parkPromptForParkId.current;
+      const fireAt = parkPromptFireAt.current;
+      if (parkPromptScheduledId.current) {
+        cancelScheduledNotification(parkPromptScheduledId.current);
+        parkPromptScheduledId.current = null;
+      }
+      // «Один раз за прогулку на парк» засчитываем ТОЛЬКО если порог уже прошёл,
+      // пока мы были в зоне (уведомление успело показаться). Выход из зоны раньше
+      // порога — парк снова свободен, подсказка придёт при следующем дожитии.
+      if (pid && fireAt != null && Date.now() >= fireAt) parkPromptedParks.current.add(pid);
+      parkPromptForParkId.current = null;
+      parkPromptFireAt.current = null;
+    }
+
+    async function schedulePrompt(parkId: string, insideSince: number) {
+      parkPromptForParkId.current = parkId;
+      const fireAt = insideSince + parkPromptThresholdMs.current;
+      parkPromptFireAt.current = fireAt;
+      const name = dogParkNamesRef.current[parkId]?.trim();
+      const parkLabel = name || t('park.notif.fallbackName');
+      const fireInSeconds = Math.max(1, Math.round((fireAt - Date.now()) / 1000));
+      const id = await scheduleParkPrompt({
+        parkId,
+        title: t('park.notif.title'),
+        body: t('park.notif.body', { park: parkLabel }),
+        buttonTitle: t('park.notif.action'),
+        fireInSeconds,
+      });
+      // Пока ждали планирования — вышли из зоны / сменили парк: лишнее отменяем.
+      if (parkPromptForParkId.current === parkId) parkPromptScheduledId.current = id;
+      else if (id) cancelScheduledNotification(id);
+    }
+
+    function evaluate() {
+      const s = getParkCheckinState();
+      // Отмена: не в зоне / уже отмечен / «никто» / нет прогулки.
+      if (
+        !s.active ||
+        s.eligibility !== 'ok' ||
+        s.parkId == null ||
+        s.checkedIn ||
+        s.insideSince == null
+      ) {
+        cancelPrompt();
+        return;
+      }
+      if (parkPromptForParkId.current === s.parkId) return; // уже запланировано на этот парк
+      if (parkPromptedParks.current.has(s.parkId)) return; // уже показывали за прогулку
+      cancelPrompt(); // снять возможную подсказку прошлого парка
+      void schedulePrompt(s.parkId, s.insideSince);
+    }
+
+    const unsub = subscribeParkCheckin(evaluate);
+    evaluate();
+    return () => {
+      unsub();
+      cancelPrompt();
+    };
+  }, [t]);
+
+  // Кнопка «Я здесь» из подсказки №1 → существующий checkInHere, затем короткий
+  // результат (приложение не открывалось — иначе не узнать, сработало ли).
+  useEffect(() => {
+    return registerParkPromptHandler(async (parkId) => {
+      const res = await checkInHere(parkId);
+      if (res === 'ok') {
+        presentWalkNotice(t('park.notif.okTitle'), t('park.notif.okBody'));
+      } else if (res !== 'nobody') {
+        presentWalkNotice(t('park.notif.failTitle'), t('park.notif.failBody'));
+      }
+    });
+  }, [t]);
 
   function runAutoFinishCheck() {
     if (finishingRef.current) return;
@@ -1160,6 +1270,10 @@ export function WalkScreen({ navigation }: Props) {
       />
 
       <FirstWalkTipCard onSetupPrivacy={() => navigation.navigate('PrivacyRadius')} />
+
+      {/* Разрешение на уведомления — своя карточка «зачем» на первой прогулке,
+          после старта трека (гейтится trackingStarted), перед системным диалогом. */}
+      {trackingStarted && <FirstWalkNotifCard />}
 
       {/* Nearby dogs — same sheet as MapScreen, opened from the walkers row.
           box-none so the closed (off-screen) sheet never blocks the panel. */}

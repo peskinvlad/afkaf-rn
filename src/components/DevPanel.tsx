@@ -22,6 +22,7 @@ import {
   DEV_VOTE_OWN_KEY,
   DEV_AUTO_FINISH_TEST_KEY,
   DEV_PARK_CHECKIN_TEST_KEY,
+  DEV_PARK_PROMPT_TEST_KEY,
   emitDevSettingsChange,
 } from '../constants/dev';
 import { getAutoFinishDiagnostics, AutoFinishDiagnostics } from '../lib/autoFinish';
@@ -69,6 +70,7 @@ export function DevPanel({ visible, onClose }: Props) {
   const [autoTest, setAutoTest] = useState(false);
   const [autoDiag, setAutoDiag] = useState<AutoFinishDiagnostics>(getAutoFinishDiagnostics());
   const [parkTest, setParkTest] = useState(false);
+  const [parkPromptTest, setParkPromptTest] = useState(false);
   const parkState = useParkCheckinState();
   // Короткие подтверждения «сброшено/применено» по ключу строки
   const [flash, setFlash] = useState<Record<string, string>>({});
@@ -98,6 +100,7 @@ export function DevPanel({ visible, onClose }: Props) {
         DEV_VOTE_OWN_KEY,
         DEV_AUTO_FINISH_TEST_KEY,
         DEV_PARK_CHECKIN_TEST_KEY,
+        DEV_PARK_PROMPT_TEST_KEY,
       ]);
       const map = Object.fromEntries(entries) as Record<string, string | null>;
       setVisibility(map[VISIBILITY_KEY]);
@@ -111,6 +114,7 @@ export function DevPanel({ visible, onClose }: Props) {
       setVoteOwn(map[DEV_VOTE_OWN_KEY] === 'true');
       setAutoTest(map[DEV_AUTO_FINISH_TEST_KEY] === 'true');
       setParkTest(map[DEV_PARK_CHECKIN_TEST_KEY] === 'true');
+      setParkPromptTest(map[DEV_PARK_PROMPT_TEST_KEY] === 'true');
 
       // Та же функция, что использует гейт active_walks (privacyZone.ts)
       setHomeZone(await loadHomeZone());
@@ -206,12 +210,20 @@ export function DevPanel({ visible, onClose }: Props) {
     else await AsyncStorage.removeItem(DEV_AUTO_FINISH_TEST_KEY);
   }
 
-  // То же для чек-ина на площадке: выдержка в зоне 1 мин вместо 5. Читается
-  // WalkScreen через getDevParkCheckinTest на старте прогулки.
+  // Чек-ин на площадке: выдержка в зоне 1 мин вместо 5. Читается WalkScreen
+  // через getDevParkCheckinTest на старте прогулки.
   async function toggleParkTest(next: boolean) {
     setParkTest(next);
     if (next) await AsyncStorage.setItem(DEV_PARK_CHECKIN_TEST_KEY, 'true');
     else await AsyncStorage.removeItem(DEV_PARK_CHECKIN_TEST_KEY);
+  }
+
+  // Подсказка №1 «Ты на площадке?»: порог показа 30 с вместо 3 мин. Читается
+  // WalkScreen через getDevParkPromptTest на старте прогулки.
+  async function toggleParkPromptTest(next: boolean) {
+    setParkPromptTest(next);
+    if (next) await AsyncStorage.setItem(DEV_PARK_PROMPT_TEST_KEY, 'true');
+    else await AsyncStorage.removeItem(DEV_PARK_PROMPT_TEST_KEY);
   }
 
   async function toggleMapDebug(next: boolean) {
@@ -370,9 +382,18 @@ export function DevPanel({ visible, onClose }: Props) {
                 trackColor={{ true: colors.primary, false: colors.border }}
               />
             </View>
+            <View style={styles.switchRow}>
+              <Text style={styles.rowLabelFlex}>Тест: подсказка 30 с</Text>
+              <Switch
+                value={parkPromptTest}
+                onValueChange={toggleParkPromptTest}
+                trackColor={{ true: colors.primary, false: colors.border }}
+              />
+            </View>
             <Text style={styles.note}>
               Авто-чек-ин после 1 мин в зоне dog_park (40 м) вместо 5 мин.
-              Применяется со следующей прогулки. Только для DEV_USER_IDS.
+              «Подсказка 30 с» — уведомление №1 «Ты на площадке?» через 30 с вместо
+              3 мин. Применяется со следующей прогулки. Только для DEV_USER_IDS.
             </Text>
           </View>
 

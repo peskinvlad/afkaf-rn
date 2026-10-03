@@ -31,6 +31,10 @@ export const PARK_RADIUS_M = 40;
 export const PARK_DWELL_MS = 5 * 60_000;
 // Dev-переключатель «Тест: порог 1 мин» (DevPanel, только DEV_USER_IDS).
 export const PARK_TEST_DWELL_MS = 60_000;
+// Сценарий №1 «Ты на площадке?»: подсказку шлём через 3 мин в зоне — раньше
+// авто-чек-ина (5 мин). Dev-переключатель «подсказка 30 с» — для теста.
+export const PARK_PROMPT_MS = 3 * 60_000;
+export const PARK_PROMPT_TEST_MS = 30_000;
 // Совпадает с expires_at на сервере (now() + 2h).
 export const PARK_CHECKIN_MAX_MS = 2 * 60 * 60_000;
 // Неудачный авто-чек-ин (сеть, active_walks ещё не создана, PT429) повторяем
