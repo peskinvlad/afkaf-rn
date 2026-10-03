@@ -97,7 +97,12 @@ import {
   ACT_KEEP,
   KIND_STILL,
   CAT_STILL,
+  KIND_MARKER,
+  CAT_MARKER,
+  ACT_MARKER_STILL,
+  ACT_MARKER_GONE,
 } from '../lib/notifications';
+import { castMarkerVote } from '../lib/markerVotes';
 
 // Старт — общий START_COORD (Бат-Ям, см. lib/geo). Во время прогулки камера
 // прыгает на пользователя первым же фиксом, так что этот регион виден лишь миг.
@@ -142,6 +147,11 @@ const STILL_WALKING_MS = 2 * 60 * 60_000;
 const STILL_WALKING_TEST_MS = 2 * 60_000;
 const STILL_WALKING_REPEAT_MS = 60 * 60_000;
 const STILL_WALKING_REPEAT_TEST_MS = 60_000;
+
+// Сценарий №5 «Метка ещё актуальна?»: не чаще 3 за прогулку. Временные метки =
+// не инфраструктура и не типы-опасности (ими занимается №3) — чтобы одну метку
+// не дёргать двумя уведомлениями.
+const MARKER_PROMPT_MAX = 3;
 
 // Steps between two moments from the motion coprocessor (iOS CMPedometer; the
 // live watcher gets no updates in the background, so its count at T would be
@@ -661,6 +671,12 @@ export function WalkScreen({ navigation }: Props) {
   const stillWalkingRepeatMs = useRef<number>(STILL_WALKING_REPEAT_MS);
   const stillWalkingScheduledId = useRef<string | null>(null);
   const stillWalkingFireAt = useRef<number | null>(null);
+  // ── Сценарий №5 «Метка ещё актуальна?» ──────────────────────────────────────
+  const tempMarkersRef = useRef<
+    Array<{ id: string; lat: number; lng: number; userId: string | null; type: string }>
+  >([]);
+  const notifiedMarkers = useRef<Set<string>>(new Set());
+  const markerPromptCount = useRef<number>(0);
   // Источник — ПОЛНЫЙ markers, НЕ filteredMarkers: фильтр карты (activeCategories/
   // радиус) скрывает только пины. Фолбэк автозавершения «около парка» не должен
   // зависеть от того, что тестер снял галочку с парков в фильтре.
@@ -675,6 +691,14 @@ export function WalkScreen({ navigation }: Props) {
   useEffect(() => {
     hazardsRef.current = markers
       .filter((m) => HAZARD_TYPES.includes(m.type))
+      .map((m) => ({ id: m.id, lat: m.lat, lng: m.lng, userId: m.user_id, type: m.type }));
+  }, [markers]);
+
+  // Временные метки для №5: не инфраструктура (вода/парки — постоянные, голоса нет)
+  // и не опасности (их ведёт №3). Сейчас это по сути «запрещено» и будущее «еда».
+  useEffect(() => {
+    tempMarkersRef.current = markers
+      .filter((m) => !INFRA_MARKER_TYPES.includes(m.type) && !HAZARD_TYPES.includes(m.type))
       .map((m) => ({ id: m.id, lat: m.lat, lng: m.lng, userId: m.user_id, type: m.type }));
   }, [markers]);
 
@@ -935,6 +959,59 @@ export function WalkScreen({ navigation }: Props) {
   }
   const hazardEvalRef = useRef(evaluateHazards);
   hazardEvalRef.current = evaluateHazards;
+
+  // ── Сценарий №5: «Метка ещё актуальна?» при проходе рядом с временной меткой ──
+  // Кнопки = те же голоса, что в карточке метки. Раз на метку, не чаще 3 за
+  // прогулку, не своя метка, только для залогиненных (голос требует аккаунт).
+  function evaluateMarkerPrompts(pt: LatLng) {
+    if (!isNotificationsAvailable) return;
+    const uid = currentUserIdRef.current;
+    if (!uid) return; // гость голосовать не может
+    if (markerPromptCount.current >= MARKER_PROMPT_MAX) return;
+    const radius = proximityTestRef.current ? PROXIMITY_TEST_RADIUS_M : MARKER_RADIUS_M;
+    for (const m of tempMarkersRef.current) {
+      if (markerPromptCount.current >= MARKER_PROMPT_MAX) break;
+      if (notifiedMarkers.current.has(m.id)) continue;
+      if (m.userId === uid) continue; // не своя метка
+      if (haversine(pt, { latitude: m.lat, longitude: m.lng }) * 1000 > radius) continue;
+      notifiedMarkers.current.add(m.id);
+      markerPromptCount.current += 1;
+      const key = `marker.type.${m.type}`;
+      const label = t(key) !== key ? t(key) : t('marker.notif.generic');
+      void scheduleNotif({
+        kind: KIND_MARKER,
+        categoryId: CAT_MARKER,
+        actions: [
+          { identifier: ACT_MARKER_STILL, buttonTitle: t('marker.notif.still') },
+          { identifier: ACT_MARKER_GONE, buttonTitle: t('marker.notif.gone') },
+        ],
+        title: t('marker.notif.title'),
+        body: t('marker.notif.body', { type: label }),
+        data: { markerId: m.id },
+        fireInSeconds: 1,
+      });
+    }
+  }
+  const markerEvalRef = useRef(evaluateMarkerPrompts);
+  markerEvalRef.current = evaluateMarkerPrompts;
+
+  // Кнопки №5 → тот же голос, что в карточке метки (castMarkerVote), затем
+  // короткое подтверждение.
+  useEffect(() => {
+    return registerNotifHandler(KIND_MARKER, (data, action) => {
+      const markerId = typeof data.markerId === 'string' ? data.markerId : null;
+      const uid = currentUserIdRef.current;
+      if (!markerId || !uid) return;
+      const vote =
+        action === ACT_MARKER_STILL ? 'still_there' : action === ACT_MARKER_GONE ? 'gone' : null;
+      if (!vote) return;
+      void (async () => {
+        const err = await castMarkerVote(markerId, uid, vote);
+        if (!err) presentWalkNotice(t('marker.notif.thanksTitle'), t('marker.notif.thanksBody'));
+      })();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t]);
 
   // ── Сценарий №4: «Ты всё ещё гуляешь?» (только без домашней зоны) ────────────
   function cancelStillWalking() {
@@ -1226,6 +1303,7 @@ export function WalkScreen({ navigation }: Props) {
         );
         feedParkFix({ ...pt, accuracy: coords.accuracy, timestamp: coords.timestamp });
         hazardEvalRef.current(pt); // №3: предупреждение при сближении с опасностью
+        markerEvalRef.current(pt); // №5: «метка ещё актуальна?» у временной метки
         followWith(pt);
         setUserLocation(pt);
 
