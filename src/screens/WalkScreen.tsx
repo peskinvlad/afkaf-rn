@@ -109,6 +109,15 @@ import {
   inQuietHours,
   loadNotifEnabled,
 } from '../lib/notifPrefs';
+import {
+  parkText,
+  homeText,
+  autoFinishedText,
+  hazardPermText,
+  hazardTempText,
+  stillText,
+  markerText,
+} from '../lib/notifText';
 
 // Старт — общий START_COORD (Бат-Ям, см. lib/geo). Во время прогулки камера
 // прыгает на пользователя первым же фиксом, так что этот регион виден лишь миг.
@@ -672,12 +681,14 @@ export function WalkScreen({ navigation }: Props) {
       userId: string | null;
       type: string;
       temporary: boolean;
+      createdAt: string | null;
     }>
   >([]);
   const notifiedHazards = useRef<Set<string>>(new Set());
   const proximityTestRef = useRef<boolean>(false);
   const currentUserIdRef = useRef<string | null>(null);
   const notifHomeZoneRef = useRef<HomeZone | null>(null);
+  const dogNameRef = useRef<string | null>(null); // имя первой собаки для текстов ({dog})
   // ── Сценарий №4 «Ты всё ещё гуляешь?» (только без домашней зоны) ─────────────
   const noHomeZoneRef = useRef<boolean>(false);
   const stillWalkingIntervalMs = useRef<number>(STILL_WALKING_MS);
@@ -719,6 +730,7 @@ export function WalkScreen({ navigation }: Props) {
         userId: m.user_id,
         type: m.type,
         temporary: m.expires_at != null, // временная (пользовательская) vs постоянная
+        createdAt: m.created_at ?? null,
       }));
   }, [markers]);
 
@@ -740,8 +752,18 @@ export function WalkScreen({ navigation }: Props) {
         loadHomeZone(),
       ]);
       if (disposed) return;
-      currentUserIdRef.current = session?.user?.id ?? null;
+      const uid = session?.user?.id ?? null;
+      currentUserIdRef.current = uid;
       notifHomeZoneRef.current = zone;
+      if (uid) {
+        const { data: dog } = await supabase
+          .from('dogs')
+          .select('name')
+          .eq('owner_id', uid)
+          .limit(1)
+          .maybeSingle();
+        if (!disposed) dogNameRef.current = (dog?.name as string | undefined)?.trim() || null;
+      }
     })();
     return () => {
       disposed = true;
@@ -810,18 +832,13 @@ export function WalkScreen({ navigation }: Props) {
   // tracks the zone (so the card can explain why "I'm here" is off) but never
   // checks in. The session is closed by Finish / auto-finish and on unmount.
   const dogParksRef = useRef<DogPark[]>([]);
-  // Название площадки для текста подсказки №1 (marker.description; fallback —
-  // «собачья площадка рядом»). Карта id → имя.
-  const dogParkNamesRef = useRef<Record<string, string | null>>({});
   // Источник — ПОЛНЫЙ markers, НЕ filteredMarkers: фильтр карты (activeCategories/
   // радиус) влияет только на показ пинов. Зоны чек-ина (авто-отметка, «Я здесь»,
   // nearestPark) должны работать, даже если юзер снял галочку с парков в фильтре.
   useEffect(() => {
-    const parks = markers.filter((m) => m.type === 'dog_park');
-    dogParksRef.current = parks.map((m) => ({ id: m.id, latitude: m.lat, longitude: m.lng }));
-    const names: Record<string, string | null> = {};
-    for (const m of parks) names[m.id] = m.description;
-    dogParkNamesRef.current = names;
+    dogParksRef.current = markers
+      .filter((m) => m.type === 'dog_park')
+      .map((m) => ({ id: m.id, latitude: m.lat, longitude: m.lng }));
   }, [markers]);
 
   // ── Сценарий №1 «Ты на площадке?» ────────────────────────────────────────
@@ -885,15 +902,14 @@ export function WalkScreen({ navigation }: Props) {
       parkPromptForParkId.current = parkId;
       const fireAt = insideSince + parkPromptThresholdMs.current;
       parkPromptFireAt.current = fireAt;
-      const name = dogParkNamesRef.current[parkId]?.trim();
-      const parkLabel = name || t('park.notif.fallbackName');
       const fireInSeconds = Math.max(1, Math.round((fireAt - Date.now()) / 1000));
+      const content = parkText(t, dogNameRef.current);
       const id = await scheduleNotif({
         kind: KIND_PARK,
         categoryId: CAT_PARK,
         actions: [{ identifier: ACT_PARK_HERE, buttonTitle: t('park.notif.action') }],
-        title: t('park.notif.title'),
-        body: t('park.notif.body', { park: parkLabel }),
+        title: content.title,
+        body: content.body,
         data: { parkId },
         fireInSeconds,
       });
@@ -975,6 +991,7 @@ export function WalkScreen({ navigation }: Props) {
       1,
       Math.round((since + homePromptThresholdMs.current - Date.now()) / 1000),
     );
+    const content = homeText(t, dogNameRef.current);
     const id = await scheduleNotif({
       kind: KIND_HOME,
       categoryId: CAT_HOME,
@@ -982,8 +999,8 @@ export function WalkScreen({ navigation }: Props) {
         { identifier: ACT_FINISH, buttonTitle: t('home.notif.finish') },
         { identifier: ACT_KEEP, buttonTitle: t('home.notif.keep') },
       ],
-      title: t('home.notif.title'),
-      body: t('home.notif.body'),
+      title: content.title,
+      body: content.body,
       fireInSeconds,
     });
     if (homePromptForSince.current === since) homePromptScheduledId.current = id;
@@ -1006,17 +1023,17 @@ export function WalkScreen({ navigation }: Props) {
       if (notifiedHazards.current.has(h.id)) continue;
       if (uid && h.userId === uid) continue;
       if (zone && isInsideHomeZone(h.lat, h.lng, zone)) continue;
-      if (haversine(pt, { latitude: h.lat, longitude: h.lng }) * 1000 > radius) continue;
+      const distM = haversine(pt, { latitude: h.lat, longitude: h.lng }) * 1000;
+      if (distM > radius) continue;
       notifiedHazards.current.add(h.id);
-      const key = `marker.type.${h.type}`;
-      const label = t(key) !== key ? t(key) : t('hazard.notif.generic');
-      const title = t('hazard.notif.title');
-      const body = t('hazard.notif.body', { type: label });
+      const dist = Math.round(distM);
       // Временная опасная метка + залогинен → одно уведомление: предупреждение С
       // кнопками-голосом (castMarkerVote через обработчик KIND_MARKER). Лимит ≤3
       // из №5 сюда НЕ применяется — опасность важнее. Постоянная опасная метка или
       // гость → без кнопок, как раньше.
       if (h.temporary && uid) {
+        const ageMs = h.createdAt ? Date.now() - Date.parse(h.createdAt) : 0;
+        const content = hazardTempText(t, dogNameRef.current, h.type, dist, ageMs);
         void scheduleNotif({
           kind: KIND_MARKER,
           categoryId: CAT_MARKER,
@@ -1024,13 +1041,14 @@ export function WalkScreen({ navigation }: Props) {
             { identifier: ACT_MARKER_STILL, buttonTitle: t('marker.notif.still') },
             { identifier: ACT_MARKER_GONE, buttonTitle: t('marker.notif.gone') },
           ],
-          title,
-          body,
+          title: content.title,
+          body: content.body,
           data: { markerId: h.id },
           fireInSeconds: 1,
         });
       } else {
-        presentWalkNotice(title, body);
+        const content = hazardPermText(t, dogNameRef.current, h.type, dist);
+        presentWalkNotice(content.title, content.body);
       }
     }
   }
@@ -1054,8 +1072,7 @@ export function WalkScreen({ navigation }: Props) {
       if (haversine(pt, { latitude: m.lat, longitude: m.lng }) * 1000 > radius) continue;
       notifiedMarkers.current.add(m.id);
       markerPromptCount.current += 1;
-      const key = `marker.type.${m.type}`;
-      const label = t(key) !== key ? t(key) : t('marker.notif.generic');
+      const content = markerText(t, m.type);
       void scheduleNotif({
         kind: KIND_MARKER,
         categoryId: CAT_MARKER,
@@ -1063,8 +1080,8 @@ export function WalkScreen({ navigation }: Props) {
           { identifier: ACT_MARKER_STILL, buttonTitle: t('marker.notif.still') },
           { identifier: ACT_MARKER_GONE, buttonTitle: t('marker.notif.gone') },
         ],
-        title: t('marker.notif.title'),
-        body: t('marker.notif.body', { type: label }),
+        title: content.title,
+        body: content.body,
         data: { markerId: m.id },
         fireInSeconds: 1,
       });
@@ -1103,6 +1120,7 @@ export function WalkScreen({ navigation }: Props) {
   async function scheduleStillWalking(fireAtMs: number) {
     cancelStillWalking();
     stillWalkingFireAt.current = fireAtMs;
+    const content = stillText(t, fireAtMs - walkStartedAtMs);
     const id = await scheduleNotif({
       kind: KIND_STILL,
       categoryId: CAT_STILL,
@@ -1110,8 +1128,8 @@ export function WalkScreen({ navigation }: Props) {
         { identifier: ACT_FINISH, buttonTitle: t('home.notif.finish'), opensApp: true },
         { identifier: ACT_KEEP, buttonTitle: t('home.notif.keep') },
       ],
-      title: t('still.notif.title'),
-      body: t('still.notif.body'),
+      title: content.title,
+      body: content.body,
       fireInSeconds: Math.max(1, Math.round((fireAtMs - Date.now()) / 1000)),
     });
     if (stillWalkingFireAt.current === fireAtMs) stillWalkingScheduledId.current = id;
@@ -1219,13 +1237,8 @@ export function WalkScreen({ navigation }: Props) {
     // завершилась сама: отдельное уведомление без кнопок «Прогулка завершена».
     // Открыто → сразу покажем экран итогов, уведомление не нужно.
     if (AppState.currentState !== 'active') {
-      presentWalkNotice(
-        t('walk.autoFinished.notifTitle'),
-        t('walk.autoFinished.notifBody', {
-          km: walk.distanceKm.toFixed(2),
-          min: Math.round(walk.durationS / 60),
-        }),
-      );
+      const content = autoFinishedText(t, walk.distanceKm.toFixed(2), Math.round(walk.durationS / 60));
+      presentWalkNotice(content.title, content.body);
     }
     // park_checkout ДО остановки трекинга (с таймаутом): в фоне iOS усыпляет
     // приложение сразу после stopWalkTracking — fire-and-forget checkout терялся.

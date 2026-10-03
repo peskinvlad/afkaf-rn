@@ -59,6 +59,14 @@ import {
   ACT_MARKER_STILL,
   ACT_MARKER_GONE,
 } from '../lib/notifications';
+import {
+  parkText,
+  homeText,
+  hazardPermText,
+  hazardTempText,
+  stillText,
+  markerText,
+} from '../lib/notifText';
 import { colors, radii, shadows, typography } from '../theme/tokens';
 
 // Панель только для DEV_USER_IDS (гейт — в AboutScreen, сюда без него не
@@ -93,6 +101,7 @@ export function DevPanel({ visible, onClose }: Props) {
   const [homePromptTest, setHomePromptTest] = useState(false);
   const [stillWalkingTest, setStillWalkingTest] = useState(false);
   const [proximityTest, setProximityTest] = useState(false);
+  const [dogName, setDogName] = useState<string | null>(null); // для {dog} в «Показать сейчас»
   const parkState = useParkCheckinState();
   // Короткие подтверждения «сброшено/применено» по ключу строки
   const [flash, setFlash] = useState<Record<string, string>>({});
@@ -112,6 +121,15 @@ export function DevPanel({ visible, onClose }: Props) {
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       setUserId(session?.user?.id ?? null);
+      if (session?.user?.id) {
+        const { data: dog } = await supabase
+          .from('dogs')
+          .select('name')
+          .eq('owner_id', session.user.id)
+          .limit(1)
+          .maybeSingle();
+        setDogName((dog?.name as string | undefined)?.trim() || null);
+      }
 
       const entries = await AsyncStorage.multiGet([
         VISIBILITY_KEY,
@@ -287,85 +305,92 @@ export function DevPanel({ visible, onClose }: Props) {
   }
 
   const showNowPark = () =>
-    showNow(() =>
-      scheduleNotif({
+    showNow(() => {
+      const c = parkText(t, dogName);
+      return scheduleNotif({
         kind: KIND_PARK,
         categoryId: CAT_PARK,
         actions: [{ identifier: ACT_PARK_HERE, buttonTitle: t('park.notif.action') }],
-        title: t('park.notif.title'),
-        body: t('park.notif.body', { park: t('park.notif.fallbackName') }),
+        title: c.title,
+        body: c.body,
         data: { parkId: 'dev-test' },
         fireInSeconds: 1,
-      }),
-    );
+      });
+    });
 
   const showNowHome = () =>
-    showNow(() =>
-      scheduleNotif({
+    showNow(() => {
+      const c = homeText(t, dogName);
+      return scheduleNotif({
         kind: KIND_HOME,
         categoryId: CAT_HOME,
         actions: [
           { identifier: ACT_FINISH, buttonTitle: t('home.notif.finish') },
           { identifier: ACT_KEEP, buttonTitle: t('home.notif.keep') },
         ],
-        title: t('home.notif.title'),
-        body: t('home.notif.body'),
+        title: c.title,
+        body: c.body,
         fireInSeconds: 1,
-      }),
-    );
+      });
+    });
 
+  // №3 постоянная опасная метка — без кнопок.
   const showNowHazard = () =>
-    showNow(() =>
-      presentWalkNotice(t('hazard.notif.title'), t('hazard.notif.body', { type: t('marker.type.danger') })),
-    );
+    showNow(() => {
+      const c = hazardPermText(t, dogName, 'danger', 50);
+      return presentWalkNotice(c.title, c.body);
+    });
 
-  // №3 для ВРЕМЕННОЙ опасной метки — предупреждение С кнопками-голосом.
+  // №3 ВРЕМЕННАЯ опасная метка — предупреждение С кнопками-голосом.
   const showNowHazardVote = () =>
-    showNow(() =>
-      scheduleNotif({
+    showNow(() => {
+      const c = hazardTempText(t, dogName, 'danger', 50, 10 * 60_000);
+      return scheduleNotif({
         kind: KIND_MARKER,
         categoryId: CAT_MARKER,
         actions: [
           { identifier: ACT_MARKER_STILL, buttonTitle: t('marker.notif.still') },
           { identifier: ACT_MARKER_GONE, buttonTitle: t('marker.notif.gone') },
         ],
-        title: t('hazard.notif.title'),
-        body: t('hazard.notif.body', { type: t('marker.type.danger') }),
+        title: c.title,
+        body: c.body,
         data: { markerId: 'dev-test' },
         fireInSeconds: 1,
-      }),
-    );
+      });
+    });
 
   const showNowStill = () =>
-    showNow(() =>
-      scheduleNotif({
+    showNow(() => {
+      const c = stillText(t, 2 * 60 * 60_000);
+      return scheduleNotif({
         kind: KIND_STILL,
         categoryId: CAT_STILL,
         actions: [
           { identifier: ACT_FINISH, buttonTitle: t('home.notif.finish'), opensApp: true },
           { identifier: ACT_KEEP, buttonTitle: t('home.notif.keep') },
         ],
-        title: t('still.notif.title'),
-        body: t('still.notif.body'),
+        title: c.title,
+        body: c.body,
         fireInSeconds: 1,
-      }),
-    );
+      });
+    });
 
   const showNowMarker = () =>
-    showNow(() =>
-      scheduleNotif({
+    showNow(() => {
+      const c = markerText(t, 'forbidden');
+      return scheduleNotif({
         kind: KIND_MARKER,
         categoryId: CAT_MARKER,
         actions: [
           { identifier: ACT_MARKER_STILL, buttonTitle: t('marker.notif.still') },
           { identifier: ACT_MARKER_GONE, buttonTitle: t('marker.notif.gone') },
         ],
-        title: t('marker.notif.title'),
-        body: t('marker.notif.body', { type: t('marker.type.forbidden') }),
+        title: c.title,
+        body: c.body,
         data: { markerId: 'dev-test' },
         fireInSeconds: 1,
-      }),
-    );
+      });
+    });
 
   async function toggleMapDebug(next: boolean) {
     setMapDebugOn(next);
