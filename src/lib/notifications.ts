@@ -266,6 +266,10 @@ async function ensureWalkChannel(N: NotificationsModule): Promise<void> {
 export interface NotifAction {
   identifier: string;
   buttonTitle: string;
+  // По умолчанию кнопка НЕ открывает приложение (обрабатывается в фоне). true —
+  // когда обработчику нужно свежее состояние экрана (напр. «Завершить» в №4,
+  // которое читает таймер прогулки из React-состояния).
+  opensApp?: boolean;
 }
 
 export interface ScheduleNotifInput {
@@ -294,7 +298,7 @@ export async function scheduleNotif(input: ScheduleNotifInput): Promise<string |
       input.actions!.map((a) => ({
         identifier: a.identifier,
         buttonTitle: a.buttonTitle,
-        options: { opensAppToForeground: false, isAuthenticationRequired: false },
+        options: { opensAppToForeground: a.opensApp ?? false, isAuthenticationRequired: false },
       })),
     );
   }
