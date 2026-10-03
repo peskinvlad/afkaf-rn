@@ -97,10 +97,13 @@ export function stillText(t: TFn, elapsedMs: number): NotifContent {
   };
 }
 
-// №5 «Метка ещё актуальна?»
+// №5 «Метка ещё актуальна?». Заголовок может иметь форму под конкретный тип
+// (ключ marker.notif.title.<type>, напр. для forbidden в HE «עדיין אסור כאן?»);
+// иначе — общий marker.notif.title с подстановкой {type}.
 export function markerText(t: TFn, type: string): NotifContent {
-  return {
-    title: t('marker.notif.title', { type: typeLabel(type, t, 'marker.notif.generic') }),
-    body: t('marker.notif.body'),
-  };
+  const label = typeLabel(type, t, 'marker.notif.generic');
+  const perTypeKey = `marker.notif.title.${type}`;
+  const perType = t(perTypeKey, { type: label });
+  const title = perType !== perTypeKey ? perType : t('marker.notif.title', { type: label });
+  return { title, body: t('marker.notif.body') };
 }
