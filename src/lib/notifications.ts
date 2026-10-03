@@ -31,24 +31,39 @@ export const TEST_CATEGORY = 'afkaf_test';
 export const TEST_ACTION_HERE = 'here';
 const TEST_CHANNEL = 'afkaf-test';
 
-// Сценарий №1 «Ты на площадке?»: категория с кнопкой «Я здесь» и общий канал
-// подсказок на прогулке. Текст кнопки локализуется — задаётся при планировании
-// (setNotificationCategoryAsync можно звать повторно).
-export const PARK_CATEGORY = 'afkaf_park';
-export const PARK_ACTION_HERE = 'park_here';
+// Общий канал подсказок на прогулке (Android).
 const WALK_CHANNEL = 'afkaf-walk';
 
-// Мостик до WalkScreen: нажатие «Я здесь» прилетает в глобальный слушатель
-// (initNotifications при загрузке бандла), а checkInHere живёт в активном
-// WalkScreen. Экран регистрирует обработчик на монтировании — как
-// subscribeWalkLocations в walkTracking.
-type ParkPromptHandler = (parkId: string) => void;
-let parkPromptHandler: ParkPromptHandler | null = null;
+// Виды боевых уведомлений, их категории и кнопки. Тексты кнопок локализуются при
+// планировании (setNotificationCategoryAsync можно звать повторно).
+export const KIND_PARK = 'park_prompt'; // №1 «Ты на площадке?»
+export const KIND_HOME = 'home_prompt'; // №2 «Уже дома?»
+export const KIND_HAZARD = 'hazard'; // №3 «Опасность рядом» (без кнопок)
+export const KIND_STILL = 'still_walking'; // №4 «Ты всё ещё гуляешь?»
+export const KIND_MARKER = 'marker_prompt'; // №5 «Метка ещё актуальна?»
 
-export function registerParkPromptHandler(fn: ParkPromptHandler): () => void {
-  parkPromptHandler = fn;
+export const CAT_PARK = 'afkaf_park';
+export const CAT_HOME = 'afkaf_home';
+export const CAT_STILL = 'afkaf_still';
+export const CAT_MARKER = 'afkaf_marker';
+
+export const ACT_PARK_HERE = 'park_here'; // №1
+export const ACT_FINISH = 'finish'; // «Завершить» (№2, №4)
+export const ACT_KEEP = 'keep'; // «Ещё гуляю» (№2, №4)
+export const ACT_MARKER_STILL = 'still_there'; // «Всё ещё тут» (№5)
+export const ACT_MARKER_GONE = 'gone'; // «Уже убрали» (№5)
+
+// Мостик до WalkScreen: нажатие кнопки прилетает в глобальный слушатель
+// (initNotifications при загрузке бандла), а обработчики (checkInHere, завершение
+// прогулки, голос за метку) живут в активном WalkScreen. Экран регистрирует их на
+// монтировании по «виду» уведомления (kind) — как subscribeWalkLocations.
+type ActionHandler = (data: Record<string, unknown>, actionIdentifier: string) => void;
+const actionHandlers = new Map<string, ActionHandler>();
+
+export function registerNotifHandler(kind: string, fn: ActionHandler): () => void {
+  actionHandlers.set(kind, fn);
   return () => {
-    if (parkPromptHandler === fn) parkPromptHandler = null;
+    if (actionHandlers.get(kind) === fn) actionHandlers.delete(kind);
   };
 }
 
@@ -96,24 +111,19 @@ function dispatchResponse(
   source: ResponseSource,
 ): void {
   const data = response.notification.request.content.data as
-    | { kind?: string; parkId?: string }
+    | (Record<string, unknown> & { kind?: string })
     | undefined;
 
-  // Сценарий №1: кнопка «Я здесь» → checkInHere в активном WalkScreen. Только
-  // живой слушатель во время прогулки (на холодном старте прогулки уже нет).
-  // Тап по телу уведомления (DEFAULT) открывает приложение — не отмечаем.
-  if (data?.kind === 'park_prompt') {
-    if (
-      source === 'listener' &&
-      response.actionIdentifier === PARK_ACTION_HERE &&
-      data.parkId
-    ) {
-      parkPromptHandler?.(data.parkId);
-    }
+  // Боевой сценарий: нажатие кнопки → зарегистрированный обработчик в активном
+  // WalkScreen. Только живой слушатель во время прогулки (на холодном старте
+  // прогулки уже нет). Тап по телу (DEFAULT) открывает приложение — не наше дело.
+  if (data?.kind) {
+    const handler = actionHandlers.get(data.kind);
+    if (source === 'listener' && handler) handler(data, response.actionIdentifier);
     return;
   }
 
-  // Риск-чек тестовой категории — пишем в лог.
+  // Риск-чек тестовой категории (без kind) — пишем в лог.
   void recordResponse(
     response.actionIdentifier,
     response.notification.request.identifier,
@@ -243,7 +253,7 @@ export async function scheduleTestNotification(seconds = 10): Promise<ScheduleRe
   return 'ok';
 }
 
-// ── Сценарий №1: подсказка «Ты на площадке?» ─────────────────────────────────
+// ── Планирование боевых уведомлений ──────────────────────────────────────────
 
 async function ensureWalkChannel(N: NotificationsModule): Promise<void> {
   if (Platform.OS !== 'android') return;
@@ -253,38 +263,49 @@ async function ensureWalkChannel(N: NotificationsModule): Promise<void> {
   });
 }
 
-export interface ParkPromptInput {
-  parkId: string;
+export interface NotifAction {
+  identifier: string;
+  buttonTitle: string;
+}
+
+export interface ScheduleNotifInput {
+  kind: string;
+  categoryId: string;
+  actions?: NotifAction[]; // кнопки (локализованы); пусто/нет — уведомление без кнопок
   title: string;
   body: string;
-  buttonTitle: string;
+  data?: Record<string, unknown>;
   fireInSeconds: number;
 }
 
-// Планирует подсказку на «вход в зону + порог». Возвращает id запланированного
-// уведомления (для отмены) или null, если модуля нет / нет разрешения. Текст и
-// название площадки уже локализованы вызывающим (WalkScreen: есть t и markers).
-export async function scheduleParkPrompt(input: ParkPromptInput): Promise<string | null> {
+// Планирует локальное уведомление через fireInSeconds. Возвращает id (для отмены)
+// или null, если модуля нет / нет разрешения. Тексты уже локализованы вызывающим
+// (WalkScreen: есть t и markers). Для «показать сейчас» — fireInSeconds = 1.
+export async function scheduleNotif(input: ScheduleNotifInput): Promise<string | null> {
   const N = lib();
   if (!N) return null;
   const perm = await N.getPermissionsAsync();
   if (!perm.granted) return null; // мид-прогулки системный диалог не поднимаем
 
-  await N.setNotificationCategoryAsync(PARK_CATEGORY, [
-    {
-      identifier: PARK_ACTION_HERE,
-      buttonTitle: input.buttonTitle,
-      options: { opensAppToForeground: false, isAuthenticationRequired: false },
-    },
-  ]);
+  const hasActions = !!input.actions && input.actions.length > 0;
+  if (hasActions) {
+    await N.setNotificationCategoryAsync(
+      input.categoryId,
+      input.actions!.map((a) => ({
+        identifier: a.identifier,
+        buttonTitle: a.buttonTitle,
+        options: { opensAppToForeground: false, isAuthenticationRequired: false },
+      })),
+    );
+  }
   await ensureWalkChannel(N);
 
   return N.scheduleNotificationAsync({
     content: {
       title: input.title,
       body: input.body,
-      categoryIdentifier: PARK_CATEGORY,
-      data: { kind: 'park_prompt', parkId: input.parkId },
+      categoryIdentifier: hasActions ? input.categoryId : undefined,
+      data: { kind: input.kind, ...(input.data ?? {}) },
     },
     trigger: {
       type: N.SchedulableTriggerInputTypes.TIME_INTERVAL,

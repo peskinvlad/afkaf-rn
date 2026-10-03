@@ -58,8 +58,17 @@ import {
   AutoFinishDetector,
   AutoFinishHit,
   PARK_NEAR_M,
+  HOME_PROMPT_MS,
+  HOME_PROMPT_TEST_MS,
 } from '../lib/autoFinish';
-import { getDevAutoFinishTest, getDevParkCheckinTest, getDevParkPromptTest } from '../constants/dev';
+import {
+  getDevAutoFinishTest,
+  getDevParkCheckinTest,
+  getDevParkPromptTest,
+  getDevHomePromptTest,
+  getDevStillWalkingTest,
+  getDevProximityTest,
+} from '../constants/dev';
 import {
   startParkCheckinSession,
   endParkCheckinSession,
@@ -75,10 +84,17 @@ import {
 import { subscribeWalkLocations, startWalkTracking, stopWalkTracking } from '../lib/walkTracking';
 import {
   isNotificationsAvailable,
-  scheduleParkPrompt,
+  scheduleNotif,
   cancelScheduledNotification,
   presentWalkNotice,
-  registerParkPromptHandler,
+  registerNotifHandler,
+  KIND_PARK,
+  CAT_PARK,
+  ACT_PARK_HERE,
+  KIND_HOME,
+  CAT_HOME,
+  ACT_FINISH,
+  ACT_KEEP,
 } from '../lib/notifications';
 
 // Старт — общий START_COORD (Бат-Ям, см. lib/geo). Во время прогулки камера
@@ -605,6 +621,12 @@ export function WalkScreen({ navigation }: Props) {
   const autoPendingRef = useRef<AutoFinishedWalk | null>(null);
   const autoRouteRef = useRef<LatLng[]>([]);
   const parksRef = useRef<LatLng[]>([]);
+  // ── Сценарий №2 «Уже дома?» ───────────────────────────────────────────────
+  // Подсказку планируем в ОС на «вход в домашнюю зону (кандидат) + порог» (10 мин),
+  // отменяем при выходе из зоны / «Ещё гуляю» / авто-завершении / конце прогулки.
+  const homePromptThresholdMs = useRef<number>(HOME_PROMPT_MS);
+  const homePromptScheduledId = useRef<string | null>(null);
+  const homePromptForSince = useRef<number | null>(null);
   // Источник — ПОЛНЫЙ markers, НЕ filteredMarkers: фильтр карты (activeCategories/
   // радиус) скрывает только пины. Фолбэк автозавершения «около парка» не должен
   // зависеть от того, что тестер снял галочку с парков в фильтре.
@@ -619,8 +641,13 @@ export function WalkScreen({ navigation }: Props) {
   useEffect(() => {
     let disposed = false;
     (async () => {
-      const [zone, testMode] = await Promise.all([loadHomeZone(), getDevAutoFinishTest()]);
+      const [zone, testMode, homePromptTest] = await Promise.all([
+        loadHomeZone(),
+        getDevAutoFinishTest(),
+        getDevHomePromptTest(),
+      ]);
       if (disposed) return;
+      homePromptThresholdMs.current = homePromptTest ? HOME_PROMPT_TEST_MS : HOME_PROMPT_MS;
       autoDetector.current = createAutoFinishDetector({
         home: zone,
         testMode,
@@ -719,11 +746,13 @@ export function WalkScreen({ navigation }: Props) {
       const name = dogParkNamesRef.current[parkId]?.trim();
       const parkLabel = name || t('park.notif.fallbackName');
       const fireInSeconds = Math.max(1, Math.round((fireAt - Date.now()) / 1000));
-      const id = await scheduleParkPrompt({
-        parkId,
+      const id = await scheduleNotif({
+        kind: KIND_PARK,
+        categoryId: CAT_PARK,
+        actions: [{ identifier: ACT_PARK_HERE, buttonTitle: t('park.notif.action') }],
         title: t('park.notif.title'),
         body: t('park.notif.body', { park: parkLabel }),
-        buttonTitle: t('park.notif.action'),
+        data: { parkId },
         fireInSeconds,
       });
       // Пока ждали планирования — вышли из зоны / сменили парк: лишнее отменяем.
@@ -761,14 +790,80 @@ export function WalkScreen({ navigation }: Props) {
   // Кнопка «Я здесь» из подсказки №1 → существующий checkInHere, затем короткий
   // результат (приложение не открывалось — иначе не узнать, сработало ли).
   useEffect(() => {
-    return registerParkPromptHandler(async (parkId) => {
-      const res = await checkInHere(parkId);
-      if (res === 'ok') {
-        presentWalkNotice(t('park.notif.okTitle'), t('park.notif.okBody'));
-      } else if (res !== 'nobody') {
-        presentWalkNotice(t('park.notif.failTitle'), t('park.notif.failBody'));
+    return registerNotifHandler(KIND_PARK, (data, action) => {
+      if (action !== ACT_PARK_HERE) return;
+      const parkId = typeof data.parkId === 'string' ? data.parkId : null;
+      if (!parkId) return;
+      void (async () => {
+        const res = await checkInHere(parkId);
+        if (res === 'ok') {
+          presentWalkNotice(t('park.notif.okTitle'), t('park.notif.okBody'));
+        } else if (res !== 'nobody') {
+          presentWalkNotice(t('park.notif.failTitle'), t('park.notif.failBody'));
+        }
+      })();
+    });
+  }, [t]);
+
+  // ── Сценарий №2: планирование / отмена / действия подсказки «Уже дома?» ─────
+  function cancelHomePrompt() {
+    if (homePromptScheduledId.current) {
+      cancelScheduledNotification(homePromptScheduledId.current);
+      homePromptScheduledId.current = null;
+    }
+    homePromptForSince.current = null;
+  }
+
+  async function evaluateHomePrompt() {
+    if (!isNotificationsAvailable) return;
+    const since = finishingRef.current ? null : autoDetector.current?.homeCandidateSince() ?? null;
+    if (since == null) {
+      cancelHomePrompt();
+      return;
+    }
+    if (homePromptForSince.current === since) return; // уже запланировано на этого кандидата
+    cancelHomePrompt();
+    homePromptForSince.current = since;
+    const fireInSeconds = Math.max(
+      1,
+      Math.round((since + homePromptThresholdMs.current - Date.now()) / 1000),
+    );
+    const id = await scheduleNotif({
+      kind: KIND_HOME,
+      categoryId: CAT_HOME,
+      actions: [
+        { identifier: ACT_FINISH, buttonTitle: t('home.notif.finish') },
+        { identifier: ACT_KEEP, buttonTitle: t('home.notif.keep') },
+      ],
+      title: t('home.notif.title'),
+      body: t('home.notif.body'),
+      fireInSeconds,
+    });
+    if (homePromptForSince.current === since) homePromptScheduledId.current = id;
+    else if (id) cancelScheduledNotification(id);
+  }
+
+  const homeEvalRef = useRef(evaluateHomePrompt);
+  homeEvalRef.current = evaluateHomePrompt;
+
+  // Кнопки подсказки №2: «Завершить» → forceHome + handleAutoFinish (завершение с
+  // прибытием к двери); «Ещё гуляю» → rejectHome (до следующего выхода из зоны).
+  useEffect(() => {
+    const unreg = registerNotifHandler(KIND_HOME, (_data, action) => {
+      if (action === ACT_FINISH) {
+        cancelHomePrompt();
+        const hit = autoDetector.current?.forceHome();
+        if (hit) void handleAutoFinish(hit);
+      } else if (action === ACT_KEEP) {
+        autoDetector.current?.rejectHome();
+        cancelHomePrompt();
       }
     });
+    return () => {
+      unreg();
+      cancelHomePrompt(); // конец прогулки / уход с экрана — снять запланированную подсказку
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t]);
 
   function runAutoFinishCheck() {
@@ -789,6 +884,7 @@ export function WalkScreen({ navigation }: Props) {
     if (finishingRef.current) return;
     finishingRef.current = true;
     setFinishing(true);
+    cancelHomePrompt(); // прогулка завершается — подсказка «Уже дома?» больше не нужна
 
     // Трек режем на ВХОДЕ в домашнюю зону (routeCutLen), даже если время/дистанция
     // посчитаны до прибытия к двери: точки внутри зоны в сохранённый трек не идут.
@@ -810,6 +906,18 @@ export function WalkScreen({ navigation }: Props) {
       heatStatusAtFinish: heatData.status,
     };
     await saveAutoFinished(walk);
+    // Приложение не открыто (фон) — иначе человек не узнает, что прогулка
+    // завершилась сама: отдельное уведомление без кнопок «Прогулка завершена».
+    // Открыто → сразу покажем экран итогов, уведомление не нужно.
+    if (AppState.currentState !== 'active') {
+      presentWalkNotice(
+        t('walk.autoFinished.notifTitle'),
+        t('walk.autoFinished.notifBody', {
+          km: walk.distanceKm.toFixed(2),
+          min: Math.round(walk.durationS / 60),
+        }),
+      );
+    }
     // park_checkout ДО остановки трекинга (с таймаутом): в фоне iOS усыпляет
     // приложение сразу после stopWalkTracking — fire-and-forget checkout терялся.
     await raceWithTimeout(endParkCheckinSession(), PARK_CHECKOUT_TIMEOUT_MS);
@@ -854,11 +962,13 @@ export function WalkScreen({ navigation }: Props) {
     const id = setInterval(() => {
       autoCheckRef.current();
       tickParkCheckin(Date.now());
+      void homeEvalRef.current();
     }, AUTO_FINISH_CHECK_MS);
     const sub = AppState.addEventListener('change', (s) => {
       if (s !== 'active') return;
       autoCheckRef.current();
       tickParkCheckin(Date.now());
+      void homeEvalRef.current();
       autoResumeRef.current();
     });
     return () => {
@@ -893,6 +1003,7 @@ export function WalkScreen({ navigation }: Props) {
       // old timestamps, and an exit at its end must land before the dwell is
       // judged against Date.now().
       tickParkCheckin(Date.now());
+      void homeEvalRef.current(); // подсказка №2: кандидат «дом» мог появиться/исчезнуть
       // Публикуем active_walks и из фонового пути (не только 60-с таймер, который
       // iOS не крутит при погашенном экране) — тем же троттл-гейтом. Иначе
       // updated_at протухает: нас теряют в «гуляют рядом» и сервер режет

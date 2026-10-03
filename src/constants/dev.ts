@@ -63,6 +63,12 @@ export const DEV_PARK_CHECKIN_TEST_KEY = 'dev_park_checkin_test';
 // «Тест: подсказка 30 с» для уведомления №1 «Ты на площадке?» (DevPanel): порог
 // показа подсказки 30 с вместо 3 мин. Читается WalkScreen при старте прогулки.
 export const DEV_PARK_PROMPT_TEST_KEY = 'dev_park_prompt_test';
+// «Тест: подсказка 30 с» для уведомления №2 «Уже дома?»: порог 30 с вместо 10 мин.
+export const DEV_HOME_PROMPT_TEST_KEY = 'dev_home_prompt_test';
+// «Тест: 2 мин» для уведомления №4 «Ты всё ещё гуляешь?»: порог 2 мин вместо 2 ч.
+export const DEV_STILL_WALKING_TEST_KEY = 'dev_still_walking_test';
+// «Тест: радиус 150 м» для уведомлений №3 (опасность) и №5 (метка рядом).
+export const DEV_PROXIMITY_TEST_KEY = 'dev_proximity_test';
 
 // ── Мини-шина событий ────────────────────────────────────────────────────────
 // DevPanel меняет ключи в AsyncStorage; подписчики (useAsphaltTemp) должны
@@ -141,6 +147,39 @@ export async function getDevParkPromptTest(): Promise<boolean> {
     return (await AsyncStorage.getItem(DEV_PARK_PROMPT_TEST_KEY)) === 'true';
   } catch (e) {
     console.warn('[dev] getDevParkPromptTest failed:', e);
+    return false;
+  }
+}
+
+export async function getDevHomePromptTest(): Promise<boolean> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!isDevUser(session?.user?.id)) return false;
+    return (await AsyncStorage.getItem(DEV_HOME_PROMPT_TEST_KEY)) === 'true';
+  } catch (e) {
+    console.warn('[dev] getDevHomePromptTest failed:', e);
+    return false;
+  }
+}
+
+export async function getDevStillWalkingTest(): Promise<boolean> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!isDevUser(session?.user?.id)) return false;
+    return (await AsyncStorage.getItem(DEV_STILL_WALKING_TEST_KEY)) === 'true';
+  } catch (e) {
+    console.warn('[dev] getDevStillWalkingTest failed:', e);
+    return false;
+  }
+}
+
+export async function getDevProximityTest(): Promise<boolean> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!isDevUser(session?.user?.id)) return false;
+    return (await AsyncStorage.getItem(DEV_PROXIMITY_TEST_KEY)) === 'true';
+  } catch (e) {
+    console.warn('[dev] getDevProximityTest failed:', e);
     return false;
   }
 }
