@@ -29,10 +29,22 @@ function lib(): NotificationsModule | null {
 
 export const TEST_CATEGORY = 'afkaf_test';
 export const TEST_ACTION_HERE = 'here';
-const TEST_CHANNEL = 'afkaf-test';
 
-// Общий канал подсказок на прогулке (Android).
-const WALK_CHANNEL = 'afkaf-walk';
+// Общий канал (Android) для всех уведомлений, включая тестовое из DevPanel.
+// Настройки канала (важность, звук, вибрация) после создания не меняются —
+// поэтому новый id; старые каналы без звука удаляем.
+const WALK_CHANNEL = 'afkaf-walk-v2';
+const LEGACY_CHANNELS = ['afkaf-walk', 'afkaf-test'];
+
+// Общие поля content для всех уведомлений: без явного sound iOS доставляет
+// уведомление беззвучно. interruptionLevel 'active' — дефолт iOS, задан явно.
+function alertContent(N: NotificationsModule) {
+  return {
+    sound: 'default',
+    interruptionLevel: 'active',
+    priority: N.AndroidNotificationPriority.HIGH,
+  } as const;
+}
 
 // Виды боевых уведомлений, их категории и кнопки. Тексты кнопок локализуются при
 // планировании (setNotificationCategoryAsync можно звать повторно).
@@ -242,23 +254,19 @@ export async function scheduleTestNotification(seconds = 10): Promise<ScheduleRe
     },
   ]);
 
-  if (Platform.OS === 'android') {
-    await N.setNotificationChannelAsync(TEST_CHANNEL, {
-      name: 'Тест уведомлений',
-      importance: N.AndroidImportance.HIGH,
-    });
-  }
+  await ensureWalkChannel(N);
 
   await N.scheduleNotificationAsync({
     content: {
       title: 'afkaf — тест',
       body: 'Нажми «Я здесь» с экрана блокировки, не открывая приложение.',
       categoryIdentifier: TEST_CATEGORY,
+      ...alertContent(N),
     },
     trigger: {
       type: N.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds,
-      channelId: TEST_CHANNEL,
+      channelId: WALK_CHANNEL,
     },
   });
   return 'ok';
@@ -271,7 +279,13 @@ async function ensureWalkChannel(N: NotificationsModule): Promise<void> {
   await N.setNotificationChannelAsync(WALK_CHANNEL, {
     name: 'Подсказки на прогулке',
     importance: N.AndroidImportance.HIGH,
+    sound: 'default',
+    enableVibrate: true,
+    vibrationPattern: [0, 250, 250, 250],
   });
+  for (const id of LEGACY_CHANNELS) {
+    await N.deleteNotificationChannelAsync(id).catch(() => {});
+  }
 }
 
 export interface NotifAction {
@@ -321,6 +335,7 @@ export async function scheduleNotif(input: ScheduleNotifInput): Promise<string |
       body: input.body,
       categoryIdentifier: hasActions ? input.categoryId : undefined,
       data: { kind: input.kind, ...(input.data ?? {}) },
+      ...alertContent(N),
     },
     trigger: {
       type: N.SchedulableTriggerInputTypes.TIME_INTERVAL,
@@ -349,7 +364,7 @@ export async function presentWalkNotice(title: string, body: string): Promise<vo
   if (!perm.granted) return;
   await ensureWalkChannel(N);
   await N.scheduleNotificationAsync({
-    content: { title, body },
+    content: { title, body, ...alertContent(N) },
     trigger: {
       type: N.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds: 1,
