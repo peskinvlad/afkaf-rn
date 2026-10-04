@@ -1406,6 +1406,7 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   },
   nearbyArrow: {
     fontSize: 11,
+    fontFamily: font.body,
     color: colors.textMuted,
   },
 
@@ -1426,6 +1427,7 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   },
   bannerSub: {
     fontSize: 12,
+    fontFamily: font.body,
     color: colors.textSecondary,
   },
   bannerCta: {
@@ -1450,6 +1452,7 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   },
   bannerCloseTxt: {
     fontSize: 18,
+    fontFamily: font.body,
     color: colors.textMuted,
     lineHeight: 20,
   },

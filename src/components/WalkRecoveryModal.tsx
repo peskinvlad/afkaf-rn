@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useApp, AutoFinishedNotice } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
@@ -6,9 +6,12 @@ import { finalizeWalk, isValidWalk } from '../lib/walkFinalize';
 import { formatClock } from '../lib/autoFinish';
 import { closeParkCheckin } from '../lib/parkCheckin';
 import { colors, radii, shadows } from '../theme/tokens';
+import { useTypography } from '../theme/fonts';
 
 export function WalkRecoveryModal() {
   const { t, abandonedWalk, clearAbandonedWalk, confirmedCount, autoFinishedWalk, clearAutoFinishedWalk } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
 
   if (autoFinishedWalk) {
     return <AutoFinishedCard walk={autoFinishedWalk} t={t} onClose={clearAutoFinishedWalk} />;
@@ -112,6 +115,8 @@ function AutoFinishedCard({
   t: (key: string, vars?: Record<string, string | number>) => string;
   onClose: () => void;
 }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   const time = formatClock(new Date(walk.endedAt).getTime());
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -146,7 +151,7 @@ function AutoFinishedCard({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -165,13 +170,14 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 40 },
   title: {
     fontSize: 18,
-    fontWeight: '800',
+    fontFamily: ty.font.display,
     color: colors.ink,
     textAlign: 'center',
     letterSpacing: -0.3,
   },
   message: {
     fontSize: 14,
+    fontFamily: ty.font.body,
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
@@ -182,10 +188,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   statCol: { alignItems: 'center', paddingHorizontal: 20, gap: 2 },
-  statValue: { fontSize: 22, fontWeight: '800', color: colors.ink, letterSpacing: -0.5 },
+  statValue: { fontSize: 22, fontFamily: ty.font.display, color: colors.ink, letterSpacing: -0.5 },
   statLabel: {
     fontSize: 11,
-    fontWeight: '600',
+    fontFamily: ty.font.bodyBold,
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -199,7 +205,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   btnPrimary: { backgroundColor: colors.primary },
-  btnPrimaryTxt: { fontSize: 15, fontWeight: '700', color: colors.white },
+  btnPrimaryTxt: { fontSize: 15, fontFamily: ty.font.heading, color: colors.white },
   btnSecondary: { backgroundColor: colors.surface },
-  btnSecondaryTxt: { fontSize: 15, fontWeight: '600', color: colors.textMuted },
+  btnSecondaryTxt: { fontSize: 15, fontFamily: ty.font.bodyBold, color: colors.textMuted },
 });

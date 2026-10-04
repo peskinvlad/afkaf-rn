@@ -294,7 +294,7 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  shareTxt: { fontSize: 18, color: colors.ink },
+  shareTxt: { fontSize: 18, fontFamily: font.body, color: colors.ink },
 
   // Scroll content
   scroll: { flex: 1 },
@@ -415,6 +415,7 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   },
   guestCardBody: {
     fontSize: 13,
+    fontFamily: font.body,
     color: colors.textSecondary,
     lineHeight: 18,
   },

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Share,
@@ -14,7 +14,8 @@ import * as Clipboard from 'expo-clipboard';
 import { Check, X } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
-import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
+import { colors, radii, shadows, spacing } from '../theme/tokens';
+import { useTypography } from '../theme/fonts';
 
 interface Props {
   visible: boolean;
@@ -24,6 +25,8 @@ interface Props {
 export function ShareProfileSheet({ visible, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const { t, rtl } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   const translateY = useRef(new Animated.Value(300)).current;
   const [link, setLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -101,7 +104,7 @@ export function ShareProfileSheet({ visible, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   overlay: { ...StyleSheet.absoluteFillObject, zIndex: 30, justifyContent: 'flex-end' },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {
@@ -116,7 +119,7 @@ const styles = StyleSheet.create({
 
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' },
   rowReverse: { flexDirection: 'row-reverse' },
-  title: { ...typography.h2, color: colors.ink },
+  title: { ...ty.variants.h2, color: colors.ink },
   closeBtn: {
     width: 32, height: 32, borderRadius: 16,
     backgroundColor: colors.surface,
@@ -124,7 +127,7 @@ const styles = StyleSheet.create({
   },
 
   qrWrap: { padding: spacing.lg, backgroundColor: colors.white, borderRadius: radii.lg },
-  linkText: { ...typography.xs, color: colors.textMuted, maxWidth: '90%' },
+  linkText: { ...ty.variants.xs, color: colors.textMuted, maxWidth: '90%' },
 
   copyBtn: {
     flexDirection: 'row',
@@ -137,7 +140,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  copyBtnTxt: { ...typography.body, fontFamily: 'Nunito_600SemiBold', color: colors.textSecondary },
+  copyBtnTxt: { ...ty.variants.body, fontFamily: ty.font.bodyBold, color: colors.textSecondary },
 
   shareBtn: {
     width: '100%',
@@ -146,5 +149,5 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
     backgroundColor: colors.primaryDark,
   },
-  shareBtnTxt: { ...typography.body, fontFamily: 'Nunito_700Bold', color: colors.white },
+  shareBtnTxt: { ...ty.variants.body, fontFamily: ty.font.heading, color: colors.white },
 });

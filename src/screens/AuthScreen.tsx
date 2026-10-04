@@ -370,7 +370,7 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   googleIcon: {
     fontSize: 17,
     color: '#4285F4',
-    fontFamily: 'Nunito_700Bold',
+    fontFamily: font.heading,
   },
   btnGoogleTxt: {
     fontSize: 16,

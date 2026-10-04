@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { useApp } from '../hooks/useApp';
 import { colors, radii, shadows } from '../theme/tokens';
+import { useTypography } from '../theme/fonts';
 
 interface Props {
   onDismiss: () => void;
@@ -12,6 +13,8 @@ interface Props {
 // location-dependent action can't proceed without permission.
 export function LocationRequiredCard({ onDismiss }: Props) {
   const { t } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
 
   function openSettings() {
     onDismiss();
@@ -38,7 +41,7 @@ export function LocationRequiredCard({ onDismiss }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   wrap: {
     position: 'absolute',
     left: 0,
@@ -58,11 +61,12 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 32 },
   title: {
     fontSize: 16,
-    fontWeight: '800',
+    fontFamily: ty.font.display,
     color: colors.ink,
   },
   body: {
     fontSize: 14,
+    fontFamily: ty.font.body,
     color: colors.textSecondary,
     lineHeight: 20,
   },
@@ -77,7 +81,7 @@ const styles = StyleSheet.create({
   },
   btnPrimaryTxt: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     color: colors.white,
   },
   btnGhost: {
@@ -87,7 +91,7 @@ const styles = StyleSheet.create({
   },
   btnGhostTxt: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: ty.font.bodyBold,
     color: colors.textMuted,
   },
 });

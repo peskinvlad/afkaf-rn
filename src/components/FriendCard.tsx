@@ -1,12 +1,15 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { Check, X } from 'lucide-react-native';
 import { FriendEntry } from '../hooks/useFriends';
-import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
+import { colors, radii, shadows, spacing } from '../theme/tokens';
+import { useTypography } from '../theme/fonts';
 
 export type FriendCardTab = 'friends' | 'incoming' | 'outgoing';
 
 function Avatar({ entry }: { entry: FriendEntry }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   if (entry.avatar_url) {
     return <Image source={{ uri: entry.avatar_url }} style={styles.avatar} />;
   }
@@ -42,6 +45,8 @@ export function FriendCard({
   onRemove?: () => void;
   onRevoke?: () => void;
 }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   const dogLine = [entry.dog_icon ?? '🐕', entry.dog_name, entry.dog_breed].filter(Boolean).join(' ');
 
   return (
@@ -80,7 +85,7 @@ export function FriendCard({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   rowReverse: { flexDirection: 'row-reverse' },
 
   card: {
@@ -94,11 +99,11 @@ const styles = StyleSheet.create({
   },
   avatar: { width: 48, height: 48, borderRadius: 24 },
   avatarFallback: { backgroundColor: colors.primaryDark, alignItems: 'center', justifyContent: 'center' },
-  avatarInitial: { fontSize: 18, fontWeight: '700', color: colors.white },
+  avatarInitial: { fontSize: 18, fontFamily: ty.font.heading, color: colors.white },
 
   cardInfo: { flex: 1, gap: 2 },
-  cardName: { ...typography.h3, color: colors.ink },
-  cardDog: { ...typography.sm, color: colors.textMuted },
+  cardName: { ...ty.variants.h3, color: colors.ink },
+  cardDog: { ...ty.variants.sm, color: colors.textMuted },
 
   cardActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
 
@@ -109,7 +114,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  btnGhostTxt: { ...typography.sm, fontFamily: 'Nunito_600SemiBold', color: colors.textSecondary },
+  btnGhostTxt: { ...ty.variants.sm, fontFamily: ty.font.bodyBold, color: colors.textSecondary },
 
   btnIconGhost: {
     width: 34,

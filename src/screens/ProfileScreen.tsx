@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { useFriends } from '../hooks/useFriends';
 import { BADGES } from '../constants/badges';
 import { supabase } from '../lib/supabase';
 import { clearLocalUserData } from '../lib/localReset';
+import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -128,6 +129,8 @@ export function ProfileScreen({ navigation }: Props) {
   const { t, lang, isGuest, isTrusted, confirmedCount, refreshTrustStatus } = useApp();
   const { earnedIds: earnedBadgeIds, refresh: refreshBadges } = useBadges();
   const { friends } = useFriends();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
 
   const [loading, setLoading]         = useState(true);
   const [profile, setProfile]         = useState<Profile | null>(null);
@@ -477,10 +480,14 @@ function AvatarView({ googleUrl, size }: { googleUrl: string | null; size: numbe
 }
 
 function SectionHeader({ title }: { title: string }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   return <Text style={styles.sectionHeader}>{title}</Text>;
 }
 
 function StatCol({ value, label, onPress }: { value: string; label: string; onPress?: () => void }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   const body = (
     <>
       <Text style={styles.statValue}>{value}</Text>
@@ -498,6 +505,8 @@ function StatCol({ value, label, onPress }: { value: string; label: string; onPr
 }
 
 function DogCard({ dog, onEdit, t, lang }: { dog: Dog; onEdit: () => void; t: (k: string, vars?: Record<string, string | number>) => string; lang: Lang }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   const hasPhoto = !!dog.photo_url;
   const details  = [
     dog.breed,
@@ -534,6 +543,8 @@ function DogCard({ dog, onEdit, t, lang }: { dog: Dog; onEdit: () => void; t: (k
 }
 
 function DogTrait({ label, value }: { label: string; value: string }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   return (
     <View style={styles.dogTrait}>
       <Text style={styles.dogTraitLabel}>{label}</Text>
@@ -543,6 +554,8 @@ function DogTrait({ label, value }: { label: string; value: string }) {
 }
 
 function WalkRow({ walk, t, lang }: { walk: Walk; t: (k: string, vars?: Record<string, string | number>) => string; lang: Lang }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   // Pre-duration_s rows only carry minutes — good enough for display
   const durationSec = walk.duration_s ?? (walk.duration_min != null ? walk.duration_min * 60 : null);
   return (
@@ -561,6 +574,8 @@ function WalkRow({ walk, t, lang }: { walk: Walk; t: (k: string, vars?: Record<s
 }
 
 function WalkStat({ value, label }: { value: string; label: string }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   return (
     <View style={styles.walkStatCol}>
       <Text style={styles.walkStatValue}>{value}</Text>
@@ -570,7 +585,7 @@ function WalkStat({ value, label }: { value: string; label: string }) {
 }
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surface },
   centered: { alignItems: 'center', justifyContent: 'center' },
 
@@ -584,8 +599,8 @@ const styles = StyleSheet.create({
   },
   navBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   navBtnRight: { minWidth: 44, height: 44, alignItems: 'flex-end', justifyContent: 'center', paddingHorizontal: 8 },
-  navBtnTxt: { fontSize: 26, color: colors.ink, lineHeight: 30, marginTop: -2 },
-  navTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '700', color: colors.ink, letterSpacing: -0.3 },
+  navBtnTxt: { fontSize: 26, fontFamily: ty.font.body, color: colors.ink, lineHeight: 30, marginTop: -2 },
+  navTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontFamily: ty.font.heading, color: colors.ink, letterSpacing: -0.3 },
 
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, gap: 12 },
@@ -607,6 +622,7 @@ const styles = StyleSheet.create({
   guestAvatarEmoji: { fontSize: 40 },
   guestTitle: {
     fontSize: 15,
+    fontFamily: ty.font.body,
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 21,
@@ -618,7 +634,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     marginTop: 4,
   },
-  guestBtnTxt: { fontSize: 15, fontWeight: '700', color: colors.white },
+  guestBtnTxt: { fontSize: 15, fontFamily: ty.font.heading, color: colors.white },
 
   // Hero
   heroSection: { alignItems: 'center', gap: 8, paddingVertical: 12 },
@@ -629,8 +645,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarEditTxt: { fontSize: 13, color: colors.white },
-  displayName: { fontSize: 20, fontWeight: '800', color: colors.ink, letterSpacing: -0.4 },
+  avatarEditTxt: { fontSize: 13, fontFamily: ty.font.body, color: colors.white },
+  displayName: { fontSize: 20, fontFamily: ty.font.display, color: colors.ink, letterSpacing: -0.4 },
 
   // Trust badge
   trustBadge: {
@@ -639,13 +655,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#e8f0e6',
   },
   trustBadgeTrusted: { backgroundColor: '#fef3c7' },
-  trustBadgeTxt: { fontSize: 13, fontWeight: '700', color: '#2c5f25' },
+  trustBadgeTxt: { fontSize: 13, fontFamily: ty.font.heading, color: '#2c5f25' },
   trustBadgeTxtTrusted: { color: '#92580a' },
-  memberSince: { fontSize: 12, color: colors.textMuted },
+  memberSince: { fontSize: 12, fontFamily: ty.font.body, color: colors.textMuted },
 
   // Trust progress card
   trustCard: { gap: 8 },
-  trustCardTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
+  trustCardTitle: { fontSize: 14, fontFamily: ty.font.heading, color: colors.ink },
   trustBarBg: {
     height: 6, borderRadius: 3,
     backgroundColor: colors.border,
@@ -655,7 +671,7 @@ const styles = StyleSheet.create({
     height: 6, borderRadius: 3,
     backgroundColor: colors.primary,
   },
-  trustCardHint: { fontSize: 12, color: colors.textMuted, lineHeight: 17 },
+  trustCardHint: { fontSize: 12, fontFamily: ty.font.body, color: colors.textMuted, lineHeight: 17 },
 
   // Card base
   card: {
@@ -668,13 +684,13 @@ const styles = StyleSheet.create({
   // Stats
   statsRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
   statCol: { flex: 1, alignItems: 'center', gap: 4 },
-  statValue: { fontSize: 22, fontWeight: '800', color: colors.ink, letterSpacing: -0.5 },
-  statLabel: { fontSize: 11, fontWeight: '600', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  statValue: { fontSize: 22, fontFamily: ty.font.display, color: colors.ink, letterSpacing: -0.5 },
+  statLabel: { fontSize: 11, fontFamily: ty.font.bodyBold, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
   statDivider: { width: 1, height: 32, backgroundColor: colors.border },
 
   // Section header
   sectionHeader: {
-    fontSize: 12, fontWeight: '700',
+    fontSize: 12, fontFamily: ty.font.heading,
     color: colors.textMuted,
     textTransform: 'uppercase', letterSpacing: 0.8,
     marginTop: 4,
@@ -692,8 +708,8 @@ const styles = StyleSheet.create({
   dogAvatar: { width: 52, height: 52 },
   dogAvatarEmoji: { fontSize: 28 },
   dogInfo: { flex: 1, gap: 2 },
-  dogName: { fontSize: 16, fontWeight: '700', color: colors.ink },
-  dogDetails: { fontSize: 13, color: colors.textMuted },
+  dogName: { fontSize: 16, fontFamily: ty.font.heading, color: colors.ink },
+  dogDetails: { fontSize: 13, fontFamily: ty.font.body, color: colors.textMuted },
   dogEditBtn: {
     width: 34, height: 34, borderRadius: radii.sm,
     backgroundColor: colors.surface,
@@ -701,8 +717,8 @@ const styles = StyleSheet.create({
   },
   dogTraitsRow: { flexDirection: 'row' },
   dogTrait: { flex: 1, alignItems: 'center', gap: 3 },
-  dogTraitLabel: { fontSize: 10, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
-  dogTraitValue: { fontSize: 13, fontWeight: '600', color: colors.ink },
+  dogTraitLabel: { fontSize: 10, fontFamily: ty.font.heading, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  dogTraitValue: { fontSize: 13, fontFamily: ty.font.bodyBold, color: colors.ink },
 
   // Achievements grid
   badgesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
@@ -717,7 +733,7 @@ const styles = StyleSheet.create({
   badgeCellEmoji: { fontSize: 26 },
   badgeCellLabel: {
     fontSize: 10,
-    fontWeight: '600',
+    fontFamily: ty.font.bodyBold,
     color: colors.ink,
     textAlign: 'center',
     lineHeight: 13,
@@ -730,7 +746,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg, paddingVertical: 14,
     alignItems: 'center', backgroundColor: colors.card,
   },
-  addDogTxt: { fontSize: 14, fontWeight: '600', color: colors.textMuted },
+  addDogTxt: { fontSize: 14, fontFamily: ty.font.bodyBold, color: colors.textMuted },
 
   // Logout
   logoutBtn: {
@@ -738,21 +754,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
-  logoutTxt: { fontSize: 14, fontWeight: '600', color: '#9b1c1c' },
+  logoutTxt: { fontSize: 14, fontFamily: ty.font.bodyBold, color: '#9b1c1c' },
 
   // Delete account — destructive, set apart from logout
   deleteAccountBtn: { paddingVertical: 12, alignItems: 'center', marginTop: 2, minHeight: 44, justifyContent: 'center' },
-  deleteAccountTxt: { fontSize: 13, fontWeight: '700', color: '#9b1c1c', textDecorationLine: 'underline' },
+  deleteAccountTxt: { fontSize: 13, fontFamily: ty.font.heading, color: '#9b1c1c', textDecorationLine: 'underline' },
 
   // Walk row
   walkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
   walkLeft: { gap: 2 },
-  walkDate: { fontSize: 14, fontWeight: '700', color: colors.ink },
-  walkTime: { fontSize: 12, color: colors.textMuted },
+  walkDate: { fontSize: 14, fontFamily: ty.font.heading, color: colors.ink },
+  walkTime: { fontSize: 12, fontFamily: ty.font.body, color: colors.textMuted },
   walkStats: { flex: 1, flexDirection: 'row', justifyContent: 'flex-end', gap: 16 },
   walkStatCol: { alignItems: 'center', gap: 2 },
-  walkStatValue: { fontSize: 14, fontWeight: '700', color: colors.ink },
-  walkStatLabel: { fontSize: 10, fontWeight: '600', color: colors.textMuted, textTransform: 'uppercase' },
+  walkStatValue: { fontSize: 14, fontFamily: ty.font.heading, color: colors.ink },
+  walkStatLabel: { fontSize: 10, fontFamily: ty.font.bodyBold, color: colors.textMuted, textTransform: 'uppercase' },
 
   // Avatar modal
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
@@ -763,8 +779,8 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 12,
   },
-  modalTitle: { fontSize: 17, fontWeight: '700', color: colors.ink, letterSpacing: -0.3 },
-  modalSubLabel: { fontSize: 12, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 4 },
+  modalTitle: { fontSize: 17, fontFamily: ty.font.heading, color: colors.ink, letterSpacing: -0.3 },
+  modalSubLabel: { fontSize: 12, fontFamily: ty.font.heading, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 4 },
   modalRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
   modalThumb: { width: 44, height: 44, borderRadius: 22 },
   modalThumbPlaceholder: {
@@ -772,7 +788,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     alignItems: 'center', justifyContent: 'center',
   },
-  modalRowTxt: { fontSize: 15, fontWeight: '600', color: colors.ink },
+  modalRowTxt: { fontSize: 15, fontFamily: ty.font.bodyBold, color: colors.ink },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   emojiBtn: {
     width: 48, height: 48, borderRadius: radii.sm,

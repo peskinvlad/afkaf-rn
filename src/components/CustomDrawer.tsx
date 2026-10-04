@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
 import { useFriends } from '../hooks/useFriends';
+import { useTypography } from '../theme/fonts';
 import { colors, radii } from '../theme/tokens';
 
 const DRAWER_W = 280;
@@ -45,6 +46,8 @@ export function CustomDrawer({ open, onClose, onNavigate, activeScreen }: Props)
   const insets = useSafeAreaInsets();
   const { t, rtl, lang, setLang } = useApp();
   const { incomingCount } = useFriends();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
 
   const slideAnim = useRef(new Animated.Value(0)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
@@ -144,7 +147,7 @@ export function CustomDrawer({ open, onClose, onNavigate, activeScreen }: Props)
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -166,12 +169,13 @@ const styles = StyleSheet.create({
   },
   logo: {
     fontSize: 22,
-    fontWeight: '800',
+    fontFamily: ty.font.display,
     color: colors.primary,
     letterSpacing: -0.5,
   },
   tagline: {
     fontSize: 13,
+    fontFamily: ty.font.body,
     color: colors.textMuted,
     marginTop: 2,
   },
@@ -195,7 +199,7 @@ const styles = StyleSheet.create({
   menuLabel: {
     flex: 1,
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: ty.font.bodyBold,
     color: colors.ink,
   },
   menuLabelActive: {
@@ -212,7 +216,7 @@ const styles = StyleSheet.create({
   },
   menuBadgeTxt: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     color: colors.white,
   },
   langSwitcher: {
@@ -234,7 +238,7 @@ const styles = StyleSheet.create({
   },
   langTxt: {
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     color: colors.textMuted,
   },
   langTxtActive: {

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
+import { useTypography } from '../theme/fonts';
 import { pickBestWalkTime } from '../lib/heat';
 import { colors, radii, shadows, spacing, typography, heatVis } from '../theme/tokens';
 
@@ -83,6 +84,8 @@ const TIPS_KEYS = ['heat.tips.0', 'heat.tips.1', 'heat.tips.2'] as const;
 export function PavementTempScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { t, heatData, feelsLikeC, weatherDescription, weatherIcon, hourlyForecast, isFallbackLocation } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
 
   const status = heatData.status;
   const vis = heatVis[status];
@@ -275,7 +278,7 @@ export function PavementTempScreen({ navigation }: any) {
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.surface,
@@ -298,10 +301,11 @@ const styles = StyleSheet.create({
   },
   backArrow: {
     fontSize: 20,
+    fontFamily: ty.font.body,
     color: colors.ink,
   },
   headerTitle: {
-    ...typography.h2,
+    ...ty.variants.h2,
     color: colors.ink,
     flex: 1,
     textAlign: 'center',
@@ -323,12 +327,14 @@ const styles = StyleSheet.create({
   },
   fallbackLocationCaption: {
     fontSize: 11,
+    fontFamily: ty.font.body,
     color: colors.textMuted,
     textAlign: 'center',
     marginTop: -spacing.sm,
   },
   sunnySideNote: {
     fontSize: 11,
+    fontFamily: ty.font.body,
     color: colors.textMuted,
     textAlign: 'center',
     marginTop: -spacing.xs,
@@ -339,16 +345,16 @@ const styles = StyleSheet.create({
   },
   tempValue: {
     fontSize: 64,
-    fontFamily: 'Nunito_800ExtraBold',
+    fontFamily: ty.font.display,
     letterSpacing: -1,
     lineHeight: 70,
   },
   zoneName: {
-    ...typography.h2,
+    ...ty.variants.h2,
     marginTop: spacing.xs,
   },
   advice: {
-    ...typography.body,
+    ...ty.variants.body,
     textAlign: 'center',
     marginTop: spacing.xs,
     opacity: 0.85,
@@ -377,15 +383,15 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   airMain: {
-    ...typography.h3,
+    ...ty.variants.h3,
     color: colors.ink,
   },
   airSub: {
-    ...typography.sm,
+    ...ty.variants.sm,
     color: colors.textMuted,
   },
   airTime: {
-    ...typography.h3,
+    ...ty.variants.h3,
     color: colors.textMuted,
   },
 
@@ -394,7 +400,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   sectionLabel: {
-    ...typography.xs,
+    ...ty.variants.xs,
     color: colors.textMuted,
     letterSpacing: 0.8,
     marginLeft: spacing.xs,
@@ -431,8 +437,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   scaleLabel: {
-    ...typography.xs,
-    fontFamily: 'Nunito_600SemiBold',
+    ...ty.variants.xs,
+    fontFamily: ty.font.bodyBold,
   },
 
   // D. Forecast
@@ -455,7 +461,7 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
   forecastTime: {
-    ...typography.xs,
+    ...ty.variants.xs,
     color: colors.textMuted,
   },
   forecastIconBox: {
@@ -465,16 +471,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   forecastTimeBold: {
-    fontFamily: 'Nunito_700Bold',
+    fontFamily: ty.font.heading,
     color: colors.ink,
   },
   forecastAir: {
-    ...typography.xs,
+    ...ty.variants.xs,
     color: colors.textMuted,
   },
   forecastSurface: {
-    ...typography.sm,
-    fontFamily: 'Nunito_700Bold',
+    ...ty.variants.sm,
+    fontFamily: ty.font.heading,
   },
 
   // E. Best time
@@ -489,10 +495,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   bestTimeTitle: {
-    ...typography.h3,
+    ...ty.variants.h3,
   },
   bestTimeBody: {
-    ...typography.body,
+    ...ty.variants.body,
     color: colors.ink,
   },
 
@@ -505,18 +511,18 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   rule7Header: {
-    ...typography.h3,
+    ...ty.variants.h3,
     color: colors.ink,
   },
   rule7Body: {
-    ...typography.body,
+    ...ty.variants.body,
     color: colors.textSecondary,
     lineHeight: 22,
   },
 
   // G. Tips
   tipsTitle: {
-    ...typography.xs,
+    ...ty.variants.xs,
     color: colors.textMuted,
     letterSpacing: 0.8,
     marginLeft: spacing.xs,
@@ -538,12 +544,12 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   tipBullet: {
-    ...typography.body,
+    ...ty.variants.body,
     color: colors.primary,
     lineHeight: 22,
   },
   tipText: {
-    ...typography.body,
+    ...ty.variants.body,
     color: colors.ink,
     flex: 1,
     lineHeight: 22,

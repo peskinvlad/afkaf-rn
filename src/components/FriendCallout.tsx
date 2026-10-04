@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import {
   computeCalloutLayout,
@@ -10,7 +10,8 @@ import {
   TAIL_H,
   TAIL_W,
 } from '../lib/calloutLayout';
-import { animation, colors, radii, shadows, typography } from '../theme/tokens';
+import { animation, colors, radii, shadows } from '../theme/tokens';
+import { useTypography } from '../theme/fonts';
 
 type TFn = (key: string, vars?: Record<string, string | number>) => string;
 
@@ -40,6 +41,8 @@ function updatedLabel(updatedAt: number, t: TFn): string {
 // and when the position was last updated. Dismissed by the parent through the
 // same paths as the marker popup (menu / filters / sheets / walk-swipe).
 export function FriendCallout({ friend, anchor, topInset, t, rtl, onClose }: Props) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   const [container, setContainer] = useState<{ width: number; height: number } | null>(null);
   const [bubble, setBubble] = useState<{ width: number; height: number } | null>(null);
   const progress = useRef(new Animated.Value(0)).current;
@@ -149,7 +152,7 @@ export function FriendCallout({ friend, anchor, topInset, t, rtl, onClose }: Pro
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   overlay: { zIndex: 25 },
   block: { position: 'absolute', minWidth: MIN_WIDTH },
   bubble: {
@@ -186,11 +189,11 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.card,
   },
   txtRight: { textAlign: 'right' },
-  title: { ...typography.h2, color: colors.ink },
-  owner: { ...typography.sm, color: colors.textSecondary },
+  title: { ...ty.variants.h2, color: colors.ink },
+  owner: { ...ty.variants.sm, color: colors.textSecondary },
   meta: {
-    ...typography.xs,
-    fontFamily: 'Nunito_600SemiBold',
+    ...ty.variants.xs,
+    fontFamily: ty.font.bodyBold,
     color: colors.textMuted,
   },
 });

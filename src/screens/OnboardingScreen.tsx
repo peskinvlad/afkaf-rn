@@ -1,8 +1,9 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
-import { colors, radii, shadows, typography } from '../theme/tokens';
+import { useTypography } from '../theme/fonts';
+import { colors, radii, shadows } from '../theme/tokens';
 
 const { width: W } = Dimensions.get('window');
 
@@ -20,6 +21,8 @@ interface Props {
 export function OnboardingScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t, rtl } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   const [current, setCurrent] = useState(0);
   const listRef = useRef<FlatList>(null);
 
@@ -83,7 +86,7 @@ export function OnboardingScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.surface,
@@ -95,9 +98,9 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   skipTxt: {
-    ...typography.sm,
+    ...ty.variants.sm,
     color: colors.textMuted,
-    fontWeight: '600',
+    fontFamily: ty.font.bodyBold,
   },
   slide: {
     width: W,
@@ -112,7 +115,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 26,
-    fontWeight: '800',
+    fontFamily: ty.font.display,
     color: colors.ink,
     textAlign: 'center',
     letterSpacing: -0.5,
@@ -124,7 +127,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 24,
-    fontWeight: '400',
+    fontFamily: ty.font.body,
   },
   rtlText: {
     writingDirection: 'rtl',
@@ -156,7 +159,7 @@ const styles = StyleSheet.create({
   },
   ctaTxt: {
     fontSize: 17,
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     color: colors.white,
     letterSpacing: -0.3,
   },
