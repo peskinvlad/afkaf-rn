@@ -691,7 +691,6 @@ const styles = StyleSheet.create({
   voteBtnTxt: {
     fontSize: 14,
     fontFamily: 'Nunito_700Bold',
-    fontWeight: '700',
   },
   voteBtnTxtPrimary: { color: colors.white },
   voteBtnTxtGhost: { color: colors.ink },

@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useApp } from '../hooks/useApp';
+import { useTypography } from '../theme/fonts';
 import { LANGS } from '../i18n';
 import { MARKER_CONFIG } from '../lib/markerConfig';
 import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
@@ -91,6 +92,7 @@ function PillGroup<T extends string>({
 export function SettingsScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { t, lang, setLang } = useApp();
+  const { font } = useTypography();
   const rtl = I18nManager.isRTL;
 
   // Privacy
@@ -232,7 +234,7 @@ export function SettingsScreen({ navigation }: any) {
             />
           </Row>
           <Row>
-            <Text style={styles.visibilityDesc}>{t(`settings.privacy.desc_${visibility}`)}</Text>
+            <Text style={[styles.visibilityDesc, { fontFamily: font.body }]}>{t(`settings.privacy.desc_${visibility}`)}</Text>
           </Row>
 
           {/* Home radius */}
@@ -393,7 +395,7 @@ const styles = StyleSheet.create({
   rowIcon: { fontSize: 18 },
   rowLabel: { ...typography.body, color: colors.ink },
   rowSub: { ...typography.xs, color: colors.textMuted, marginTop: 2 },
-  visibilityDesc: { fontFamily: 'Nunito-Regular', fontSize: 13, color: colors.textMuted, marginTop: 6, lineHeight: 19 },
+  visibilityDesc: { fontSize: 13, color: colors.textMuted, marginTop: 6, lineHeight: 19 },
   chevron: { fontSize: 20, color: colors.textMuted },
 
   pillRow: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },

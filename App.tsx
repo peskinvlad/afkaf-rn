@@ -9,6 +9,8 @@ import {
   Nunito_700Bold,
   Nunito_800ExtraBold,
 } from '@expo-google-fonts/nunito';
+import { VarelaRound_400Regular } from '@expo-google-fonts/varela-round';
+import { Rubik_400Regular, Rubik_500Medium } from '@expo-google-fonts/rubik';
 import { AppProvider } from './src/hooks/useApp';
 import { RootNavigator } from './src/navigation/RootNavigator';
 
@@ -20,6 +22,9 @@ export default function App() {
     Nunito_600SemiBold,
     Nunito_700Bold,
     Nunito_800ExtraBold,
+    VarelaRound_400Regular,
+    Rubik_400Regular,
+    Rubik_500Medium,
   });
 
   useEffect(() => {

@@ -340,7 +340,6 @@ const styles = StyleSheet.create({
   tempValue: {
     fontSize: 64,
     fontFamily: 'Nunito_800ExtraBold',
-    fontWeight: '800',
     letterSpacing: -1,
     lineHeight: 70,
   },
@@ -434,7 +433,6 @@ const styles = StyleSheet.create({
   scaleLabel: {
     ...typography.xs,
     fontFamily: 'Nunito_600SemiBold',
-    fontWeight: '600',
   },
 
   // D. Forecast
@@ -468,7 +466,6 @@ const styles = StyleSheet.create({
   },
   forecastTimeBold: {
     fontFamily: 'Nunito_700Bold',
-    fontWeight: '700',
     color: colors.ink,
   },
   forecastAir: {
@@ -478,7 +475,6 @@ const styles = StyleSheet.create({
   forecastSurface: {
     ...typography.sm,
     fontFamily: 'Nunito_700Bold',
-    fontWeight: '700',
   },
 
   // E. Best time

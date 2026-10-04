@@ -531,7 +531,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 12,
     fontFamily: 'Nunito_700Bold',
-    fontWeight: '700',
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
@@ -549,7 +548,7 @@ const styles = StyleSheet.create({
   rowLabel: { ...typography.xs, color: colors.textMuted },
   rowLabelFlex: { ...typography.sm, color: colors.ink, flex: 1 },
   rowValue: { ...typography.sm, color: colors.ink },
-  rowValueHighlight: { fontFamily: 'Nunito_700Bold', fontWeight: '700', color: colors.primaryDark },
+  rowValueHighlight: { fontFamily: 'Nunito_700Bold', color: colors.primaryDark },
   mono: { ...typography.mono, fontSize: 12, color: colors.ink },
   flash: { ...typography.xs, color: colors.primary, fontFamily: 'Nunito_700Bold' },
   note: { ...typography.xs, color: colors.textMuted, lineHeight: 16 },
@@ -574,7 +573,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnPrimaryTxt: { fontSize: 13, fontFamily: 'Nunito_700Bold', fontWeight: '700', color: colors.white },
+  btnPrimaryTxt: { fontSize: 13, fontFamily: 'Nunito_700Bold', color: colors.white },
   btnGhost: {
     height: 48,
     paddingHorizontal: 14,
@@ -584,7 +583,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnGhostTxt: { fontSize: 13, fontFamily: 'Nunito_600SemiBold', fontWeight: '600', color: colors.ink },
+  btnGhostTxt: { fontSize: 13, fontFamily: 'Nunito_600SemiBold', color: colors.ink },
 
   resetRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },

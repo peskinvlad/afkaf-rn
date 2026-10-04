@@ -366,7 +366,6 @@ const styles = StyleSheet.create({
   },
   googleIcon: {
     fontSize: 17,
-    fontWeight: '700',
     color: '#4285F4',
     fontFamily: 'Nunito_700Bold',
   },

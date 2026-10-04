@@ -180,7 +180,6 @@ const styles = StyleSheet.create({
   btnTxt: {
     fontSize: 14,
     fontFamily: 'Nunito_700Bold',
-    fontWeight: '700',
     color: colors.white,
   },
   btnTxtMuted: { color: colors.textMuted },
