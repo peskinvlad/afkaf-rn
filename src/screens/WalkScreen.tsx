@@ -68,6 +68,9 @@ import {
   getDevHomePromptTest,
   getDevStillWalkingTest,
   getDevProximityTest,
+  getDevGpsProfile,
+  isDevUser,
+  GpsProfile,
 } from '../constants/dev';
 import {
   startParkCheckinSession,
@@ -460,6 +463,12 @@ export function WalkScreen({ navigation }: Props) {
   const glitchFilter = useRef(
     createGlitchFilter<Location.LocationObjectCoords & { timestamp: number }>()
   ).current;
+  // Эксперимент с батареей (только DEV): профиль GPS этой прогулки + счётчики
+  // качества трека для строки в итогах. accepted = попали в маршрут; dropped =
+  // received − accepted (отсеяны accuracy-гейтом или glitch-фильтром).
+  const gpsProfileRef = useRef<GpsProfile>('current');
+  const gpsReceivedRef = useRef(0);
+  const gpsAcceptedRef = useRef(0);
   // Heading drives the marker via Animated.Value — no per-tick re-renders.
   // Enabled once the GPS effect below confirms permission; that same effect
   // feeds it every accepted fix so it can switch to GPS course while moving.
@@ -600,6 +609,17 @@ export function WalkScreen({ navigation }: Props) {
     await syncActiveWalkRow(pt);
   }
 
+  // DEV-строка в итогах прогулки: профиль GPS + принято/отброшено точек. Только
+  // для DEV_USER_IDS; для остальных — undefined (строка не показывается).
+  function buildDevTrack() {
+    if (!isDevUser(currentUserIdRef.current)) return undefined;
+    return {
+      profile: gpsProfileRef.current,
+      received: gpsReceivedRef.current,
+      accepted: gpsAcceptedRef.current,
+    };
+  }
+
   // A walk only "counts" (walk_history + badges) past a minimum bar — see
   // lib/walkFinalize, shared with the recovery card.
   async function handleFinish() {
@@ -646,6 +666,7 @@ export function WalkScreen({ navigation }: Props) {
       newBadgeIds,
       isPersonalBest,
       heatStatusAtFinish,
+      devTrack: buildDevTrack(),
     });
   }
 
@@ -1270,6 +1291,7 @@ export function WalkScreen({ navigation }: Props) {
       heatStatusAtFinish: walk.heatStatusAtFinish,
       autoFinishReason: walk.reason,
       autoFinishedAt: walk.endedAt,
+      devTrack: buildDevTrack(),
     });
   }
 
@@ -1343,8 +1365,11 @@ export function WalkScreen({ navigation }: Props) {
         return;
       }
       setLocationGranted(true);
+      const profile = await getDevGpsProfile(); // DEV-эксперимент; не-dev всегда 'current'
+      if (cancelled) return;
+      gpsProfileRef.current = profile;
       try {
-        await startWalkTracking();
+        await startWalkTracking(profile);
       } catch (e) {
         console.warn('[WalkScreen] startWalkTracking failed:', e);
         if (!cancelled) Alert.alert(t('walk.geoError')); // task failed → no timer
@@ -1365,6 +1390,7 @@ export function WalkScreen({ navigation }: Props) {
     };
 
     function handleFix(loc: Location.LocationObject) {
+      gpsReceivedRef.current += 1; // DEV: все доставленные фиксы (до фильтров)
       // Everything below this line — marker, recorded track, distance,
       // the published presence row — is fed only by fixes that pass the
       // accuracy gate and then the plausibility gate. A bad fix used to
@@ -1379,6 +1405,7 @@ export function WalkScreen({ navigation }: Props) {
       }
       const stamped = { ...loc.coords, timestamp: loc.timestamp };
       for (const coords of glitchFilter.accept(stamped, loc.timestamp)) {
+        gpsAcceptedRef.current += 1; // DEV: прошли оба фильтра, попали в маршрут
         const pt = { latitude: coords.latitude, longitude: coords.longitude };
         moveUserMarker(pt);
         reportGpsFix(coords);

@@ -14,6 +14,20 @@ import { requireOptionalNativeModule } from 'expo';
 
 export const WALK_LOCATION_TASK = 'afkaf-walk-location';
 
+// Профиль GPS (эксперимент с батареей, только DEV): 'eco' снижает точность и
+// увеличивает шаг между точками. Остальное (activityType, pausesUpdatesAutomatically,
+// фильтры в WalkScreen) не меняется. По умолчанию — текущий профиль.
+export type GpsProfile = 'current' | 'eco';
+
+function profileOptions(profile: GpsProfile): {
+  accuracy: Location.Accuracy;
+  distanceInterval: number;
+} {
+  return profile === 'eco'
+    ? { accuracy: Location.Accuracy.High, distanceInterval: 10 }
+    : { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 5 };
+}
+
 // The native module exists only in builds made after expo-task-manager was
 // added. An older dev client still loads this JS from Metro, and importing
 // expo-task-manager there throws at module load and takes the whole app down
@@ -88,11 +102,12 @@ export function subscribeWalkLocations(fn: Listener): () => void {
   };
 }
 
-export async function startWalkTracking(): Promise<void> {
+export async function startWalkTracking(profile: GpsProfile = 'current'): Promise<void> {
+  const { accuracy, distanceInterval } = profileOptions(profile);
   if (!isBackgroundTrackingAvailable) {
     fallbackSub?.remove();
     fallbackSub = await Location.watchPositionAsync(
-      { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 5 },
+      { accuracy, distanceInterval },
       (loc) => {
         diag.watchFixCount += 1;
         diag.watchLastAt = Date.now();
@@ -103,8 +118,8 @@ export async function startWalkTracking(): Promise<void> {
   }
   try {
     await Location.startLocationUpdatesAsync(WALK_LOCATION_TASK, {
-      accuracy: Location.Accuracy.BestForNavigation,
-      distanceInterval: 5,
+      accuracy,
+      distanceInterval,
       activityType: Location.ActivityType.Fitness,
       // iOS default is to pause when the walker stands still (a dog sniffing a
       // lamppost). A paused session can't resume in the background without

@@ -26,6 +26,7 @@ import {
   DEV_HOME_PROMPT_TEST_KEY,
   DEV_STILL_WALKING_TEST_KEY,
   DEV_PROXIMITY_TEST_KEY,
+  DEV_GPS_PROFILE_KEY,
   emitDevSettingsChange,
 } from '../constants/dev';
 import { getAutoFinishDiagnostics, AutoFinishDiagnostics } from '../lib/autoFinish';
@@ -101,6 +102,7 @@ export function DevPanel({ visible, onClose }: Props) {
   const [homePromptTest, setHomePromptTest] = useState(false);
   const [stillWalkingTest, setStillWalkingTest] = useState(false);
   const [proximityTest, setProximityTest] = useState(false);
+  const [gpsEco, setGpsEco] = useState(false); // профиль GPS: true = «Эконом»
   const [dogName, setDogName] = useState<string | null>(null); // для {dog} в «Показать сейчас»
   const parkState = useParkCheckinState();
   // Короткие подтверждения «сброшено/применено» по ключу строки
@@ -144,6 +146,7 @@ export function DevPanel({ visible, onClose }: Props) {
         DEV_HOME_PROMPT_TEST_KEY,
         DEV_STILL_WALKING_TEST_KEY,
         DEV_PROXIMITY_TEST_KEY,
+        DEV_GPS_PROFILE_KEY,
       ]);
       const map = Object.fromEntries(entries) as Record<string, string | null>;
       setVisibility(map[VISIBILITY_KEY]);
@@ -161,6 +164,7 @@ export function DevPanel({ visible, onClose }: Props) {
       setHomePromptTest(map[DEV_HOME_PROMPT_TEST_KEY] === 'true');
       setStillWalkingTest(map[DEV_STILL_WALKING_TEST_KEY] === 'true');
       setProximityTest(map[DEV_PROXIMITY_TEST_KEY] === 'true');
+      setGpsEco(map[DEV_GPS_PROFILE_KEY] === 'eco');
 
       // Та же функция, что использует гейт active_walks (privacyZone.ts)
       setHomeZone(await loadHomeZone());
@@ -289,6 +293,14 @@ export function DevPanel({ visible, onClose }: Props) {
     setProximityTest(next);
     if (next) await AsyncStorage.setItem(DEV_PROXIMITY_TEST_KEY, 'true');
     else await AsyncStorage.removeItem(DEV_PROXIMITY_TEST_KEY);
+  }
+
+  // Профиль GPS (эксперимент с батареей): 'eco' vs текущий. Применяется со
+  // следующей прогулки (читается WalkScreen через getDevGpsProfile на старте).
+  async function toggleGpsEco(next: boolean) {
+    setGpsEco(next);
+    if (next) await AsyncStorage.setItem(DEV_GPS_PROFILE_KEY, 'eco');
+    else await AsyncStorage.removeItem(DEV_GPS_PROFILE_KEY);
   }
 
   // «Показать сейчас» — настоящие уведомления (реальные кнопки/тексты/обработчики)
@@ -515,6 +527,25 @@ export function DevPanel({ visible, onClose }: Props) {
               Синяя плашка iOS = фон реально пишет через задачу. Если точки идут
               только от watchPosition — фон не работает, трек рвётся при
               сворачивании и остановке на месте.
+            </Text>
+          </View>
+
+          {/* ── Профиль GPS (эксперимент с батареей) ── */}
+          <Text style={styles.sectionTitle}>Профиль GPS</Text>
+          <View style={styles.card}>
+            <View style={styles.switchRow}>
+              <Text style={styles.rowLabelFlex}>Эконом (High / 10 м)</Text>
+              <Switch
+                value={gpsEco}
+                onValueChange={toggleGpsEco}
+                trackColor={{ true: colors.primary, false: colors.border }}
+              />
+            </View>
+            <Text style={styles.note}>
+              Выкл = текущий профиль (BestForNavigation / 5 м). Вкл = Эконом
+              (Accuracy.High / 10 м). Применяется со следующей прогулки. В итогах
+              прогулки для dev — строка «профиль · принято/получено точек». Только
+              для DEV_USER_IDS.
             </Text>
           </View>
 

@@ -30,6 +30,7 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
     isValidWalk = false, newBadgeIds = [],
     isPersonalBest = false, heatStatusAtFinish = 'ok',
     autoFinishReason = null, autoFinishedAt = null,
+    devTrack = null,
   }: {
     duration: number; steps: number; distanceKm: number; routeCoordinates: RouteCoord[];
     isValidWalk?: boolean; newBadgeIds?: string[];
@@ -38,6 +39,9 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
     isPersonalBest?: boolean; heatStatusAtFinish?: HeatStatus;
     // Прогулку закончил детектор (lib/autoFinish), итог обрезан по T.
     autoFinishReason?: AutoFinishReason | null; autoFinishedAt?: string | null;
+    // Только для DEV_USER_IDS (WalkScreen.buildDevTrack): профиль GPS + качество
+    // трека этого эксперимента с батареей.
+    devTrack?: { profile: 'current' | 'eco'; received: number; accepted: number } | null;
   } = route.params ?? {};
   const newBadges = newBadgeIds.map((id: string) => BADGES.find((b) => b.id === id)).filter(Boolean) as typeof BADGES;
   const insets = useSafeAreaInsets();
@@ -184,6 +188,13 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
           <View style={styles.divider} />
           <StatCol value={String(steps)} label={t('walk.summary.steps')} />
         </View>
+
+        {/* DEV-only: профиль GPS и качество трека (эксперимент с батареей). */}
+        {devTrack && (
+          <Text style={styles.devTrackTxt}>
+            {`GPS: ${devTrack.profile === 'eco' ? 'Эконом · High/10 м' : 'Текущий · Best/5 м'} — точек ${devTrack.accepted}/${devTrack.received} (отброшено ${Math.max(0, devTrack.received - devTrack.accepted)})`}
+          </Text>
+        )}
 
         {/* New badges — soft cards, no confetti/sound, just a warm nod */}
         {isValidWalk && newBadges.map((badge) => (
@@ -350,6 +361,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   divider: { width: 1, height: 36, backgroundColor: colors.border },
+
+  // DEV-строка (эксперимент с GPS-профилем) — мелкая, приглушённая, по центру.
+  devTrackTxt: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: -8,
+  },
 
   // Похвала за короткую прогулку в жару — мягкая карточка, тон поддержки
   praiseCard: {

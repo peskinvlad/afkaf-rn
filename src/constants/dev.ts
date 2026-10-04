@@ -69,6 +69,9 @@ export const DEV_HOME_PROMPT_TEST_KEY = 'dev_home_prompt_test';
 export const DEV_STILL_WALKING_TEST_KEY = 'dev_still_walking_test';
 // «Тест: радиус 150 м» для уведомлений №3 (опасность) и №5 (метка рядом).
 export const DEV_PROXIMITY_TEST_KEY = 'dev_proximity_test';
+// Профиль GPS для эксперимента с батареей (DevPanel): 'eco' = Accuracy.High +
+// distanceInterval 10 вместо BestForNavigation + 5. Читается при старте прогулки.
+export const DEV_GPS_PROFILE_KEY = 'dev_gps_profile';
 
 // ── Мини-шина событий ────────────────────────────────────────────────────────
 // DevPanel меняет ключи в AsyncStorage; подписчики (useAsphaltTemp) должны
@@ -181,5 +184,18 @@ export async function getDevProximityTest(): Promise<boolean> {
   } catch (e) {
     console.warn('[dev] getDevProximityTest failed:', e);
     return false;
+  }
+}
+
+export type GpsProfile = 'current' | 'eco';
+
+export async function getDevGpsProfile(): Promise<GpsProfile> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!isDevUser(session?.user?.id)) return 'current';
+    return (await AsyncStorage.getItem(DEV_GPS_PROFILE_KEY)) === 'eco' ? 'eco' : 'current';
+  } catch (e) {
+    console.warn('[dev] getDevGpsProfile failed:', e);
+    return 'current';
   }
 }
