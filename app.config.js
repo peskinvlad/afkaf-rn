@@ -17,22 +17,41 @@
 
 const DEV_BUNDLE_ID = 'com.afkaf.app.dev';
 
+// Кастомные звуки уведомлений. Config-плагин expo-notifications бандлит их при
+// prebuild: на iOS — в бандл (ссылка по имени файла в content.sound), на Android
+// — в res/raw (ссылка по имени в sound канала). Нужно для ВСЕХ вариантов, не
+// только dev, поэтому добавляется до ветки APP_VARIANT.
+const NOTIFICATION_SOUNDS = [
+  './assets/sounds/afkaf_home.wav',
+  './assets/sounds/afkaf_checkin.wav',
+  './assets/sounds/afkaf_alert.wav',
+  './assets/sounds/afkaf_notify.wav',
+];
+
 module.exports = ({ config }) => {
-  if (process.env.APP_VARIANT !== 'dev') return config;
+  const base = {
+    ...config,
+    plugins: [
+      ...(config.plugins ?? []),
+      ['expo-notifications', { sounds: NOTIFICATION_SOUNDS }],
+    ],
+  };
+
+  if (process.env.APP_VARIANT !== 'dev') return base;
 
   return {
-    ...config,
+    ...base,
     name: 'afkaf dev',
     ios: {
-      ...config.ios,
+      ...base.ios,
       bundleIdentifier: DEV_BUNDLE_ID,
     },
     android: {
-      ...config.android,
+      ...base.android,
       package: DEV_BUNDLE_ID,
     },
     extra: {
-      ...config.extra,
+      ...base.extra,
       appVariant: 'dev',
     },
   };

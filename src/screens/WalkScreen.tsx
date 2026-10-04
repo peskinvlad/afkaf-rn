@@ -91,6 +91,7 @@ import {
   cancelScheduledNotification,
   presentWalkNotice,
   registerNotifHandler,
+  ensureNotifChannels,
   KIND_PARK,
   CAT_PARK,
   ACT_PARK_HERE,
@@ -806,6 +807,17 @@ export function WalkScreen({ navigation }: Props) {
     return () => sub.remove();
   }, []);
 
+  // Android-каналы уведомлений (по одному на звук) с локализованными названиями.
+  // Пересоздаём при смене языка — name/description у канала меняются после создания.
+  useEffect(() => {
+    void ensureNotifChannels({
+      home: t('notif.channel.walk'),
+      checkin: t('notif.channel.checkin'),
+      alert: t('notif.channel.alert'),
+      notify: t('notif.channel.notify'),
+    });
+  }, [t]);
+
   // Единый гейт показа: выключатель типа в Настройках + тихие часы (кроме home/still).
   function canShow(type: NotifType): boolean {
     if (!notifEnabledRef.current[type]) return false;
@@ -928,6 +940,7 @@ export function WalkScreen({ navigation }: Props) {
       const id = await scheduleNotif({
         kind: KIND_PARK,
         categoryId: CAT_PARK,
+        sound: 'checkin',
         actions: [{ identifier: ACT_PARK_HERE, buttonTitle: t('park.notif.action') }],
         title: content.title,
         body: content.body,
@@ -977,9 +990,9 @@ export function WalkScreen({ navigation }: Props) {
       void (async () => {
         const res = await checkInHere(parkId);
         if (res === 'ok') {
-          presentWalkNotice(t('park.notif.okTitle'), t('park.notif.okBody'));
+          presentWalkNotice(t('park.notif.okTitle'), t('park.notif.okBody'), 'notify');
         } else if (res !== 'nobody') {
-          presentWalkNotice(t('park.notif.failTitle'), t('park.notif.failBody'));
+          presentWalkNotice(t('park.notif.failTitle'), t('park.notif.failBody'), 'notify');
         }
       })();
     });
@@ -1016,6 +1029,7 @@ export function WalkScreen({ navigation }: Props) {
     const id = await scheduleNotif({
       kind: KIND_HOME,
       categoryId: CAT_HOME,
+      sound: 'home',
       actions: [
         { identifier: ACT_FINISH, buttonTitle: t('home.notif.finish') },
         { identifier: ACT_KEEP, buttonTitle: t('home.notif.keep') },
@@ -1058,6 +1072,7 @@ export function WalkScreen({ navigation }: Props) {
         void scheduleNotif({
           kind: KIND_MARKER,
           categoryId: CAT_MARKER,
+          sound: 'alert',
           actions: [
             { identifier: ACT_MARKER_STILL, buttonTitle: t('marker.notif.still') },
             { identifier: ACT_MARKER_GONE, buttonTitle: t('marker.notif.gone') },
@@ -1069,7 +1084,7 @@ export function WalkScreen({ navigation }: Props) {
         });
       } else {
         const content = hazardPermText(t, dogNameRef.current, h.type, dist);
-        presentWalkNotice(content.title, content.body);
+        presentWalkNotice(content.title, content.body, 'alert');
       }
     }
   }
@@ -1097,6 +1112,7 @@ export function WalkScreen({ navigation }: Props) {
       void scheduleNotif({
         kind: KIND_MARKER,
         categoryId: CAT_MARKER,
+        sound: 'alert',
         actions: [
           { identifier: ACT_MARKER_STILL, buttonTitle: t('marker.notif.still') },
           { identifier: ACT_MARKER_GONE, buttonTitle: t('marker.notif.gone') },
@@ -1123,7 +1139,7 @@ export function WalkScreen({ navigation }: Props) {
       if (!vote) return;
       void (async () => {
         const err = await castMarkerVote(markerId, uid, vote);
-        if (!err) presentWalkNotice(t('marker.notif.thanksTitle'), t('marker.notif.thanksBody'));
+        if (!err) presentWalkNotice(t('marker.notif.thanksTitle'), t('marker.notif.thanksBody'), 'notify');
       })();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1145,6 +1161,7 @@ export function WalkScreen({ navigation }: Props) {
     const id = await scheduleNotif({
       kind: KIND_STILL,
       categoryId: CAT_STILL,
+      sound: 'home',
       actions: [
         { identifier: ACT_FINISH, buttonTitle: t('home.notif.finish'), opensApp: true },
         { identifier: ACT_KEEP, buttonTitle: t('home.notif.keep') },
@@ -1259,7 +1276,7 @@ export function WalkScreen({ navigation }: Props) {
     // Открыто → сразу покажем экран итогов, уведомление не нужно.
     if (AppState.currentState !== 'active') {
       const content = autoFinishedText(t, walk.distanceKm.toFixed(2), Math.round(walk.durationS / 60));
-      presentWalkNotice(content.title, content.body);
+      presentWalkNotice(content.title, content.body, 'home');
     }
     // park_checkout ДО остановки трекинга (с таймаутом): в фоне iOS усыпляет
     // приложение сразу после stopWalkTracking — fire-and-forget checkout терялся.

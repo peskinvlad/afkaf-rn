@@ -30,17 +30,26 @@ function lib(): NotificationsModule | null {
 export const TEST_CATEGORY = 'afkaf_test';
 export const TEST_ACTION_HERE = 'here';
 
-// Общий канал (Android) для всех уведомлений, включая тестовое из DevPanel.
-// Настройки канала (важность, звук, вибрация) после создания не меняются —
-// поэтому новый id; старые каналы без звука удаляем.
-const WALK_CHANNEL = 'afkaf-walk-v2';
-const LEGACY_CHANNELS = ['afkaf-walk', 'afkaf-test'];
+// Звуковые категории: свой канал (Android) + своё имя файла (iOS). Имя файла с
+// расширением — ровно как положили в assets/sounds и объявили в app.config.js
+// (sounds). Настройки канала после создания не меняются (кроме name/description),
+// поэтому у каналов новые id; старые, включая afkaf-walk-v2, удаляем.
+export type SoundCategory = 'home' | 'checkin' | 'alert' | 'notify';
 
-// Общие поля content для всех уведомлений: без явного sound iOS доставляет
-// уведомление беззвучно. interruptionLevel 'active' — дефолт iOS, задан явно.
-function alertContent(N: NotificationsModule) {
+const SOUND: Record<SoundCategory, { channelId: string; sound: string }> = {
+  home: { channelId: 'afkaf-ch-walk', sound: 'afkaf_home.wav' },
+  checkin: { channelId: 'afkaf-ch-checkin', sound: 'afkaf_checkin.wav' },
+  alert: { channelId: 'afkaf-ch-alert', sound: 'afkaf_alert.wav' },
+  notify: { channelId: 'afkaf-ch-notify', sound: 'afkaf_notify.wav' },
+};
+const LEGACY_CHANNELS = ['afkaf-walk', 'afkaf-test', 'afkaf-walk-v2'];
+
+// Общие поля content: на iOS sound = имя файла (без него уведомление беззвучно),
+// на Android звук берётся из канала (content.sound игнорируется на O+).
+// interruptionLevel 'active' — дефолт iOS, задан явно.
+function alertContent(N: NotificationsModule, category: SoundCategory) {
   return {
-    sound: 'default',
+    sound: SOUND[category].sound,
     interruptionLevel: 'active',
     priority: N.AndroidNotificationPriority.HIGH,
   } as const;
@@ -254,19 +263,17 @@ export async function scheduleTestNotification(seconds = 10): Promise<ScheduleRe
     },
   ]);
 
-  await ensureWalkChannel(N);
-
   await N.scheduleNotificationAsync({
     content: {
       title: 'afkaf — тест',
       body: 'Нажми «Я здесь» с экрана блокировки, не открывая приложение.',
       categoryIdentifier: TEST_CATEGORY,
-      ...alertContent(N),
+      ...alertContent(N, 'notify'),
     },
     trigger: {
       type: N.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds,
-      channelId: WALK_CHANNEL,
+      channelId: SOUND.notify.channelId,
     },
   });
   return 'ok';
@@ -274,15 +281,24 @@ export async function scheduleTestNotification(seconds = 10): Promise<ScheduleRe
 
 // ── Планирование боевых уведомлений ──────────────────────────────────────────
 
-async function ensureWalkChannel(N: NotificationsModule): Promise<void> {
-  if (Platform.OS !== 'android') return;
-  await N.setNotificationChannelAsync(WALK_CHANNEL, {
-    name: 'Подсказки на прогулке',
-    importance: N.AndroidImportance.HIGH,
-    sound: 'default',
-    enableVibrate: true,
-    vibrationPattern: [0, 250, 250, 250],
-  });
+// Создать 4 канала Android (по одному на звук), importance HIGH + вибрация, и
+// удалить старые. Имена локализованы вызывающим (WalkScreen/DevPanel — там есть
+// t); name/description — единственное, что у канала можно менять после создания,
+// поэтому повторный вызов на другом языке обновит название. iOS это пропускает.
+export async function ensureNotifChannels(
+  names: Record<SoundCategory, string>,
+): Promise<void> {
+  const N = lib();
+  if (!N || Platform.OS !== 'android') return;
+  for (const category of Object.keys(SOUND) as SoundCategory[]) {
+    await N.setNotificationChannelAsync(SOUND[category].channelId, {
+      name: names[category],
+      importance: N.AndroidImportance.HIGH,
+      sound: SOUND[category].sound,
+      enableVibrate: true,
+      vibrationPattern: [0, 250, 250, 250],
+    });
+  }
   for (const id of LEGACY_CHANNELS) {
     await N.deleteNotificationChannelAsync(id).catch(() => {});
   }
@@ -300,6 +316,7 @@ export interface NotifAction {
 export interface ScheduleNotifInput {
   kind: string;
   categoryId: string;
+  sound: SoundCategory; // какой звук/канал использовать
   actions?: NotifAction[]; // кнопки (локализованы); пусто/нет — уведомление без кнопок
   title: string;
   body: string;
@@ -327,7 +344,6 @@ export async function scheduleNotif(input: ScheduleNotifInput): Promise<string |
       })),
     );
   }
-  await ensureWalkChannel(N);
 
   return N.scheduleNotificationAsync({
     content: {
@@ -335,12 +351,12 @@ export async function scheduleNotif(input: ScheduleNotifInput): Promise<string |
       body: input.body,
       categoryIdentifier: hasActions ? input.categoryId : undefined,
       data: { kind: input.kind, ...(input.data ?? {}) },
-      ...alertContent(N),
+      ...alertContent(N, input.sound),
     },
     trigger: {
       type: N.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds: Math.max(1, Math.round(input.fireInSeconds)),
-      channelId: WALK_CHANNEL,
+      channelId: SOUND[input.sound].channelId,
     },
   });
 }
@@ -357,18 +373,21 @@ export async function cancelScheduledNotification(id: string): Promise<void> {
 
 // Короткий результат нажатия «Я здесь» (успех/отказ): приложение не открывалось,
 // иначе человек не узнает, сработало ли.
-export async function presentWalkNotice(title: string, body: string): Promise<void> {
+export async function presentWalkNotice(
+  title: string,
+  body: string,
+  sound: SoundCategory,
+): Promise<void> {
   const N = lib();
   if (!N) return;
   const perm = await N.getPermissionsAsync();
   if (!perm.granted) return;
-  await ensureWalkChannel(N);
   await N.scheduleNotificationAsync({
-    content: { title, body, ...alertContent(N) },
+    content: { title, body, ...alertContent(N, sound) },
     trigger: {
       type: N.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds: 1,
-      channelId: WALK_CHANNEL,
+      channelId: SOUND[sound].channelId,
     },
   });
 }

@@ -44,6 +44,7 @@ import {
   scheduleTestNotification,
   getTestLog,
   ensurePermission,
+  ensureNotifChannels,
   scheduleNotif,
   presentWalkNotice,
   KIND_PARK,
@@ -120,6 +121,14 @@ export function DevPanel({ visible, onClose }: Props) {
 
   useEffect(() => {
     if (!visible) return;
+    // Каналы Android нужны до «Показать сейчас» из панели (WalkScreen создаёт их
+    // на прогулке; здесь — чтобы тест работал и вне прогулки).
+    void ensureNotifChannels({
+      home: t('notif.channel.walk'),
+      checkin: t('notif.channel.checkin'),
+      alert: t('notif.channel.alert'),
+      notify: t('notif.channel.notify'),
+    });
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       setUserId(session?.user?.id ?? null);
@@ -322,6 +331,7 @@ export function DevPanel({ visible, onClose }: Props) {
       return scheduleNotif({
         kind: KIND_PARK,
         categoryId: CAT_PARK,
+        sound: 'checkin',
         actions: [{ identifier: ACT_PARK_HERE, buttonTitle: t('park.notif.action') }],
         title: c.title,
         body: c.body,
@@ -336,6 +346,7 @@ export function DevPanel({ visible, onClose }: Props) {
       return scheduleNotif({
         kind: KIND_HOME,
         categoryId: CAT_HOME,
+        sound: 'home',
         actions: [
           { identifier: ACT_FINISH, buttonTitle: t('home.notif.finish') },
           { identifier: ACT_KEEP, buttonTitle: t('home.notif.keep') },
@@ -350,7 +361,7 @@ export function DevPanel({ visible, onClose }: Props) {
   const showNowHazard = () =>
     showNow(() => {
       const c = hazardPermText(t, dogName, 'danger', 50);
-      return presentWalkNotice(c.title, c.body);
+      return presentWalkNotice(c.title, c.body, 'alert');
     });
 
   // №3 ВРЕМЕННАЯ опасная метка — предупреждение С кнопками-голосом.
@@ -360,6 +371,7 @@ export function DevPanel({ visible, onClose }: Props) {
       return scheduleNotif({
         kind: KIND_MARKER,
         categoryId: CAT_MARKER,
+        sound: 'alert',
         actions: [
           { identifier: ACT_MARKER_STILL, buttonTitle: t('marker.notif.still') },
           { identifier: ACT_MARKER_GONE, buttonTitle: t('marker.notif.gone') },
@@ -377,6 +389,7 @@ export function DevPanel({ visible, onClose }: Props) {
       return scheduleNotif({
         kind: KIND_STILL,
         categoryId: CAT_STILL,
+        sound: 'home',
         actions: [
           { identifier: ACT_FINISH, buttonTitle: t('home.notif.finish'), opensApp: true },
           { identifier: ACT_KEEP, buttonTitle: t('home.notif.keep') },
@@ -393,6 +406,7 @@ export function DevPanel({ visible, onClose }: Props) {
       return scheduleNotif({
         kind: KIND_MARKER,
         categoryId: CAT_MARKER,
+        sound: 'alert',
         actions: [
           { identifier: ACT_MARKER_STILL, buttonTitle: t('marker.notif.still') },
           { identifier: ACT_MARKER_GONE, buttonTitle: t('marker.notif.gone') },
