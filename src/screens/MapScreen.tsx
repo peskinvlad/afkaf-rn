@@ -700,7 +700,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           Закрытая шторка уехала translateY:300 за экран (хит-область там же),
           поэтому низ карты снова кликается. Без этого невидимая обёртка
           (bottom:0, высотой во весь контент шторки) блокировала ~половину экрана. */}
-      <View style={styles.nearbySheetWrap} pointerEvents="box-none">
+      <View style={styles.nearbySheetWrap} pointerEvents={drawerOpen ? 'none' : 'box-none'}>
         <NearbyDogsSheet
           visible={nearbySheetVisible}
           onClose={() => setNearbySheetVisible(false)}
@@ -719,8 +719,11 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
       </View>
 
       {/* ── Нижняя панель — абсолютная, всегда внизу ── */}
+      {/* Пока меню открыто — не принимаем касания: свайп слайдера не должен
+          случайно начать прогулку (видимо меню и так перекрывает панель). */}
       <View
         style={[styles.bottomPanel, { paddingBottom: insets.bottom + 12 }]}
+        pointerEvents={drawerOpen ? 'none' : 'auto'}
         onLayout={e => setBottomPanelHeight(e.nativeEvent.layout.height)}
       >
         <TouchableOpacity onPress={() => { setDetailMarker(null); setSelectedFriendId(null); setNearbySheetVisible(true); }} activeOpacity={0.7}>

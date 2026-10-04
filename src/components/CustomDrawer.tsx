@@ -16,6 +16,15 @@ import { colors, radii } from '../theme/tokens';
 const DRAWER_W = 280;
 const { width: SCREEN_W } = Dimensions.get('window');
 
+// Меню должно быть поверх всего — на ОБЕИХ платформах. Полагаться на порядок в
+// дереве нельзя: контейнер MapScreen (`{flex:1}`, без фона/zIndex) схлопывается
+// RN (view flattening), и его абсолютные дети (плашка асфальта и колонка
+// Locate+FAB с zIndex 50, нижняя панель 20, шторка 10) становятся нативными
+// соседями корня меню, у которого zIndex не задан (=0) — и перекрывают его.
+// Поэтому задаём меню zIndex заведомо выше всех (iOS и Android) + elevation для
+// Android (Fabric мапит zIndex в нативный Z, но elevation участвует отдельно).
+const MENU_ON_TOP = { zIndex: 100, elevation: 100 };
+
 const MENU_ITEMS = [
   { key: 'map', icon: '🗺️', labelKey: 'menu.map', screen: 'MapScreen' },
   { key: 'walks', icon: '🐾', labelKey: 'menu.walks', screen: 'Walks' },
@@ -70,7 +79,7 @@ export function CustomDrawer({ open, onClose, onNavigate, activeScreen }: Props)
   if (!mounted) return null;
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents={open ? 'auto' : 'none'}>
+    <View style={[StyleSheet.absoluteFill, MENU_ON_TOP]} pointerEvents={open ? 'auto' : 'none'}>
       {/* Backdrop */}
       <TouchableWithoutFeedback onPress={onClose}>
         <Animated.View style={[styles.backdrop, { opacity: backdropAnim }]} />
