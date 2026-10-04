@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { X } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
+import { useTypography, FontRole } from '../theme/fonts';
 import { supabase } from '../lib/supabase';
 import { colors, radii } from '../theme/tokens';
 
@@ -38,6 +39,8 @@ function getDistrict(lat: number, lng: number): string {
 
 export function CoverageBanner() {
   const { t, userLocation } = useApp();
+  const { font } = useTypography();
+  const styles = useMemo(() => makeStyles(font), [font]);
 
   const [dismissed, setDismissed] = useState<boolean | null>(null); // null = flag not loaded yet
   const [thanksVisible, setThanksVisible] = useState(false);
@@ -107,7 +110,7 @@ export function CoverageBanner() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   wrap: {
     position: 'absolute',
     left: 0,
@@ -131,14 +134,14 @@ const styles = StyleSheet.create({
   },
   msgTxt: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: font.bodyBold,
     color: '#fff',
     lineHeight: 20,
     paddingRight: 24,
   },
   thanksTxt: {
     fontSize: 15,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: '#fff',
     textAlign: 'center',
     paddingVertical: 4,
@@ -152,7 +155,7 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.6 },
   btnTxt: {
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: '#fff',
   },
 });

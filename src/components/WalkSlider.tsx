@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
   Dimensions,
@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useApp } from '../hooks/useApp';
+import { useTypography, FontRole } from '../theme/fonts';
 import { radii, shadows } from '../theme/tokens';
 import { statusFor } from '../lib/heat';
 
@@ -45,6 +46,8 @@ interface Props {
 
 export function WalkSlider({ asphaltTemp, onWalkStart, onSwipeStart }: Props) {
   const { t } = useApp();
+  const { font } = useTypography();
+  const styles = useMemo(() => makeStyles(font), [font]);
   const dragX = useRef(new Animated.Value(0)).current;
 
   const { bg, fill, txt } = PILL_COLORS[statusFor(asphaltTemp)];
@@ -184,7 +187,7 @@ export function WalkSlider({ asphaltTemp, onWalkStart, onSwipeStart }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   pill: {
     width: PILL_W,
     height: HANDLE_SIZE + 8,
@@ -212,7 +215,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     color: '#ffffff',
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: font.bodyBold,
     letterSpacing: -0.2,
     textAlign: 'center',
   },
