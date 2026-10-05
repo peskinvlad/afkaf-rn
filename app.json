@@ -3,7 +3,7 @@
     "name": "afkaf",
     "slug": "afkaf-rn",
     "scheme": "afkaf",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "runtimeVersion": {
       "policy": "appVersion"
     },
