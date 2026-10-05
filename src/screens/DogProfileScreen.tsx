@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Pencil } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
+import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -35,6 +36,8 @@ interface Props {
 export function DogProfileScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
 
   // dogId present → edit mode (update), absent → create mode (insert)
   const dogId = route?.params?.dogId ?? null;
@@ -431,7 +434,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
 }
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.white },
   loadingRoot: { alignItems: 'center', justifyContent: 'center' },
 
@@ -444,7 +447,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
   },
   navBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  navBtnTxt: { fontSize: 26, color: colors.ink, lineHeight: 30, marginTop: -2 },
+  navBtnTxt: { fontSize: 26, fontFamily: ty.font.body, color: colors.ink, lineHeight: 30, marginTop: -2 },
 
   scroll: { flex: 1 },
   scrollContent: {
@@ -461,14 +464,14 @@ const styles = StyleSheet.create({
   headerIcon: { fontSize: 40 },
   headerTitle: {
     fontSize: 22,
-    fontWeight: '800',
+    fontFamily: ty.font.display,
     color: colors.ink,
     letterSpacing: -0.5,
     textAlign: 'center',
   },
   headerSub: {
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: ty.font.bodyBold,
     color: colors.textMuted,
     textAlign: 'center',
   },
@@ -476,7 +479,7 @@ const styles = StyleSheet.create({
   // Section labels
   sectionLabel: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
@@ -516,7 +519,7 @@ const styles = StyleSheet.create({
   photoBadgeTxt: {
     fontSize: 14,
     color: colors.white,
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     lineHeight: 16,
   },
 
@@ -551,6 +554,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
+    fontFamily: ty.font.body,
     color: colors.ink,
     ...shadows.sm,
   },
@@ -583,7 +587,7 @@ const styles = StyleSheet.create({
   },
   pillTxt: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: ty.font.bodyBold,
     color: colors.textMuted,
   },
   pillTxtSelected: { color: colors.primary },
@@ -605,7 +609,7 @@ const styles = StyleSheet.create({
   saveBtnDisabled: { opacity: 0.6 },
   saveBtnTxt: {
     fontSize: 17,
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     color: colors.white,
     letterSpacing: -0.3,
   },

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -27,8 +27,9 @@ import {
   TAIL_H,
   TAIL_W,
 } from '../lib/calloutLayout';
-import { animation, colors, radii, shadows, typography } from '../theme/tokens';
+import { animation, colors, radii, shadows } from '../theme/tokens';
 import { useApp } from '../hooks/useApp';
+import { useTypography } from '../theme/fonts';
 import { ParkPresenceBlock } from './ParkPresenceBlock';
 
 type VoteValue = 'still_there' | 'gone';
@@ -73,6 +74,8 @@ function distanceLabel(meters: number, t: TFn): string {
 export function MarkerCallout({ marker, anchor, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const { t, rtl, isGuest, userLocation } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
 
   // The marker actually being drawn. It outlives the `marker` prop by the
   // length of the exit animation, so closing fades instead of blinking.
@@ -194,6 +197,8 @@ function CalloutBubble({
   userLocation: { latitude: number; longitude: number } | null;
   onClose: () => void;
 }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [myVote, setMyVote] = useState<VoteValue | null>(null);
   const [counts, setCounts] = useState<VoteCounts>({ still_there: 0, gone: 0 });
@@ -508,6 +513,8 @@ function VoteButton({
   disabled: boolean;
   onPress: () => void;
 }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   const isPrimary = variant === 'primary';
   return (
     <TouchableOpacity
@@ -540,7 +547,7 @@ function VoteButton({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   overlay: {
     zIndex: 25,
   },
@@ -609,7 +616,7 @@ const styles = StyleSheet.create({
   },
   typeLabel: {
     flex: 1,
-    ...typography.h2,
+    ...ty.variants.h2,
     color: colors.ink,
   },
   // Stale (>24h) freshness: muted, rendered as a nested Text on the meta line
@@ -626,21 +633,21 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   quoteTxt: {
-    ...typography.sm,
+    ...ty.variants.sm,
     color: colors.textSecondary,
     lineHeight: 19,
   },
 
   trustLine: {
-    ...typography.xs,
-    fontFamily: 'Nunito_600SemiBold',
+    ...ty.variants.xs,
+    fontFamily: ty.font.bodyBold,
     color: colors.textMuted,
   },
   // Same size as the meta line it replaces (so the bubble doesn't jump), but in
   // the brand green to read as a positive acknowledgement.
   voteThanks: {
     color: colors.primaryDark,
-    fontFamily: 'Nunito_700Bold',
+    fontFamily: ty.font.heading,
   },
 
   loadingRow: {
@@ -648,8 +655,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   ownMarkerNote: {
-    ...typography.sm,
-    fontFamily: 'Nunito_600SemiBold',
+    ...ty.variants.sm,
+    fontFamily: ty.font.bodyBold,
     color: colors.textMuted,
     textAlign: 'center',
     paddingVertical: 6,
@@ -686,8 +693,7 @@ const styles = StyleSheet.create({
   },
   voteBtnTxt: {
     fontSize: 14,
-    fontFamily: 'Nunito_700Bold',
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
   },
   voteBtnTxtPrimary: { color: colors.white },
   voteBtnTxtGhost: { color: colors.ink },

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Share2 } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
+import { useTypography } from '../theme/fonts';
 import { useFriends, FriendEntry } from '../hooks/useFriends';
 import { ShareProfileSheet } from '../components/ShareProfileSheet';
 import { FriendCard } from '../components/FriendCard';
@@ -26,6 +27,8 @@ interface Props {
 export function FriendsScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t, rtl, isGuest } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   const { friends, incoming, outgoing, incomingCount, loading, refresh } = useFriends();
   const [tab, setTab] = useState<Tab>('friends');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -167,7 +170,7 @@ export function FriendsScreen({ navigation }: Props) {
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surface },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
@@ -180,8 +183,8 @@ const styles = StyleSheet.create({
   },
   rowReverse: { flexDirection: 'row-reverse' },
   headerBtn: { width: 36, alignItems: 'center', justifyContent: 'center' },
-  backArrow: { fontSize: 20, color: colors.ink },
-  headerTitle: { ...typography.h2, color: colors.ink, flex: 1, textAlign: 'center' },
+  backArrow: { fontFamily: ty.font.body, fontSize: 20, color: colors.ink },
+  headerTitle: { ...ty.variants.h2, color: colors.ink, flex: 1, textAlign: 'center' },
 
   tabBar: {
     flexDirection: 'row',
@@ -191,7 +194,7 @@ const styles = StyleSheet.create({
   },
   tabItem: { flex: 1, alignItems: 'center', paddingVertical: spacing.sm },
   tabLabelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  tabLabel: { ...typography.sm, fontFamily: 'Nunito_600SemiBold', color: colors.textMuted },
+  tabLabel: { ...ty.variants.sm, fontFamily: ty.font.bodyBold, color: colors.textMuted },
   tabLabelActive: { color: colors.primaryDark },
   tabUnderline: { height: 2, width: '100%', marginTop: spacing.sm, backgroundColor: 'transparent', borderRadius: 1 },
   tabUnderlineActive: { backgroundColor: colors.primaryDark },
@@ -205,12 +208,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badgeTxt: { fontSize: 11, fontWeight: '700', color: colors.white },
+  badgeTxt: { fontSize: 11, fontFamily: ty.font.heading, color: colors.white },
 
   scroll: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, gap: spacing.md },
 
   emptyText: {
-    ...typography.body,
+    ...ty.variants.body,
     color: colors.textMuted,
     textAlign: 'center',
     marginTop: spacing.xxxl,
@@ -226,7 +229,7 @@ const styles = StyleSheet.create({
   },
   guestEmptyEmoji: { fontSize: 44, marginBottom: spacing.sm },
   guestEmptyTitle: {
-    ...typography.body,
+    ...ty.variants.body,
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
@@ -239,8 +242,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   guestEmptyBtnTxt: {
-    ...typography.body,
-    fontFamily: 'Nunito_700Bold',
+    ...ty.variants.body,
+    fontFamily: ty.font.heading,
     color: colors.white,
   },
 

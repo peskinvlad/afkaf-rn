@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -69,7 +69,8 @@ import {
   stillText,
   markerText,
 } from '../lib/notifText';
-import { colors, radii, shadows, typography } from '../theme/tokens';
+import { useTypography } from '../theme/fonts';
+import { colors, radii, shadows } from '../theme/tokens';
 
 // Панель только для DEV_USER_IDS (гейт — в AboutScreen, сюда без него не
 // попасть). Строки по-русски хардкодом — осознанное исключение из правила
@@ -87,6 +88,8 @@ interface Props {
 export function DevPanel({ visible, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const { t, isTrusted, confirmedCount, userLocation, heatData, heatOverrideActive, realSurfaceTempC } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
 
   const [userId, setUserId] = useState<string | null>(null);
   const [visibility, setVisibility] = useState<string | null>(null);
@@ -839,6 +842,8 @@ function formatAgo(at: number | null, now: number): string {
 }
 
 function InfoRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   return (
     <View style={styles.infoRow}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -848,6 +853,8 @@ function InfoRow({ label, value, highlight }: { label: string; value: string; hi
 }
 
 function ResetRow({ label, flash, onPress }: { label: string; flash?: string; onPress: () => void }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   return (
     <View style={styles.resetRow}>
       <Text style={styles.rowLabelFlex}>{label}</Text>
@@ -862,7 +869,7 @@ function ResetRow({ label, flash, onPress }: { label: string; flash?: string; on
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row',
@@ -871,21 +878,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
-  title: { ...typography.h2, color: colors.ink },
+  title: { ...ty.variants.h2, color: colors.ink },
   closeBtn: {
     width: 44,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeTxt: { fontSize: 20, color: colors.textMuted },
+  closeTxt: { fontSize: 20, fontFamily: ty.font.body, color: colors.textMuted },
 
   scroll: { paddingHorizontal: 20, gap: 10 },
 
   sectionTitle: {
     fontSize: 12,
-    fontFamily: 'Nunito_700Bold',
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
@@ -900,13 +906,13 @@ const styles = StyleSheet.create({
   },
 
   infoRow: { gap: 2 },
-  rowLabel: { ...typography.xs, color: colors.textMuted },
-  rowLabelFlex: { ...typography.sm, color: colors.ink, flex: 1 },
-  rowValue: { ...typography.sm, color: colors.ink },
-  rowValueHighlight: { fontFamily: 'Nunito_700Bold', fontWeight: '700', color: colors.primaryDark },
-  mono: { ...typography.mono, fontSize: 12, color: colors.ink },
-  flash: { ...typography.xs, color: colors.primary, fontFamily: 'Nunito_700Bold' },
-  note: { ...typography.xs, color: colors.textMuted, lineHeight: 16 },
+  rowLabel: { ...ty.variants.xs, color: colors.textMuted },
+  rowLabelFlex: { ...ty.variants.sm, color: colors.ink, flex: 1 },
+  rowValue: { ...ty.variants.sm, color: colors.ink },
+  rowValueHighlight: { fontFamily: ty.font.heading, color: colors.primaryDark },
+  mono: { ...ty.variants.mono, fontSize: 12, color: colors.ink },
+  flash: { ...ty.variants.xs, color: colors.primary, fontFamily: ty.font.heading },
+  note: { ...ty.variants.xs, color: colors.textMuted, lineHeight: 16 },
 
   tempRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   tempInput: {
@@ -917,7 +923,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
     paddingHorizontal: 12,
-    ...typography.body,
+    ...ty.variants.body,
     color: colors.ink,
   },
   btnPrimary: {
@@ -928,7 +934,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnPrimaryTxt: { fontSize: 13, fontFamily: 'Nunito_700Bold', fontWeight: '700', color: colors.white },
+  btnPrimaryTxt: { fontSize: 13, fontFamily: ty.font.heading, color: colors.white },
   btnGhost: {
     height: 48,
     paddingHorizontal: 14,
@@ -938,7 +944,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnGhostTxt: { fontSize: 13, fontFamily: 'Nunito_600SemiBold', fontWeight: '600', color: colors.ink },
+  btnGhostTxt: { fontSize: 13, fontFamily: ty.font.bodyBold, color: colors.ink },
 
   resetRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },

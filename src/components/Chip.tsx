@@ -1,6 +1,7 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useMemo } from 'react';
 import { TouchableOpacity, View, StyleSheet, Text } from 'react-native';
-import { colors, radii, typography } from '../theme/tokens';
+import { colors, radii } from '../theme/tokens';
+import { useTypography } from '../theme/fonts';
 
 interface Props {
   active?: boolean;
@@ -9,6 +10,8 @@ interface Props {
 }
 
 export function Chip({ active, onPress, children }: Props) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -20,7 +23,7 @@ export function Chip({ active, onPress, children }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 7,
@@ -39,8 +42,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   label: {
-    ...typography.sm,
-    fontWeight: '600',
+    ...ty.variants.sm,
     color: colors.ink,
   },
   labelActive: {

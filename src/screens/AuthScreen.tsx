@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
+import { useTypography, FontRole } from '../theme/fonts';
 import { supabase } from '../lib/supabase';
 import { colors, radii, shadows } from '../theme/tokens';
 
@@ -49,6 +50,8 @@ interface Props {
 export function AuthScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t, setIsGuest } = useApp();
+  const { font } = useTypography();
+  const styles = useMemo(() => makeStyles(font), [font]);
 
   const [loadingProvider, setLoadingProvider] = useState<'google' | 'apple' | null>(null);
 
@@ -297,7 +300,7 @@ export function AuthScreen({ navigation }: Props) {
 }
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.white,
@@ -334,13 +337,13 @@ const styles = StyleSheet.create({
   logoEmoji: { fontSize: 40 },
   appName: {
     fontSize: 32,
-    fontWeight: '800',
+    fontFamily: font.display,
     color: colors.ink,
     letterSpacing: -0.8,
   },
   subtitle: {
     fontSize: 16,
-    fontWeight: '500',
+    fontFamily: font.bodyBold,
     color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 22,
@@ -366,13 +369,12 @@ const styles = StyleSheet.create({
   },
   googleIcon: {
     fontSize: 17,
-    fontWeight: '700',
     color: '#4285F4',
-    fontFamily: 'Nunito_700Bold',
+    fontFamily: font.heading,
   },
   btnGoogleTxt: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: font.bodyBold,
     color: colors.ink,
   },
 
@@ -385,6 +387,7 @@ const styles = StyleSheet.create({
   // Legal
   legal: {
     fontSize: 12,
+    fontFamily: font.body,
     color: colors.textSoft,
     textAlign: 'center',
     lineHeight: 18,

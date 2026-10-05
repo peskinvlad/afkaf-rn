@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { useApp } from '../hooks/useApp';
+import { useTypography, FontRole } from '../theme/fonts';
 import { supabase } from '../lib/supabase';
 import { isDevUser } from '../constants/dev';
 import { DevPanel } from '../components/DevPanel';
@@ -233,6 +234,8 @@ const STRINGS = {
 
 const FAQItem = ({ q, a, isRTL }: { q: string; a: string; isRTL: boolean }) => {
   const [open, setOpen] = useState(false);
+  const { font } = useTypography();
+  const styles = useMemo(() => makeStyles(font), [font]);
   return (
     <TouchableOpacity style={styles.faqItem} onPress={() => setOpen(v => !v)} activeOpacity={0.7}>
       <View style={[styles.faqHeader, isRTL && styles.rowReverse]}>
@@ -246,6 +249,8 @@ const FAQItem = ({ q, a, isRTL }: { q: string; a: string; isRTL: boolean }) => {
 
 const FAQSection = ({ title, icon, items, isRTL }: { title: string; icon: string; items: { q: string; a: string }[]; isRTL: boolean }) => {
   const [open, setOpen] = useState(false);
+  const { font } = useTypography();
+  const styles = useMemo(() => makeStyles(font), [font]);
   return (
     <View style={styles.faqSection}>
       <TouchableOpacity style={[styles.faqSectionHeader, isRTL && styles.rowReverse]} onPress={() => setOpen(v => !v)} activeOpacity={0.7}>
@@ -267,6 +272,8 @@ const FAQSection = ({ title, icon, items, isRTL }: { title: string; icon: string
 export default function AboutScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { lang } = useApp();
+  const { font } = useTypography();
+  const styles = useMemo(() => makeStyles(font), [font]);
   const t = STRINGS[lang] ?? STRINGS.en;
   const isRTL = lang === 'he';
   // Back arrow follows the layout direction, not the content language. The app
@@ -408,7 +415,7 @@ const BG = '#f7f9f7';
 const WHITE = '#ffffff';
 const BORDER = '#dde8dc';
 
-const styles = StyleSheet.create({
+const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
   header: {
     flexDirection: 'row',
@@ -418,42 +425,42 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   backBtn: { width: 36, alignItems: 'center' },
-  backArrow: { fontSize: 20, color: TEXT_DARK },
-  headerTitle: { fontFamily: 'Nunito-Bold', fontSize: 18, color: TEXT_DARK, flex: 1, textAlign: 'center' },
+  backArrow: { fontSize: 20, fontFamily: font.body, color: TEXT_DARK },
+  headerTitle: { fontFamily: font.heading, fontSize: 18, color: TEXT_DARK, flex: 1, textAlign: 'center' },
   container: { flex: 1, backgroundColor: BG },
   content: { paddingBottom: 48 },
   hero: { backgroundColor: PRIMARY, paddingTop: 28, paddingBottom: 36, alignItems: 'center' },
   pawIcon: { fontSize: 40, marginBottom: 8 },
-  appName: { fontFamily: 'Nunito-ExtraBold', fontSize: 36, color: WHITE, letterSpacing: 1 },
-  tagline: { fontFamily: 'Nunito-Regular', fontSize: 15, color: 'rgba(255,255,255,0.8)', textAlign: 'center', marginTop: 6, lineHeight: 22 },
+  appName: { fontFamily: font.display, fontSize: 36, color: WHITE, letterSpacing: 1 },
+  tagline: { fontFamily: font.body, fontSize: 15, color: 'rgba(255,255,255,0.8)', textAlign: 'center', marginTop: 6, lineHeight: 22 },
   section: { paddingHorizontal: 20, paddingVertical: 24 },
-  sectionTitle: { fontFamily: 'Nunito-Bold', fontSize: 18, color: TEXT_DARK, marginBottom: 16 },
-  bodyText: { fontFamily: 'Nunito-Regular', fontSize: 15, color: TEXT_MID, lineHeight: 23 },
+  sectionTitle: { fontFamily: font.heading, fontSize: 18, color: TEXT_DARK, marginBottom: 16 },
+  bodyText: { fontFamily: font.body, fontSize: 15, color: TEXT_MID, lineHeight: 23 },
   divider: { height: 1, backgroundColor: BORDER, marginHorizontal: 20 },
   faqItem: { backgroundColor: WHITE, borderRadius: 12, padding: 16, marginBottom: 8, borderWidth: 1, borderColor: BORDER },
   faqHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  faqQ: { fontFamily: 'Nunito-SemiBold', fontSize: 15, color: TEXT_DARK, flex: 1, lineHeight: 21 },
-  faqChevron: { fontSize: 22, color: TEXT_LIGHT, marginLeft: 8 },
+  faqQ: { fontFamily: font.bodyBold, fontSize: 15, color: TEXT_DARK, flex: 1, lineHeight: 21 },
+  faqChevron: { fontSize: 22, fontFamily: font.body, color: TEXT_LIGHT, marginLeft: 8 },
   faqChevronOpen: { transform: [{ rotate: '90deg' }] },
-  faqA: { fontFamily: 'Nunito-Regular', fontSize: 14, color: TEXT_MID, lineHeight: 21, marginTop: 10 },
+  faqA: { fontFamily: font.body, fontSize: 14, color: TEXT_MID, lineHeight: 21, marginTop: 10 },
   donateRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
   donateBtn: { flex: 1, backgroundColor: PRIMARY, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   donateBtnSecondary: { backgroundColor: WHITE, borderWidth: 1.5, borderColor: PRIMARY },
-  donateBtnText: { fontFamily: 'Nunito-Bold', fontSize: 15, color: WHITE },
+  donateBtnText: { fontFamily: font.heading, fontSize: 15, color: WHITE },
   donateBtnTextSecondary: { color: PRIMARY },
-  emailLink: { fontFamily: 'Nunito-SemiBold', fontSize: 15, color: PRIMARY_MID, marginTop: 8, textDecorationLine: 'underline' },
+  emailLink: { fontFamily: font.bodyBold, fontSize: 15, color: PRIMARY_MID, marginTop: 8, textDecorationLine: 'underline' },
   footer: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 8, alignItems: 'center' },
   contactDevBtn: { alignSelf: 'stretch', backgroundColor: PRIMARY, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginBottom: 14 },
-  contactDevTxt: { fontFamily: 'Nunito-Bold', fontSize: 15, color: WHITE },
-  privacyLink: { fontFamily: 'Nunito-SemiBold', fontSize: 13, color: PRIMARY_MID, marginBottom: 10, textDecorationLine: 'underline' },
-  footerText: { fontFamily: 'Nunito-Regular', fontSize: 13, color: TEXT_LIGHT, textAlign: 'center' },
-  versionText: { fontFamily: 'Nunito-Regular', fontSize: 12, color: TEXT_LIGHT, marginTop: 6, paddingVertical: 8, paddingHorizontal: 16 },
+  contactDevTxt: { fontFamily: font.heading, fontSize: 15, color: WHITE },
+  privacyLink: { fontFamily: font.bodyBold, fontSize: 13, color: PRIMARY_MID, marginBottom: 10, textDecorationLine: 'underline' },
+  footerText: { fontFamily: font.body, fontSize: 13, color: TEXT_LIGHT, textAlign: 'center' },
+  versionText: { fontFamily: font.body, fontSize: 12, color: TEXT_LIGHT, marginTop: 6, paddingVertical: 8, paddingHorizontal: 16 },
   textRight: { textAlign: 'right' },
   rowReverse: { flexDirection: 'row-reverse' },
   faqSection: { marginBottom: 8 },
   faqSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: PRIMARY_LIGHT, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: BORDER },
   faqSectionLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   faqSectionIcon: { fontSize: 18 },
-  faqSectionTitle: { fontFamily: 'Nunito-Bold', fontSize: 15, color: PRIMARY },
+  faqSectionTitle: { fontFamily: font.heading, fontSize: 15, color: PRIMARY },
   faqSectionItems: { marginTop: 4, paddingLeft: 8 },
 });

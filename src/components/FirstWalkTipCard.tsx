@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useApp } from '../hooks/useApp';
 import { colors, radii, shadows } from '../theme/tokens';
+import { useTypography } from '../theme/fonts';
 
 const FLAG_KEY = 'first_walk_tip_shown';
 
@@ -16,6 +17,8 @@ interface Props {
 // safety intercept, which will gate the swipe itself, before navigation).
 export function FirstWalkTipCard({ onSetupPrivacy }: Props) {
   const { t } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -55,7 +58,7 @@ export function FirstWalkTipCard({ onSetupPrivacy }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   wrap: {
     position: 'absolute',
     left: 0,
@@ -75,6 +78,7 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 32 },
   body: {
     fontSize: 15,
+    fontFamily: ty.font.body,
     color: colors.ink,
     lineHeight: 21,
   },
@@ -89,7 +93,7 @@ const styles = StyleSheet.create({
   },
   btnPrimaryTxt: {
     fontSize: 15,
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     color: colors.white,
   },
   btnGhost: {
@@ -99,7 +103,7 @@ const styles = StyleSheet.create({
   },
   btnGhostTxt: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: ty.font.bodyBold,
     color: colors.textMuted,
   },
 });

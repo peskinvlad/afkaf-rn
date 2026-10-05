@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
 import { Lang } from '../i18n';
 import { pickBestWalkTime } from '../lib/heat';
+import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
 
 const DATE_LOCALE: Record<Lang, string> = { he: 'he-IL', en: 'en-US', ru: 'ru-RU' };
@@ -19,6 +20,8 @@ interface Props {
 export function HeatWarningScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t, lang, heatData, hourlyForecast, setIsWalking } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
 
   // Shared best-walk-window logic (waking hours, today/tomorrow) — same helper
   // PavementTempScreen uses. This screen only shows when it's already 'danger',
@@ -81,7 +84,7 @@ export function HeatWarningScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#f5e0e0',
@@ -97,13 +100,13 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 64, marginBottom: 4 },
   temp: {
     fontSize: 48,
-    fontWeight: '800',
+    fontFamily: ty.font.display,
     color: colors.danger,
     letterSpacing: -1,
   },
   title: {
     fontSize: 22,
-    fontWeight: '800',
+    fontFamily: ty.font.display,
     color: colors.ink,
     textAlign: 'center',
     letterSpacing: -0.4,
@@ -111,6 +114,7 @@ const styles = StyleSheet.create({
   },
   body: {
     fontSize: 15,
+    fontFamily: ty.font.body,
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
@@ -128,8 +132,8 @@ const styles = StyleSheet.create({
   },
   bestTimeIcon: { fontSize: 22 },
   bestTimeTextWrap: { flex: 1, gap: 2 },
-  bestTimeTitle: { fontSize: 12, fontWeight: '700', color: colors.primary },
-  bestTimeBody: { fontSize: 13, color: colors.textSecondary, lineHeight: 18 },
+  bestTimeTitle: { fontSize: 12, fontFamily: ty.font.heading, color: colors.primary },
+  bestTimeBody: { fontSize: 13, fontFamily: ty.font.body, color: colors.textSecondary, lineHeight: 18 },
 
   actions: {
     paddingHorizontal: 24,
@@ -145,7 +149,7 @@ const styles = StyleSheet.create({
   },
   btnPrimaryTxt: {
     fontSize: 17,
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     color: colors.white,
     letterSpacing: -0.2,
   },
@@ -156,7 +160,7 @@ const styles = StyleSheet.create({
   },
   btnSecondaryTxt: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: ty.font.bodyBold,
     color: colors.textMuted,
   },
 });

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
 import { colors, radii, shadows } from '../theme/tokens';
+import { useTypography } from '../theme/fonts';
 
 export type RadiusFilter = '500m' | '1km' | 'all';
 
@@ -38,6 +39,8 @@ export function MarkerFilterSheet({
   visible, onClose, radius, onRadiusChange, activeCategories, onToggleCategory, markerConfig, t,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   const categoryKeys = Object.keys(markerConfig);
 
   return (
@@ -101,7 +104,7 @@ export function MarkerFilterSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   backdrop: { flex: 1 },
   sheet: {
     backgroundColor: colors.card,
@@ -113,7 +116,7 @@ const styles = StyleSheet.create({
   },
 
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontSize: 17, fontWeight: '700', color: colors.ink, letterSpacing: -0.3 },
+  title: { fontSize: 17, fontFamily: ty.font.heading, color: colors.ink, letterSpacing: -0.3 },
   closeBtn: {
     width: 32, height: 32, borderRadius: 16,
     backgroundColor: colors.surface,
@@ -121,7 +124,7 @@ const styles = StyleSheet.create({
   },
 
   sectionLabel: {
-    fontSize: 12, fontWeight: '700',
+    fontSize: 12, fontFamily: ty.font.heading,
     color: colors.textMuted,
     textTransform: 'uppercase', letterSpacing: 0.8,
   },
@@ -142,7 +145,7 @@ const styles = StyleSheet.create({
     borderColor: '#2c5f25',
     backgroundColor: '#e8f0e6',
   },
-  pillTxt: { fontSize: 14, fontWeight: '600', color: colors.textMuted },
+  pillTxt: { fontSize: 14, fontFamily: ty.font.bodyBold, color: colors.textMuted },
   pillTxtSelected: { color: '#2c5f25' },
 
   // Category list
@@ -164,7 +167,7 @@ const styles = StyleSheet.create({
   },
   // includeFontPadding — Android: kill baseline padding that sinks emoji
   categoryEmoji: { fontSize: 18, lineHeight: 20, textAlign: 'center', includeFontPadding: false },
-  categoryLabel: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.ink },
+  categoryLabel: { flex: 1, fontSize: 15, fontFamily: ty.font.bodyBold, color: colors.ink },
   checkbox: {
     width: 22, height: 22, borderRadius: 6,
     borderWidth: 1.5, borderColor: colors.border,
@@ -175,5 +178,5 @@ const styles = StyleSheet.create({
     borderColor: '#2c5f25',
     backgroundColor: '#2c5f25',
   },
-  checkboxTick: { fontSize: 13, color: colors.white, fontWeight: '700' },
+  checkboxTick: { fontSize: 13, color: colors.white, fontFamily: ty.font.heading },
 });

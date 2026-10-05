@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Bell, SlidersHorizontal, MapPinPlusInside, Users } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
+import { useTypography, FontRole } from '../theme/fonts';
 import { colors, radii, shadows, heatVis } from '../theme/tokens';
 import { haversine, LatLng, isValidCoord, START_COORD, START_DELTA } from '../lib/geo';
 import { loadHomeZone, isInsideHomeZone, HomeZone } from '../lib/privacyZone';
@@ -211,6 +212,8 @@ export function WalkScreen({ navigation }: Props) {
     t, rtl, heatData, isHeatLoading, isGuest, confirmedCount,
     radius, setRadius, activeCategories, toggleCategory, userLocation, setUserLocation,
   } = useApp();
+  const { font } = useTypography();
+  const styles = useMemo(() => makeStyles(font), [font]);
   const heatVis_ = heatVis[heatData.status];
 
   // Real panel height, measured via onLayout — drives the chip row's bottom so
@@ -1787,6 +1790,8 @@ export function WalkScreen({ navigation }: Props) {
 
 // ── Stat column ────────────────────────────────────────────────────────────────
 function StatCol({ label, value }: { label: string; value: string }) {
+  const { font } = useTypography();
+  const styles = useMemo(() => makeStyles(font), [font]);
   return (
     <View style={styles.statCol}>
       {/* Ограничиваем масштаб системного шрифта: при крупном Dynamic Type
@@ -1798,7 +1803,7 @@ function StatCol({ label, value }: { label: string; value: string }) {
 }
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   // Full-screen, like MapScreen: the map's frame stays constant so the Apple
   // logo / Legal (anchored to that frame) don't move when the panel resizes.
@@ -1827,7 +1832,7 @@ const styles = StyleSheet.create({
   },
   filterBadgeTxt: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: colors.white,
   },
 
@@ -1851,7 +1856,7 @@ const styles = StyleSheet.create({
   },
   liveTxt: {
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: colors.primary,
     letterSpacing: 1,
   },
@@ -1876,17 +1881,17 @@ const styles = StyleSheet.create({
   },
   heatUnavailable: {
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: colors.textSecondary,
   },
   heatTemp: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: font.heading,
     letterSpacing: -0.5,
   },
   heatLabel: {
     fontSize: 11,
-    fontWeight: '500',
+    fontFamily: font.bodyBold,
     marginTop: 1,
   },
 
@@ -1963,13 +1968,13 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 26,
-    fontWeight: '800',
+    fontFamily: font.display,
     color: colors.ink,
     letterSpacing: -0.5,
   },
   statLabel: {
     fontSize: 11,
-    fontWeight: '500',
+    fontFamily: font.bodyBold,
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -1992,11 +1997,12 @@ const styles = StyleSheet.create({
   nearbyTxt: {
     flex: 1,
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: font.bodyBold,
     color: colors.ink,
   },
   nearbyArrow: {
     fontSize: 11,
+    fontFamily: font.body,
     color: colors.textMuted,
   },
 
@@ -2012,11 +2018,12 @@ const styles = StyleSheet.create({
   bannerText: { flex: 1, gap: 2 },
   bannerTitle: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: colors.primaryDark,
   },
   bannerSub: {
     fontSize: 12,
+    fontFamily: font.body,
     color: colors.textSecondary,
   },
   bannerCta: {
@@ -2030,7 +2037,7 @@ const styles = StyleSheet.create({
   },
   bannerCtaTxt: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: colors.white,
   },
   bannerClose: {
@@ -2041,6 +2048,7 @@ const styles = StyleSheet.create({
   },
   bannerCloseTxt: {
     fontSize: 18,
+    fontFamily: font.body,
     color: colors.textMuted,
     lineHeight: 20,
   },
@@ -2056,7 +2064,7 @@ const styles = StyleSheet.create({
   },
   finishTxt: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: colors.ink,
     letterSpacing: -0.2,
   },

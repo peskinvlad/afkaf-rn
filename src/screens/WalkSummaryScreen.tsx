@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 import MapView, { PROVIDER_DEFAULT, Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
+import { useTypography, FontRole } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
 import { BADGES } from '../constants/badges';
 import { HeatStatus, HEAT_DANGER_ABOVE_C } from '../lib/heat';
@@ -46,6 +47,8 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
   const newBadges = newBadgeIds.map((id: string) => BADGES.find((b) => b.id === id)).filter(Boolean) as typeof BADGES;
   const insets = useSafeAreaInsets();
   const { t, isGuest, setIsWalking } = useApp();
+  const { font } = useTypography();
+  const styles = useMemo(() => makeStyles(font), [font]);
   const mapRef = useRef<MapView>(null);
 
   // Fit map to route after render
@@ -239,6 +242,8 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
 
 // ── Stat column ────────────────────────────────────────────────────────────────
 function StatCol({ value, label }: { value: string; label: string }) {
+  const { font } = useTypography();
+  const styles = useMemo(() => makeStyles(font), [font]);
   return (
     <View style={styles.statCol}>
       {/* Ограничиваем масштаб системного шрифта — см. WalkScreen.StatCol. */}
@@ -249,7 +254,7 @@ function StatCol({ value, label }: { value: string; label: string }) {
 }
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
 
   // Map
@@ -269,7 +274,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: radii.full,
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: colors.primary,
     overflow: 'hidden',
     ...shadows.sm,
@@ -291,7 +296,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
-  distanceTxt: { fontSize: 15, fontWeight: '700', color: colors.ink },
+  distanceTxt: { fontSize: 15, fontFamily: font.heading, color: colors.ink },
   shareBtn: {
     width: 40,
     height: 40,
@@ -300,7 +305,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  shareTxt: { fontSize: 18, color: colors.ink },
+  shareTxt: { fontSize: 18, fontFamily: font.body, color: colors.ink },
 
   // Scroll content
   scroll: { flex: 1 },
@@ -320,7 +325,7 @@ const styles = StyleSheet.create({
   emotionTxt: {
     flex: 1,
     fontSize: 20,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: colors.ink,
     letterSpacing: -0.3,
   },
@@ -332,7 +337,7 @@ const styles = StyleSheet.create({
   },
   personalBestTxt: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: colors.caution,
     letterSpacing: 0.2,
   },
@@ -349,13 +354,13 @@ const styles = StyleSheet.create({
   statCol: { flex: 1, alignItems: 'center', gap: 4 },
   statValue: {
     fontSize: 28,
-    fontWeight: '800',
+    fontFamily: font.display,
     color: colors.ink,
     letterSpacing: -0.5,
   },
   statLabel: {
     fontSize: 11,
-    fontWeight: '600',
+    fontFamily: font.bodyBold,
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -378,7 +383,7 @@ const styles = StyleSheet.create({
   },
   praiseTxt: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: font.bodyBold,
     color: colors.safe,
     lineHeight: 19,
   },
@@ -390,7 +395,7 @@ const styles = StyleSheet.create({
   },
   autoTxt: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: font.bodyBold,
     color: colors.textSecondary,
     lineHeight: 19,
   },
@@ -408,7 +413,7 @@ const styles = StyleSheet.create({
   badgeCardTxt: {
     flex: 1,
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: colors.primaryDark,
     lineHeight: 19,
   },
@@ -424,11 +429,12 @@ const styles = StyleSheet.create({
   },
   guestCardTitle: {
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: colors.ink,
   },
   guestCardBody: {
     fontSize: 13,
+    fontFamily: font.body,
     color: colors.textSecondary,
     lineHeight: 18,
   },
@@ -441,7 +447,7 @@ const styles = StyleSheet.create({
   },
   guestCardBtnTxt: {
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: colors.white,
   },
 
@@ -454,7 +460,7 @@ const styles = StyleSheet.create({
   },
   doneTxt: {
     fontSize: 17,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: colors.white,
     letterSpacing: -0.3,
   },
