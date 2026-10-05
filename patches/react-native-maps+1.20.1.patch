@@ -1,24 +1,3 @@
-diff --git a/node_modules/react-native-maps/ios/AirMaps/AIRMap.m b/node_modules/react-native-maps/ios/AirMaps/AIRMap.m
-index 07a4638..b814ac5 100644
---- a/node_modules/react-native-maps/ios/AirMaps/AIRMap.m
-+++ b/node_modules/react-native-maps/ios/AirMaps/AIRMap.m
-@@ -135,7 +135,15 @@ - (void)insertReactSubview:(id<RCTComponent>)subview atIndex:(NSInteger)atIndex
-             [self insertReactSubview:(UIView *)childSubviews[i] atIndex:atIndex];
-         }
-     }
--    [_reactSubviews insertObject:(UIView *)subview atIndex:(NSUInteger) atIndex];
-+    // afkaf patch (patch-package): under the New Architecture the legacy-interop
-+    // layer can hand us an atIndex past the current child count (seen when a
-+    // marker is removed and re-added during a filter toggle). -insertObject:atIndex:
-+    // then throws "index N beyond bounds" and the app hard-crashes. Clamp to the
-+    // end: child order here is cosmetic (MapKit owns annotation z-order), so
-+    // appending is safe. A negative atIndex casts to a huge NSUInteger and is
-+    // likewise clamped to the count.
-+    NSUInteger insertionIndex = MIN((NSUInteger) atIndex, _reactSubviews.count);
-+    [_reactSubviews insertObject:(UIView *)subview atIndex:insertionIndex];
- }
- #pragma clang diagnostic pop
- 
 diff --git a/node_modules/react-native-maps/ios/AirMaps/AIRMapMarker.m b/node_modules/react-native-maps/ios/AirMaps/AIRMapMarker.m
 index 8c17ac7..ced7c5d 100644
 --- a/node_modules/react-native-maps/ios/AirMaps/AIRMapMarker.m
