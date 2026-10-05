@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { checkInHere } from '../lib/parkCheckin';
 import { navigationRef } from '../lib/navigationRef';
 import { useParkPresence, useParkCheckinState, ParkPresencePerson } from '../hooks/useParkPresence';
+import { useTypography } from '../theme/fonts';
 import { colors, radii, typography } from '../theme/tokens';
 
 type TFn = (key: string, vars?: Record<string, string | number>) => string;
@@ -25,6 +26,8 @@ export function ParkPresenceBlock({
   const { presence, refresh } = useParkPresence(markerId);
   const checkin = useParkCheckinState();
   const [sending, setSending] = useState(false);
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
 
   const insideHere = checkin.active && checkin.parkId === markerId;
   const nobody = checkin.eligibility === 'nobody';
@@ -108,6 +111,8 @@ export function ParkPresenceBlock({
 }
 
 function PersonRow({ person, t, rtl }: { person: ParkPresencePerson; t: TFn; rtl: boolean }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   const name = person.isMe ? t('park.you') : person.displayName || t('park.someone');
   const label = person.dogName ? `${name} · ${person.dogName}` : name;
   return (
@@ -121,14 +126,14 @@ function PersonRow({ person, t, rtl }: { person: ParkPresencePerson; t: TFn; rtl
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   wrap: { gap: 6 },
   rowReverse: { flexDirection: 'row-reverse' },
   txtRight: { textAlign: 'right' },
 
   countLine: {
-    ...typography.sm,
-    fontFamily: 'Nunito_700Bold',
+    ...ty.variants.sm,
+    fontFamily: ty.font.heading,
     color: colors.ink,
   },
   personRow: {
@@ -143,22 +148,22 @@ const styles = StyleSheet.create({
   },
   personName: {
     flex: 1,
-    ...typography.sm,
+    ...ty.variants.sm,
     color: colors.textSecondary,
   },
   friendTag: {
-    ...typography.xs,
-    fontFamily: 'Nunito_600SemiBold',
+    ...ty.variants.xs,
+    fontFamily: ty.font.bodyBold,
     color: colors.primaryDark,
   },
   moreLine: {
-    ...typography.xs,
-    fontFamily: 'Nunito_600SemiBold',
+    ...ty.variants.xs,
+    fontFamily: ty.font.bodyBold,
     color: colors.textMuted,
   },
   checkedLine: {
-    ...typography.sm,
-    fontFamily: 'Nunito_700Bold',
+    ...ty.variants.sm,
+    fontFamily: ty.font.heading,
     color: colors.primaryDark,
     paddingTop: 2,
   },
@@ -179,13 +184,12 @@ const styles = StyleSheet.create({
   },
   btnTxt: {
     fontSize: 14,
-    fontFamily: 'Nunito_700Bold',
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     color: colors.white,
   },
   btnTxtMuted: { color: colors.textMuted },
   hint: {
-    ...typography.xs,
+    ...ty.variants.xs,
     color: colors.textMuted,
   },
 });

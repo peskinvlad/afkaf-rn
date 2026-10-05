@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useApp } from '../hooks/useApp';
+import { useTypography, FontRole } from '../theme/fonts';
 import { FriendshipRpcStatus } from '../hooks/useFriends';
 import { colors } from '../theme/tokens';
 
@@ -58,6 +59,8 @@ const DogCard = ({
   onCardPress?: (userId: string) => void;
 }) => {
   const { t } = useApp();
+  const { font } = useTypography();
+  const styles = useMemo(() => makeStyles(font), [font]);
   const inner = (
     <>
       <View style={styles.avatarWrap}>
@@ -101,6 +104,8 @@ const DogCard = ({
 
 const AnonymousCard = ({ count }: { count: number }) => {
   const { t } = useApp();
+  const { font } = useTypography();
+  const styles = useMemo(() => makeStyles(font), [font]);
   return (
     <View style={styles.card}>
       <View style={styles.avatarWrap}>
@@ -119,6 +124,8 @@ export default function NearbyDogsSheet({
   statusByUser, onAddFriend, sendingUserId, onCardPress, onInvite, bottomOffset = 0, onHeightChange,
 }: Props) {
   const { t } = useApp();
+  const { font } = useTypography();
+  const styles = useMemo(() => makeStyles(font), [font]);
   const translateY = useRef(new Animated.Value(300)).current;
 
   useEffect(() => {
@@ -217,7 +224,7 @@ export default function NearbyDogsSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   sheet: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
@@ -241,7 +248,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ccc',
   },
   title: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: font.heading,
     fontSize: 16,
     color: '#1a1a1a',
     paddingHorizontal: 20,
@@ -261,7 +268,7 @@ const styles = StyleSheet.create({
   },
   noLocationEmoji: { fontSize: 28 },
   noLocationTxt: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: font.body,
     fontSize: 14,
     color: '#555',
     textAlign: 'center',
@@ -276,7 +283,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   noLocationBtnTxt: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: font.heading,
     fontSize: 14,
     color: '#fff',
   },
@@ -314,13 +321,13 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
   },
   cardName: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: font.heading,
     fontSize: 13,
     color: '#1a1a1a',
     textAlign: 'center',
   },
   cardBreed: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: font.body,
     fontSize: 12,
     color: '#888',
     textAlign: 'center',
@@ -331,7 +338,7 @@ const styles = StyleSheet.create({
     minHeight: 24,
   },
   cardStatus: {
-    fontFamily: 'Nunito-Regular',
+    fontFamily: font.body,
     fontSize: 11,
     color: '#888',
     textAlign: 'center',
@@ -345,7 +352,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addPillTxt: {
-    fontFamily: 'Nunito-Bold',
+    fontFamily: font.heading,
     fontSize: 11,
     color: '#fff',
   },

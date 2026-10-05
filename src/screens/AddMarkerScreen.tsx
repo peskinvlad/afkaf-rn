@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ import { isAccurateFix, GPS_ACCURACY_MAX_M } from '../lib/gpsQuality';
 import { addLocalMarker, MARKER_COLUMNS } from '../hooks/useMapMarkers';
 import { MapMarker, MARKER_CONFIG } from '../lib/markerConfig';
 import { ADD_MARKER_CAMERA_ZOOM_RANGE } from '../lib/mapConfig';
+import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -63,6 +64,8 @@ interface Props {
 export function AddMarkerScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
 
   // coords = the immutable GPS fix (circle centre + clamp anchor).
   // markerCoords = the point actually saved = current map centre, kept within
@@ -465,7 +468,7 @@ export function AddMarkerScreen({ navigation }: Props) {
 }
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.white },
 
   // Header
@@ -482,12 +485,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backTxt: { fontSize: 26, color: colors.ink, lineHeight: 30, marginTop: -2 },
+  backTxt: { fontSize: 26, fontFamily: ty.font.body, color: colors.ink, lineHeight: 30, marginTop: -2 },
   headerTitle: {
     flex: 1,
     textAlign: 'center',
     fontSize: 17,
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     color: colors.ink,
     letterSpacing: -0.3,
   },
@@ -515,12 +518,13 @@ const styles = StyleSheet.create({
   noFixEmoji: { fontSize: 30 },
   noFixTitle: {
     fontSize: 15,
-    fontWeight: '800',
+    fontFamily: ty.font.display,
     color: colors.ink,
     textAlign: 'center',
   },
   noFixBody: {
     fontSize: 13,
+    fontFamily: ty.font.body,
     color: colors.textSecondary,
     lineHeight: 18,
     textAlign: 'center',
@@ -529,7 +533,7 @@ const styles = StyleSheet.create({
   // into something the walker can act on by stepping into the open.
   gpsAccuracy: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     color: colors.ink,
     textAlign: 'center',
     marginTop: 2,
@@ -545,7 +549,7 @@ const styles = StyleSheet.create({
   },
   noFixBtnTxt: {
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     color: colors.white,
   },
   centerPinOverlay: {
@@ -564,6 +568,7 @@ const styles = StyleSheet.create({
   },
   adjustHint: {
     fontSize: 12,
+    fontFamily: ty.font.body,
     color: colors.textMuted,
     textAlign: 'center',
     paddingHorizontal: 16,
@@ -581,7 +586,7 @@ const styles = StyleSheet.create({
   // Section label
   sectionLabel: {
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
@@ -622,7 +627,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     textAlign: 'center',
-    fontWeight: '600',
+    fontFamily: ty.font.bodyBold,
     color: colors.textSecondary,
   },
   typeChipTxtActive: {
@@ -638,6 +643,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
+    fontFamily: ty.font.body,
     color: colors.ink,
     minHeight: 80,
     ...shadows.sm,
@@ -660,7 +666,7 @@ const styles = StyleSheet.create({
   addBtnDisabled: { opacity: 0.6 },
   addBtnTxt: {
     fontSize: 17,
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     color: colors.white,
     letterSpacing: -0.3,
   },

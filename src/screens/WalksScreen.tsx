@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useApp } from '../hooks/useApp';
+import { useTypography } from '../theme/fonts';
 import { supabase } from '../lib/supabase';
 import { Lang } from '../i18n';
 import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
@@ -56,6 +57,8 @@ interface Props {
 export function WalksScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t, lang, rtl, isGuest } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   const [walks, setWalks] = useState<WalkEntry[]>([]);
   const [loading, setLoading] = useState(!isGuest);
 
@@ -166,6 +169,8 @@ export function WalksScreen({ navigation }: Props) {
 }
 
 function StatCol({ value, label }: { value: string; label: string }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   return (
     <View style={styles.statCol}>
       <Text style={styles.statValue}>{value}</Text>
@@ -174,7 +179,7 @@ function StatCol({ value, label }: { value: string; label: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surface },
   rowReverse: { flexDirection: 'row-reverse' },
 
@@ -186,8 +191,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   headerBtn: { width: 36, alignItems: 'center', justifyContent: 'center' },
-  backArrow: { fontSize: 20, color: colors.ink },
-  headerTitle: { ...typography.h2, color: colors.ink, flex: 1, textAlign: 'center' },
+  backArrow: { fontFamily: ty.font.body, fontSize: 20, color: colors.ink },
+  headerTitle: { ...ty.variants.h2, color: colors.ink, flex: 1, textAlign: 'center' },
 
   list: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.md },
 
@@ -203,8 +208,8 @@ const styles = StyleSheet.create({
   },
   walkCardDimmed: { opacity: 0.45 },
   walkLeft: { gap: 2 },
-  walkDate: { ...typography.h3, fontFamily: 'Nunito_700Bold', color: colors.ink },
-  walkTime: { ...typography.xs, color: colors.textMuted },
+  walkDate: { ...ty.variants.h3, fontFamily: ty.font.heading, color: colors.ink },
+  walkTime: { ...ty.variants.xs, color: colors.textMuted },
   walkStats: {
     flex: 1,
     flexDirection: 'row',
@@ -212,10 +217,10 @@ const styles = StyleSheet.create({
     gap: spacing.xl,
   },
   statCol: { alignItems: 'center', gap: 2 },
-  statValue: { ...typography.h3, fontFamily: 'Nunito_700Bold', color: colors.ink },
+  statValue: { ...ty.variants.h3, fontFamily: ty.font.heading, color: colors.ink },
   statLabel: {
-    ...typography.xs,
-    fontFamily: 'Nunito_600SemiBold',
+    ...ty.variants.xs,
+    fontFamily: ty.font.bodyBold,
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -230,13 +235,13 @@ const styles = StyleSheet.create({
   },
   stateEmoji: { fontSize: 44, marginBottom: spacing.sm },
   stateTitle: {
-    ...typography.body,
+    ...ty.variants.body,
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
   },
   stateSubtitle: {
-    ...typography.sm,
+    ...ty.variants.sm,
     color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 19,
@@ -252,8 +257,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   guestBtnTxt: {
-    ...typography.body,
-    fontFamily: 'Nunito_700Bold',
+    ...ty.variants.body,
+    fontFamily: ty.font.heading,
     color: colors.white,
   },
 });

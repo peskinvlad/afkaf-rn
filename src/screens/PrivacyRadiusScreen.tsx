@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useMemo, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import MapView from 'react-native-maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
+import { useTypography } from '../theme/fonts';
 import { loadHomeZone } from '../lib/privacyZone';
 import { MAP_CAMERA_ZOOM_RANGE } from '../lib/mapConfig';
 import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
@@ -42,6 +43,8 @@ function clampStep(value: number): number {
 export function PrivacyRadiusScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { t, userLocation } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
 
   const [radius, setRadius] = useState(DEFAULT_RADIUS);
   const [zoneCenter, setZoneCenter] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -220,7 +223,7 @@ export function PrivacyRadiusScreen({ navigation }: any) {
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surface },
 
   // Map
@@ -235,7 +238,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...shadows.md,
   },
-  mapBackText: { fontSize: 20, color: colors.ink },
+  mapBackText: { fontFamily: ty.font.body, fontSize: 20, color: colors.ink },
 
   centreOverlay: {
     position: 'absolute',
@@ -270,7 +273,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     ...shadows.sm,
   },
-  radiusBadgeText: { ...typography.xs, color: colors.primary, fontFamily: 'Nunito_700Bold' },
+  radiusBadgeText: { ...ty.variants.xs, color: colors.primary, fontFamily: ty.font.heading },
 
   // Bottom panel
   panel: {
@@ -283,8 +286,8 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     ...shadows.lg,
   },
-  panelTitle: { ...typography.h2, color: colors.ink },
-  panelSubtitle: { ...typography.sm, color: colors.textMuted },
+  panelTitle: { ...ty.variants.h2, color: colors.ink },
+  panelSubtitle: { ...ty.variants.sm, color: colors.textMuted },
 
   // Slider
   sliderContainer: {
@@ -320,9 +323,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: -spacing.sm,
   },
-  sliderLabel: { ...typography.xs, color: colors.textMuted, flexShrink: 0 },
+  sliderLabel: { ...ty.variants.xs, color: colors.textMuted, flexShrink: 0 },
 
-  description: { ...typography.sm, color: colors.textSecondary, lineHeight: 20 },
+  description: { ...ty.variants.sm, color: colors.textSecondary, lineHeight: 20 },
 
   saveBtn: {
     backgroundColor: colors.primary,
@@ -331,5 +334,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: spacing.sm,
   },
-  saveBtnText: { ...typography.h3, color: colors.white },
+  saveBtnText: { ...ty.variants.h3, color: colors.white },
 });

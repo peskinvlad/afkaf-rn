@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
 import { LANGS, Lang } from '../i18n';
-import { colors, radii, shadows, typography, spacing } from '../theme/tokens';
+import { useTypography } from '../theme/fonts';
+import { colors, radii, shadows, spacing } from '../theme/tokens';
 
 interface Props {
   navigation: any;
@@ -12,6 +13,8 @@ interface Props {
 export function LangScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { setLang, t } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
 
   function selectLang(lang: Lang) {
     setLang(lang);
@@ -44,7 +47,7 @@ export function LangScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.surface,
@@ -60,13 +63,14 @@ const styles = StyleSheet.create({
   },
   logoName: {
     fontSize: 32,
-    fontWeight: '800',
+    fontFamily: ty.font.display,
     color: colors.primary,
     letterSpacing: -0.8,
     marginTop: 4,
   },
   tagline: {
     fontSize: 13,
+    fontFamily: ty.font.body,
     color: colors.textMuted,
     textAlign: 'center',
     marginBottom: 48,
@@ -87,7 +91,7 @@ const styles = StyleSheet.create({
   },
   langLabel: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: ty.font.heading,
     color: colors.ink,
     letterSpacing: -0.3,
   },
@@ -97,6 +101,6 @@ const styles = StyleSheet.create({
   chevron: {
     fontSize: 20,
     color: colors.textMuted,
-    fontWeight: '300',
+    fontFamily: ty.font.body,
   },
 });

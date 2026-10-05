@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useApp } from '../hooks/useApp';
+import { useTypography } from '../theme/fonts';
 import { LANGS } from '../i18n';
 import { MARKER_CONFIG } from '../lib/markerConfig';
 import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
@@ -26,6 +27,8 @@ const MARKER_TYPES = Object.keys(MARKER_CONFIG);
 // ── Section wrapper ────────────────────────────────────────────────────────────
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -43,6 +46,8 @@ function Row({
   children: React.ReactNode;
   last?: boolean;
 }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   return (
     <View style={[styles.row, !last && styles.rowDivider]}>
       {children}
@@ -65,6 +70,8 @@ function PillGroup<T extends string>({
   onSelect: (v: T) => void;
   stretch?: boolean;
 }) {
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   return (
     <View style={[styles.pillRow, stretch && styles.pillRowStretch]}>
       {options.map((opt) => {
@@ -91,6 +98,8 @@ function PillGroup<T extends string>({
 export function SettingsScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { t, lang, setLang } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   const rtl = I18nManager.isRTL;
 
   // Privacy
@@ -325,7 +334,7 @@ export function SettingsScreen({ navigation }: any) {
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surface },
 
   header: {
@@ -337,15 +346,15 @@ const styles = StyleSheet.create({
   },
   rowReverse: { flexDirection: 'row-reverse' },
   backBtn: { width: 36, alignItems: 'center' },
-  backArrow: { fontSize: 20, color: colors.ink },
-  headerTitle: { ...typography.h2, color: colors.ink, flex: 1, textAlign: 'center' },
+  backArrow: { fontFamily: ty.font.body, fontSize: 20, color: colors.ink },
+  headerTitle: { ...ty.variants.h2, color: colors.ink, flex: 1, textAlign: 'center' },
 
   scroll: { paddingHorizontal: spacing.lg, gap: spacing.lg },
 
   section: { gap: spacing.sm },
   sectionTitle: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: ty.font.bodyBold,
     color: colors.ink,
     letterSpacing: 0.3,
     marginLeft: spacing.xs,
@@ -365,9 +374,9 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   subCardTitle: {
-    ...typography.sm,
+    ...ty.variants.sm,
     color: colors.ink,
-    fontFamily: 'Nunito_600SemiBold',
+    fontFamily: ty.font.bodyBold,
     marginBottom: spacing.sm,
   },
 
@@ -391,10 +400,10 @@ const styles = StyleSheet.create({
   },
   rowLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   rowIcon: { fontSize: 18 },
-  rowLabel: { ...typography.body, color: colors.ink },
-  rowSub: { ...typography.xs, color: colors.textMuted, marginTop: 2 },
-  visibilityDesc: { fontFamily: 'Nunito-Regular', fontSize: 13, color: colors.textMuted, marginTop: 6, lineHeight: 19 },
-  chevron: { fontSize: 20, color: colors.textMuted },
+  rowLabel: { ...ty.variants.body, color: colors.ink },
+  rowSub: { ...ty.variants.xs, color: colors.textMuted, marginTop: 2 },
+  visibilityDesc: { fontFamily: ty.font.body, fontSize: 13, color: colors.textMuted, marginTop: 6, lineHeight: 19 },
+  chevron: { fontFamily: ty.font.body, fontSize: 20, color: colors.textMuted },
 
   pillRow: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
   pillRowStretch: { flexWrap: 'nowrap' },
@@ -406,7 +415,7 @@ const styles = StyleSheet.create({
   },
   pillStretch: { flex: 1, alignItems: 'center', paddingHorizontal: spacing.sm },
   pillActive: { backgroundColor: colors.primary },
-  pillText: { ...typography.sm, color: colors.textMuted, fontFamily: 'Nunito_600SemiBold' },
+  pillText: { ...ty.variants.sm, color: colors.textMuted, fontFamily: ty.font.bodyBold },
   pillTextActive: { color: colors.white },
   pillTextCenter: { textAlign: 'center' },
 
@@ -428,6 +437,6 @@ const styles = StyleSheet.create({
   },
   // includeFontPadding — Android: kill baseline padding that sinks emoji
   checkboxEmoji: { fontSize: 14, lineHeight: 16, textAlign: 'center', includeFontPadding: false },
-  checkboxLabel: { ...typography.xs, color: colors.textMuted },
+  checkboxLabel: { ...ty.variants.xs, color: colors.textMuted },
   checkboxLabelActive: { color: colors.danger },
 });

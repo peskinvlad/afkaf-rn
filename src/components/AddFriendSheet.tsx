@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   ActivityIndicator,
@@ -11,7 +11,8 @@ import {
 import { useApp } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
 import { navigationRef } from '../lib/navigationRef';
-import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
+import { colors, radii, shadows, spacing } from '../theme/tokens';
+import { useTypography } from '../theme/fonts';
 
 type FriendshipRpcStatus = 'friends' | 'pending_sent' | 'pending_received' | 'none';
 type ViewState = 'loading' | FriendshipRpcStatus | 'sent' | 'guest';
@@ -35,6 +36,8 @@ interface Props {
 export function AddFriendSheet({ visible, friendId, onClose }: Props) {
   const insets = { bottom: 34 };
   const { t, rtl } = useApp();
+  const ty = useTypography();
+  const styles = useMemo(() => makeStyles(ty), [ty]);
   const translateY = useRef(new Animated.Value(300)).current;
 
   const [state, setState] = useState<ViewState>('loading');
@@ -135,7 +138,7 @@ export function AddFriendSheet({ visible, friendId, onClose }: Props) {
           <>
             <View style={[styles.profileRow, rtl && styles.rowReverse]}>
               <View style={[styles.avatar, styles.avatarFallback]}>
-                <Text style={styles.avatarInitial}>🐾</Text>
+                <Text style={styles.avatarEmoji}>🐾</Text>
               </View>
               <View style={styles.profileInfo}>
                 <Text style={styles.name}>{t('friends.guestInvite.title')}</Text>
@@ -191,7 +194,7 @@ export function AddFriendSheet({ visible, friendId, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   overlay: { ...StyleSheet.absoluteFillObject, zIndex: 30, justifyContent: 'flex-end' },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {
@@ -208,13 +211,14 @@ const styles = StyleSheet.create({
   profileRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   avatar: { width: 56, height: 56, borderRadius: 28 },
   avatarFallback: { backgroundColor: colors.primaryDark, alignItems: 'center', justifyContent: 'center' },
-  avatarInitial: { fontSize: 20, fontWeight: '700', color: colors.white },
+  avatarInitial: { fontSize: 20, fontFamily: ty.font.heading, color: colors.white },
+  avatarEmoji: { fontSize: 20, color: colors.white }, // эмодзи-фолбэк: без кастомного семейства
   profileInfo: { flex: 1, gap: 2 },
-  name: { ...typography.h2, color: colors.ink },
-  dogLine: { ...typography.sm, color: colors.textMuted },
+  name: { ...ty.variants.h2, color: colors.ink },
+  dogLine: { ...ty.variants.sm, color: colors.textMuted },
 
   statusText: {
-    ...typography.body,
+    ...ty.variants.body,
     color: colors.textSecondary,
     textAlign: 'center',
     paddingVertical: spacing.sm,
@@ -226,8 +230,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
     backgroundColor: colors.primaryDark,
   },
-  addBtnTxt: { ...typography.body, fontFamily: 'Nunito_700Bold', color: colors.white },
+  addBtnTxt: { ...ty.variants.body, fontFamily: ty.font.heading, color: colors.white },
 
   cancelBtn: { alignItems: 'center', paddingVertical: spacing.md },
-  cancelBtnTxt: { ...typography.body, fontFamily: 'Nunito_600SemiBold', color: colors.textMuted },
+  cancelBtnTxt: { ...ty.variants.body, fontFamily: ty.font.bodyBold, color: colors.textMuted },
 });

@@ -16,6 +16,7 @@ import MapView, { PROVIDER_DEFAULT, MarkerAnimated, MapPressEvent } from 'react-
 import * as Location from 'expo-location';
 import { Menu, Bell, SlidersHorizontal, MapPinPlusInside } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
+import { useTypography, FontRole } from '../theme/fonts';
 import { colors, radii, shadows, heatVis } from '../theme/tokens';
 import { WalkSlider } from '../components/WalkSlider';
 import { MarkerFilterSheet, RadiusFilter } from '../components/MarkerFilterSheet';
@@ -89,6 +90,8 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     t, rtl, heatData, isHeatLoading, setIsWalking, isGuest, isWalking, isTrusted,
     radius, setRadius, activeCategories, toggleCategory, userLocation, setUserLocation,
   } = useApp();
+  const { font } = useTypography();
+  const styles = useMemo(() => makeStyles(font), [font]);
 
   const { markers, waterSources } = useMapMarkers();
   const { dogs: nearbyDogs, hiddenCount: nearbyHiddenCount, locationAvailable: nearbyLocationAvailable, refresh: refreshNearby } = useNearbyDogs(userLocation);
@@ -740,7 +743,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           Закрытая шторка уехала translateY:300 за экран (хит-область там же),
           поэтому низ карты снова кликается. Без этого невидимая обёртка
           (bottom:0, высотой во весь контент шторки) блокировала ~половину экрана. */}
-      <View style={styles.nearbySheetWrap} pointerEvents="box-none">
+      <View style={styles.nearbySheetWrap} pointerEvents={drawerOpen ? 'none' : 'box-none'}>
         <NearbyDogsSheet
           visible={nearbySheetVisible}
           onClose={() => setNearbySheetVisible(false)}
@@ -759,8 +762,11 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
       </View>
 
       {/* ── Нижняя панель — абсолютная, всегда внизу ── */}
+      {/* Пока меню открыто — не принимаем касания: свайп слайдера не должен
+          случайно начать прогулку (видимо меню и так перекрывает панель). */}
       <View
         style={[styles.bottomPanel, { paddingBottom: insets.bottom + 12 }]}
+        pointerEvents={drawerOpen ? 'none' : 'auto'}
         onLayout={e => setBottomPanelHeight(e.nativeEvent.layout.height)}
       >
         <TouchableOpacity onPress={() => { setDetailMarker(null); setSelectedFriendId(null); setNearbySheetVisible(true); }} activeOpacity={0.7}>
@@ -819,7 +825,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
 
   // Top
@@ -846,7 +852,7 @@ const styles = StyleSheet.create({
   },
   filterBadgeTxt: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: colors.white,
   },
 
@@ -862,17 +868,17 @@ const styles = StyleSheet.create({
   },
   heatUnavailable: {
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: font.heading,
     color: colors.textSecondary,
   },
   heatTemp: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: font.heading,
     letterSpacing: -0.5,
   },
   heatLabel: {
     fontSize: 11,
-    fontWeight: '500',
+    fontFamily: font.bodyBold,
     marginTop: 1,
   },
 
@@ -924,7 +930,7 @@ const styles = StyleSheet.create({
   },
   walkersTxt: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: font.bodyBold,
     color: colors.ink,
   },
 

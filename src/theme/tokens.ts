@@ -68,14 +68,16 @@ export const shadows = {
   },
 } as const;
 
+// Без fontWeight намеренно: вес несёт само начертание (fontFamily). fontWeight
+// рядом с кастомным шрифтом на iOS может откатить текст на системный шрифт.
 export const typography = {
-  display: { fontSize: 28, fontWeight: '800' as const, fontFamily: 'Nunito_800ExtraBold', letterSpacing: -0.5 },
-  h1: { fontSize: 22, fontWeight: '700' as const, fontFamily: 'Nunito_700Bold', letterSpacing: -0.4 },
-  h2: { fontSize: 18, fontWeight: '700' as const, fontFamily: 'Nunito_700Bold', letterSpacing: -0.3 },
-  h3: { fontSize: 16, fontWeight: '600' as const, fontFamily: 'Nunito_600SemiBold' },
-  body: { fontSize: 15, fontWeight: '400' as const, fontFamily: 'Nunito_400Regular' },
-  sm: { fontSize: 13, fontWeight: '400' as const, fontFamily: 'Nunito_400Regular' },
-  xs: { fontSize: 11, fontWeight: '400' as const, fontFamily: 'Nunito_400Regular' },
+  display: { fontSize: 28, fontFamily: 'Nunito_800ExtraBold', letterSpacing: -0.5 },
+  h1: { fontSize: 22, fontFamily: 'Nunito_700Bold', letterSpacing: -0.4 },
+  h2: { fontSize: 18, fontFamily: 'Nunito_700Bold', letterSpacing: -0.3 },
+  h3: { fontSize: 16, fontFamily: 'Nunito_600SemiBold' },
+  body: { fontSize: 15, fontFamily: 'Nunito_400Regular' },
+  sm: { fontSize: 13, fontFamily: 'Nunito_400Regular' },
+  xs: { fontSize: 11, fontFamily: 'Nunito_400Regular' },
   mono: { fontSize: 15, fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }) },
 } as const;
 
