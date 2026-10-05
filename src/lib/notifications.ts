@@ -46,11 +46,17 @@ const LEGACY_CHANNELS = ['afkaf-walk', 'afkaf-test', 'afkaf-walk-v2'];
 
 // Общие поля content: на iOS sound = имя файла (без него уведомление беззвучно),
 // на Android звук берётся из канала (content.sound игнорируется на O+).
-// interruptionLevel 'active' — дефолт iOS, задан явно.
-function alertContent(N: NotificationsModule, category: SoundCategory) {
+// interruptionLevel по умолчанию 'active' (дефолт iOS); time-sensitive задаётся
+// явно только для нужных видов (см. TIME_SENSITIVE_KINDS) — на Android поле
+// игнорируется.
+function alertContent(
+  N: NotificationsModule,
+  category: SoundCategory,
+  interruptionLevel: 'active' | 'timeSensitive' = 'active',
+) {
   return {
     sound: SOUND[category].sound,
-    interruptionLevel: 'active',
+    interruptionLevel,
     priority: N.AndroidNotificationPriority.HIGH,
   } as const;
 }
@@ -73,6 +79,14 @@ export const ACT_FINISH = 'finish'; // «Завершить» (№2, №4)
 export const ACT_KEEP = 'keep'; // «Ещё гуляю» (№2, №4)
 export const ACT_MARKER_STILL = 'still_there'; // «Всё ещё тут» (№5)
 export const ACT_MARKER_GONE = 'gone'; // «Уже убрали» (№5)
+
+// iOS interruptionLevel: «Уже дома?» (№2) и «Ты всё ещё гуляешь?» (№4) идут
+// time-sensitive — пробиваются сквозь «Не беспокоить»/Фокус и показываются
+// сразу, не копятся в сводке. Требует entitlement
+// `com.apple.developer.usernotifications.time-sensitive` (app.json → ios). Все
+// остальные виды — обычный 'active'. Авто-завершение шлётся через
+// presentWalkNotice и тоже остаётся 'active'.
+const TIME_SENSITIVE_KINDS = new Set<string>([KIND_HOME, KIND_STILL]);
 
 // Мостик до WalkScreen: нажатие кнопки прилетает в глобальный слушатель
 // (initNotifications при загрузке бандла), а обработчики (checkInHere, завершение
@@ -351,7 +365,11 @@ export async function scheduleNotif(input: ScheduleNotifInput): Promise<string |
       body: input.body,
       categoryIdentifier: hasActions ? input.categoryId : undefined,
       data: { kind: input.kind, ...(input.data ?? {}) },
-      ...alertContent(N, input.sound),
+      ...alertContent(
+        N,
+        input.sound,
+        TIME_SENSITIVE_KINDS.has(input.kind) ? 'timeSensitive' : 'active',
+      ),
     },
     trigger: {
       type: N.SchedulableTriggerInputTypes.TIME_INTERVAL,
