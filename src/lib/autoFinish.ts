@@ -20,6 +20,10 @@ import { HomeZone } from './privacyZone';
 // бегает, — там порог длиннее (stillNearParkMs).
 
 export const HOME_DWELL_MS = 20 * 60_000;
+// Сценарий №2 «Уже дома?»: спрашиваем через 10 мин в домашней зоне — раньше
+// авто-завершения (20 мин). Dev-переключатель «подсказка 30 с» — для теста.
+export const HOME_PROMPT_MS = 10 * 60_000;
+export const HOME_PROMPT_TEST_MS = 30_000;
 export const STILL_MS = 30 * 60_000;
 export const STILL_NEAR_PARK_MS = 60 * 60_000;
 export const PARK_NEAR_M = 100;
@@ -118,6 +122,16 @@ export interface AutoFinishDetector {
   check: (nowMs: number) => AutoFinishHit | null;
   // Шаговый датчик опроверг неподвижность — начать отсчёт заново с nowMs.
   rejectStill: (nowMs: number) => void;
+  // Сценарий №2: когда подтверждён вход в домашнюю зону (кандидат на «дом»),
+  // вернуть время входа T — чтобы запланировать подсказку на T + 10 мин. null —
+  // кандидата нет (не дома / правило «неподвижность» / уже отклонён).
+  homeCandidateSince: () => number | null;
+  // «Ещё гуляю»: отклонить правило «дом» до следующего выхода из зоны и входа в
+  // неё — ни подсказки, ни авто-завершения, пока не выйдет и не вернётся.
+  rejectHome: () => void;
+  // «Завершить» из подсказки: завершить по правилу «дом» прямо сейчас, не дожидаясь
+  // 20 мин (с прибытием к двери, как авто-завершение). null — кандидата нет.
+  forceHome: () => AutoFinishHit | null;
   dispose: () => void;
 }
 
@@ -132,6 +146,9 @@ export function createAutoFinishDetector(config: AutoFinishConfig): AutoFinishDe
   let outsideRun: DetectorFix[] = [];
   let insideRun: Stamped[] = [];
   let candidate: Stamped | null = null;
+  // «Ещё гуляю» (сценарий №2): пока true — правило «дом» выключено (ни подсказки,
+  // ни авто-завершения). Сбрасывается при подтверждённом выходе из зоны.
+  let homeRejected = false;
   // Точки внутри зоны после подтверждённого входа — ТОЛЬКО в памяти, для расчёта
   // прибытия. В сохраняемый трек не попадают (приватность адреса).
   let insidePoints: Stamped[] = [];
@@ -177,6 +194,7 @@ export function createAutoFinishDetector(config: AutoFinishConfig): AutoFinishDe
     if (d <= zone.radiusM) {
       outsideRun = [];
       if (!wasOutside) return;            // старт дома — правило неактивно
+      if (homeRejected) return;           // «Ещё гуляю» — ждём выхода из зоны
       if (candidate) {
         insidePoints.push(s);            // уже считаем — копим точки внутри для прибытия
         return;
@@ -203,6 +221,7 @@ export function createAutoFinishDetector(config: AutoFinishConfig): AutoFinishDe
         wasOutside = true;
         candidate = null;
         insidePoints = [];
+        homeRejected = false; // вышли из зоны — «Ещё гуляю» снято, можно снова спрашивать
         diag.wasOutside = true;
         diag.insideSince = null;
       }
@@ -312,6 +331,39 @@ export function createAutoFinishDetector(config: AutoFinishConfig): AutoFinishDe
       diag.reason = null;
       // Отсчёт — с текущего момента, от последней известной позиции.
       setAnchor({ fix: { ...last.fix, timestamp: nowMs }, mark: last.mark });
+    },
+
+    homeCandidateSince() {
+      return candidate ? candidate.fix.timestamp : null;
+    },
+
+    rejectHome() {
+      candidate = null;
+      insidePoints = [];
+      insideRun = [];
+      homeRejected = true;
+      diag.insideSince = null;
+      if (fired && fired.reason === 'home') {
+        fired = null;
+        diag.firedAt = null;
+        diag.reason = null;
+      }
+    },
+
+    forceHome() {
+      if (fired) return fired;
+      if (!home || !candidate) return null;
+      const arrival = homeArrival(candidate);
+      const hit: AutoFinishHit = {
+        reason: 'home',
+        endAt: arrival.fix.timestamp,
+        mark: arrival.mark,
+        routeCutLen: candidate.mark.routeLen,
+      };
+      fired = hit;
+      diag.firedAt = hit.endAt;
+      diag.reason = hit.reason;
+      return hit;
     },
 
     dispose() {

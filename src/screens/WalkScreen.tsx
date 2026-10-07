@@ -37,6 +37,7 @@ import { FriendWalkerMarker, FRIEND_PIN_HIDE_MS } from '../components/FriendWalk
 import { UserLocationMarker, UserLocationMarkerAndroid } from '../components/UserLocationMarker';
 import { MapMarkerIcon } from '../components/MapMarkerIcon';
 import { FirstWalkTipCard } from '../components/FirstWalkTipCard';
+import { FirstWalkNotifCard } from '../components/FirstWalkNotifCard';
 import { LocateButton } from '../components/LocateButton';
 import NearbyDogsSheet from '../components/NearbyDogsSheet';
 import { ShareProfileSheet } from '../components/ShareProfileSheet';
@@ -59,16 +60,70 @@ import {
   AutoFinishDetector,
   AutoFinishHit,
   PARK_NEAR_M,
+  HOME_PROMPT_MS,
+  HOME_PROMPT_TEST_MS,
 } from '../lib/autoFinish';
-import { getDevAutoFinishTest, getDevParkCheckinTest } from '../constants/dev';
+import {
+  getDevAutoFinishTest,
+  getDevParkCheckinTest,
+  getDevParkPromptTest,
+  getDevHomePromptTest,
+  getDevStillWalkingTest,
+  getDevProximityTest,
+  getDevGpsProfile,
+  isDevUser,
+  GpsProfile,
+} from '../constants/dev';
 import {
   startParkCheckinSession,
   endParkCheckinSession,
   feedParkFix,
   tickParkCheckin,
+  checkInHere,
+  subscribeParkCheckin,
+  getParkCheckinState,
+  PARK_PROMPT_MS,
+  PARK_PROMPT_TEST_MS,
   DogPark,
 } from '../lib/parkCheckin';
 import { subscribeWalkLocations, startWalkTracking, stopWalkTracking } from '../lib/walkTracking';
+import {
+  isNotificationsAvailable,
+  scheduleNotif,
+  cancelScheduledNotification,
+  presentWalkNotice,
+  registerNotifHandler,
+  ensureNotifChannels,
+  KIND_PARK,
+  CAT_PARK,
+  ACT_PARK_HERE,
+  KIND_HOME,
+  CAT_HOME,
+  ACT_FINISH,
+  ACT_KEEP,
+  KIND_STILL,
+  CAT_STILL,
+  KIND_MARKER,
+  CAT_MARKER,
+  ACT_MARKER_STILL,
+  ACT_MARKER_GONE,
+} from '../lib/notifications';
+import { castMarkerVote } from '../lib/markerVotes';
+import {
+  NotifType,
+  QUIET_EXEMPT,
+  inQuietHours,
+  loadNotifEnabled,
+} from '../lib/notifPrefs';
+import {
+  parkText,
+  homeText,
+  autoFinishedText,
+  hazardPermText,
+  hazardTempText,
+  stillText,
+  markerText,
+} from '../lib/notifText';
 
 // Старт — общий START_COORD (Бат-Ям, см. lib/geo). Во время прогулки камера
 // прыгает на пользователя первым же фиксом, так что этот регион виден лишь миг.
@@ -107,6 +162,25 @@ const AUTO_FINISH_CHECK_MS = 30_000;
 // «Неподвижность» не засчитывается, если шагомер за то же окно насчитал
 // столько шагов и больше — человек ходит (по квартире, по кругу у площадки).
 const STILL_MAX_STEPS = 300;
+
+// Сценарий №3 «Опасность рядом» и №5 «Метка ещё актуальна?»: пороги сближения с
+// меткой. Dev-переключатель «радиус 150 м» увеличивает оба для теста.
+const HAZARD_TYPES = ['danger', 'hazard', 'aggressive_dog'];
+const HAZARD_RADIUS_M = 50;
+const MARKER_RADIUS_M = 30;
+const PROXIMITY_TEST_RADIUS_M = 150;
+
+// Сценарий №4 «Ты всё ещё гуляешь?» (только без домашней зоны): первый раз через
+// 2 ч, повтор не раньше +1 ч. Dev-тест: 2 мин / +1 мин.
+const STILL_WALKING_MS = 2 * 60 * 60_000;
+const STILL_WALKING_TEST_MS = 2 * 60_000;
+const STILL_WALKING_REPEAT_MS = 60 * 60_000;
+const STILL_WALKING_REPEAT_TEST_MS = 60_000;
+
+// Сценарий №5 «Метка ещё актуальна?»: не чаще 3 за прогулку. Временные метки =
+// не инфраструктура и не типы-опасности (ими занимается №3) — чтобы одну метку
+// не дёргать двумя уведомлениями.
+const MARKER_PROMPT_MAX = 3;
 
 // Steps between two moments from the motion coprocessor (iOS CMPedometer; the
 // live watcher gets no updates in the background, so its count at T would be
@@ -478,6 +552,12 @@ export function WalkScreen({ navigation }: Props) {
   const glitchFilter = useRef(
     createGlitchFilter<Location.LocationObjectCoords & { timestamp: number }>()
   ).current;
+  // Эксперимент с батареей (только DEV): профиль GPS этой прогулки + счётчики
+  // качества трека для строки в итогах. accepted = попали в маршрут; dropped =
+  // received − accepted (отсеяны accuracy-гейтом или glitch-фильтром).
+  const gpsProfileRef = useRef<GpsProfile>('current');
+  const gpsReceivedRef = useRef(0);
+  const gpsAcceptedRef = useRef(0);
   // Heading drives the marker via Animated.Value — no per-tick re-renders.
   // Enabled once the GPS effect below confirms permission; that same effect
   // feeds it every accepted fix so it can switch to GPS course while moving.
@@ -618,12 +698,25 @@ export function WalkScreen({ navigation }: Props) {
     await syncActiveWalkRow(pt);
   }
 
+  // DEV-строка в итогах прогулки: профиль GPS + принято/отброшено точек. Только
+  // для DEV_USER_IDS; для остальных — undefined (строка не показывается).
+  function buildDevTrack() {
+    if (!isDevUser(currentUserIdRef.current)) return undefined;
+    return {
+      profile: gpsProfileRef.current,
+      received: gpsReceivedRef.current,
+      accepted: gpsAcceptedRef.current,
+    };
+  }
+
   // A walk only "counts" (walk_history + badges) past a minimum bar — see
   // lib/walkFinalize, shared with the recovery card.
   async function handleFinish() {
     if (finishingRef.current) return; // double-tap: the first tap owns the save
     finishingRef.current = true;
     setFinishing(true);
+    cancelHomePrompt(); // прогулка завершается — подсказки «Уже дома?»/«Всё ещё гуляешь?» не нужны
+    cancelStillWalking();
     // park_checkout ДО остановки трекинга (с таймаутом), тем же порядком, что и в
     // авто-финише: пока трекинг жив, у приложения есть время доставить запрос.
     await raceWithTimeout(endParkCheckinSession(), PARK_CHECKOUT_TIMEOUT_MS);
@@ -662,6 +755,7 @@ export function WalkScreen({ navigation }: Props) {
       newBadgeIds,
       isPersonalBest,
       heatStatusAtFinish,
+      devTrack: buildDevTrack(),
     });
   }
 
@@ -680,6 +774,51 @@ export function WalkScreen({ navigation }: Props) {
   const autoPendingRef = useRef<AutoFinishedWalk | null>(null);
   const autoRouteRef = useRef<LatLng[]>([]);
   const parksRef = useRef<LatLng[]>([]);
+  // ── Сценарий №2 «Уже дома?» ───────────────────────────────────────────────
+  // Подсказку планируем в ОС на «вход в домашнюю зону (кандидат) + порог» (10 мин),
+  // отменяем при выходе из зоны / «Ещё гуляю» / авто-завершении / конце прогулки.
+  const homePromptThresholdMs = useRef<number>(HOME_PROMPT_MS);
+  const homePromptScheduledId = useRef<string | null>(null);
+  const homePromptForSince = useRef<number | null>(null);
+  // ── Сценарии №3/№5: сближение с метками ────────────────────────────────────
+  // Общий флаг «радиус 150 м» для теста обоих. currentUserId / домашняя зона —
+  // чтобы не предупреждать о своих метках и о метках у дома (приватность).
+  const hazardsRef = useRef<
+    Array<{
+      id: string;
+      lat: number;
+      lng: number;
+      userId: string | null;
+      type: string;
+      temporary: boolean;
+      createdAt: string | null;
+    }>
+  >([]);
+  const notifiedHazards = useRef<Set<string>>(new Set());
+  const proximityTestRef = useRef<boolean>(false);
+  const currentUserIdRef = useRef<string | null>(null);
+  const notifHomeZoneRef = useRef<HomeZone | null>(null);
+  const dogNameRef = useRef<string | null>(null); // имя первой собаки для текстов ({dog})
+  // ── Сценарий №4 «Ты всё ещё гуляешь?» (только без домашней зоны) ─────────────
+  const noHomeZoneRef = useRef<boolean>(false);
+  const stillWalkingIntervalMs = useRef<number>(STILL_WALKING_MS);
+  const stillWalkingRepeatMs = useRef<number>(STILL_WALKING_REPEAT_MS);
+  const stillWalkingScheduledId = useRef<string | null>(null);
+  const stillWalkingFireAt = useRef<number | null>(null);
+  // ── Сценарий №5 «Метка ещё актуальна?» ──────────────────────────────────────
+  const tempMarkersRef = useRef<
+    Array<{ id: string; lat: number; lng: number; userId: string | null; type: string }>
+  >([]);
+  const notifiedMarkers = useRef<Set<string>>(new Set());
+  const markerPromptCount = useRef<number>(0);
+  // Выключатели типов уведомлений (Настройки) + тихие часы. canShow() — единый гейт.
+  const notifEnabledRef = useRef<Record<NotifType, boolean>>({
+    park: true,
+    home: true,
+    hazard: true,
+    still: true,
+    marker: true,
+  });
   // Источник — ПОЛНЫЙ markers, НЕ filteredMarkers: фильтр карты (activeCategories/
   // радиус) скрывает только пины. Фолбэк автозавершения «около парка» не должен
   // зависеть от того, что тестер снял галочку с парков в фильтре.
@@ -689,13 +828,111 @@ export function WalkScreen({ navigation }: Props) {
       .map((m) => ({ latitude: m.lat, longitude: m.lng }));
   }, [markers]);
 
+  // Метки-опасности для №3 (полный markers, не filteredMarkers — фильтр карты на
+  // предупреждения не влияет).
+  useEffect(() => {
+    hazardsRef.current = markers
+      .filter((m) => HAZARD_TYPES.includes(m.type))
+      .map((m) => ({
+        id: m.id,
+        lat: m.lat,
+        lng: m.lng,
+        userId: m.user_id,
+        type: m.type,
+        temporary: m.expires_at != null, // временная (пользовательская) vs постоянная
+        createdAt: m.created_at ?? null,
+      }));
+  }, [markers]);
+
+  // Временные метки для №5: не инфраструктура (вода/парки — постоянные, голоса нет)
+  // и не опасности (их ведёт №3). Сейчас это по сути «запрещено» и будущее «еда».
+  useEffect(() => {
+    tempMarkersRef.current = markers
+      .filter((m) => !INFRA_MARKER_TYPES.includes(m.type) && !HAZARD_TYPES.includes(m.type))
+      .map((m) => ({ id: m.id, lat: m.lat, lng: m.lng, userId: m.user_id, type: m.type }));
+  }, [markers]);
+
+  // Кто я и где мой дом — для фильтра «не предупреждать о своих метках и о метках
+  // в домашней зоне». Нужно и гостю (у него userId=null, своих меток нет).
+  useEffect(() => {
+    let disposed = false;
+    (async () => {
+      const [{ data: { session } }, zone] = await Promise.all([
+        supabase.auth.getSession(),
+        loadHomeZone(),
+      ]);
+      if (disposed) return;
+      const uid = session?.user?.id ?? null;
+      currentUserIdRef.current = uid;
+      notifHomeZoneRef.current = zone;
+      if (uid) {
+        const { data: dog } = await supabase
+          .from('dogs')
+          .select('name')
+          .eq('owner_id', uid)
+          .limit(1)
+          .maybeSingle();
+        if (!disposed) dogNameRef.current = (dog?.name as string | undefined)?.trim() || null;
+      }
+    })();
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  // Выключатели типов уведомлений: читаем при входе и при возврате в foreground
+  // (пользователь мог переключить в Настройках, не завершая прогулку).
+  useEffect(() => {
+    const load = () => {
+      loadNotifEnabled().then((e) => {
+        notifEnabledRef.current = e;
+      });
+    };
+    load();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') load();
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Android-каналы уведомлений (по одному на звук) с локализованными названиями.
+  // Пересоздаём при смене языка — name/description у канала меняются после создания.
+  useEffect(() => {
+    void ensureNotifChannels({
+      home: t('notif.channel.walk'),
+      checkin: t('notif.channel.checkin'),
+      alert: t('notif.channel.alert'),
+      notify: t('notif.channel.notify'),
+    });
+  }, [t]);
+
+  // Единый гейт показа: выключатель типа в Настройках + тихие часы (кроме home/still).
+  function canShow(type: NotifType): boolean {
+    if (!notifEnabledRef.current[type]) return false;
+    if (!QUIET_EXEMPT.includes(type) && inQuietHours()) return false;
+    return true;
+  }
+
   // Home zone read on its own here: the publish context skips it for guests
   // and visibility='nobody', but auto-finish applies to every walk.
   useEffect(() => {
     let disposed = false;
     (async () => {
-      const [zone, testMode] = await Promise.all([loadHomeZone(), getDevAutoFinishTest()]);
+      const [zone, testMode, homePromptTest, proximityTest, stillWalkingTest] = await Promise.all([
+        loadHomeZone(),
+        getDevAutoFinishTest(),
+        getDevHomePromptTest(),
+        getDevProximityTest(),
+        getDevStillWalkingTest(),
+      ]);
       if (disposed) return;
+      homePromptThresholdMs.current = homePromptTest ? HOME_PROMPT_TEST_MS : HOME_PROMPT_MS;
+      proximityTestRef.current = proximityTest;
+      noHomeZoneRef.current = zone == null;
+      stillWalkingIntervalMs.current = stillWalkingTest ? STILL_WALKING_TEST_MS : STILL_WALKING_MS;
+      stillWalkingRepeatMs.current = stillWalkingTest
+        ? STILL_WALKING_REPEAT_TEST_MS
+        : STILL_WALKING_REPEAT_MS;
       autoDetector.current = createAutoFinishDetector({
         home: zone,
         testMode,
@@ -725,17 +962,31 @@ export function WalkScreen({ navigation }: Props) {
       .map((m) => ({ id: m.id, latitude: m.lat, longitude: m.lng }));
   }, [markers]);
 
+  // ── Сценарий №1 «Ты на площадке?» ────────────────────────────────────────
+  // Подсказку планируем в ОС на «вход в зону + порог» (система покажет её сама,
+  // даже если JS не получит ни одного фикса). Отменяем при выходе из зоны /
+  // чек-ине / конце прогулки. Один раз за прогулку на парк; не шлём, если уже
+  // отмечен (вручную или авто) или visibility='nobody'. Кнопка «Я здесь» = тот
+  // же checkInHere, что в карточке площадки.
+  const parkPromptThresholdMs = useRef<number>(PARK_PROMPT_MS);
+  const parkPromptScheduledId = useRef<string | null>(null);
+  const parkPromptForParkId = useRef<string | null>(null); // парк текущей запланированной подсказки
+  const parkPromptFireAt = useRef<number | null>(null); // когда подсказка должна показаться
+  const parkPromptedParks = useRef<Set<string>>(new Set()); // уже ПОКАЗАЛИ за эту прогулку
+
   useEffect(() => {
     let disposed = false;
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) return; // guest — no check-in
-      const [zone, testMode, stored] = await Promise.all([
+      const [zone, testMode, promptTest, stored] = await Promise.all([
         loadHomeZone(),
         getDevParkCheckinTest(),
+        getDevParkPromptTest(),
         AsyncStorage.getItem('privacy_visibility'),
       ]);
       if (disposed || finishingRef.current) return;
+      parkPromptThresholdMs.current = promptTest ? PARK_PROMPT_TEST_MS : PARK_PROMPT_MS;
       startParkCheckinSession({
         parks: () => dogParksRef.current,
         homeZone: zone,
@@ -748,6 +999,324 @@ export function WalkScreen({ navigation }: Props) {
       endParkCheckinSession();
     };
   }, []);
+
+  // Планирование/отмена подсказки №1 по состоянию чек-ина (parkCheckin store).
+  useEffect(() => {
+    if (!isNotificationsAvailable) return;
+
+    function cancelPrompt() {
+      const pid = parkPromptForParkId.current;
+      const fireAt = parkPromptFireAt.current;
+      if (parkPromptScheduledId.current) {
+        cancelScheduledNotification(parkPromptScheduledId.current);
+        parkPromptScheduledId.current = null;
+      }
+      // «Один раз за прогулку на парк» засчитываем ТОЛЬКО если порог уже прошёл,
+      // пока мы были в зоне (уведомление успело показаться). Выход из зоны раньше
+      // порога — парк снова свободен, подсказка придёт при следующем дожитии.
+      if (pid && fireAt != null && Date.now() >= fireAt) parkPromptedParks.current.add(pid);
+      parkPromptForParkId.current = null;
+      parkPromptFireAt.current = null;
+    }
+
+    async function schedulePrompt(parkId: string, insideSince: number) {
+      parkPromptForParkId.current = parkId;
+      const fireAt = insideSince + parkPromptThresholdMs.current;
+      parkPromptFireAt.current = fireAt;
+      const fireInSeconds = Math.max(1, Math.round((fireAt - Date.now()) / 1000));
+      const content = parkText(t, dogNameRef.current);
+      const id = await scheduleNotif({
+        kind: KIND_PARK,
+        categoryId: CAT_PARK,
+        sound: 'checkin',
+        actions: [{ identifier: ACT_PARK_HERE, buttonTitle: t('park.notif.action') }],
+        title: content.title,
+        body: content.body,
+        data: { parkId },
+        fireInSeconds,
+      });
+      // Пока ждали планирования — вышли из зоны / сменили парк: лишнее отменяем.
+      if (parkPromptForParkId.current === parkId) parkPromptScheduledId.current = id;
+      else if (id) cancelScheduledNotification(id);
+    }
+
+    function evaluate() {
+      const s = getParkCheckinState();
+      // Отмена: не в зоне / уже отмечен / «никто» / нет прогулки.
+      if (
+        !s.active ||
+        s.eligibility !== 'ok' ||
+        s.parkId == null ||
+        s.checkedIn ||
+        s.insideSince == null
+      ) {
+        cancelPrompt();
+        return;
+      }
+      if (parkPromptForParkId.current === s.parkId) return; // уже запланировано на этот парк
+      if (parkPromptedParks.current.has(s.parkId)) return; // уже показывали за прогулку
+      if (!canShow('park')) return; // тип выключен в настройках / тихие часы
+      cancelPrompt(); // снять возможную подсказку прошлого парка
+      void schedulePrompt(s.parkId, s.insideSince);
+    }
+
+    const unsub = subscribeParkCheckin(evaluate);
+    evaluate();
+    return () => {
+      unsub();
+      cancelPrompt();
+    };
+  }, [t]);
+
+  // Кнопка «Я здесь» из подсказки №1 → существующий checkInHere, затем короткий
+  // результат (приложение не открывалось — иначе не узнать, сработало ли).
+  useEffect(() => {
+    return registerNotifHandler(KIND_PARK, (data, action) => {
+      if (action !== ACT_PARK_HERE) return;
+      const parkId = typeof data.parkId === 'string' ? data.parkId : null;
+      if (!parkId) return;
+      void (async () => {
+        const res = await checkInHere(parkId);
+        if (res === 'ok') {
+          presentWalkNotice(t('park.notif.okTitle'), t('park.notif.okBody'), 'notify');
+        } else if (res !== 'nobody') {
+          presentWalkNotice(t('park.notif.failTitle'), t('park.notif.failBody'), 'notify');
+        }
+      })();
+    });
+  }, [t]);
+
+  // ── Сценарий №2: планирование / отмена / действия подсказки «Уже дома?» ─────
+  function cancelHomePrompt() {
+    if (homePromptScheduledId.current) {
+      cancelScheduledNotification(homePromptScheduledId.current);
+      homePromptScheduledId.current = null;
+    }
+    homePromptForSince.current = null;
+  }
+
+  async function evaluateHomePrompt() {
+    if (!isNotificationsAvailable) return;
+    if (!canShow('home')) {
+      cancelHomePrompt();
+      return;
+    }
+    const since = finishingRef.current ? null : autoDetector.current?.homeCandidateSince() ?? null;
+    if (since == null) {
+      cancelHomePrompt();
+      return;
+    }
+    if (homePromptForSince.current === since) return; // уже запланировано на этого кандидата
+    cancelHomePrompt();
+    homePromptForSince.current = since;
+    const fireInSeconds = Math.max(
+      1,
+      Math.round((since + homePromptThresholdMs.current - Date.now()) / 1000),
+    );
+    const content = homeText(t, dogNameRef.current);
+    const id = await scheduleNotif({
+      kind: KIND_HOME,
+      categoryId: CAT_HOME,
+      sound: 'home',
+      actions: [
+        { identifier: ACT_FINISH, buttonTitle: t('home.notif.finish') },
+        { identifier: ACT_KEEP, buttonTitle: t('home.notif.keep') },
+      ],
+      title: content.title,
+      body: content.body,
+      fireInSeconds,
+    });
+    if (homePromptForSince.current === since) homePromptScheduledId.current = id;
+    else if (id) cancelScheduledNotification(id);
+  }
+
+  const homeEvalRef = useRef(evaluateHomePrompt);
+  homeEvalRef.current = evaluateHomePrompt;
+
+  // ── Сценарий №3: предупреждение при сближении с меткой-опасностью ───────────
+  // Раз на метку за прогулку, без кнопок, работает и у гостя. Не предупреждаем о
+  // своих метках и о метках в домашней зоне.
+  function evaluateHazards(pt: LatLng) {
+    if (!isNotificationsAvailable) return;
+    if (!canShow('hazard')) return;
+    const radius = proximityTestRef.current ? PROXIMITY_TEST_RADIUS_M : HAZARD_RADIUS_M;
+    const zone = notifHomeZoneRef.current;
+    const uid = currentUserIdRef.current;
+    for (const h of hazardsRef.current) {
+      if (notifiedHazards.current.has(h.id)) continue;
+      if (uid && h.userId === uid) continue;
+      if (zone && isInsideHomeZone(h.lat, h.lng, zone)) continue;
+      const distM = haversine(pt, { latitude: h.lat, longitude: h.lng }) * 1000;
+      if (distM > radius) continue;
+      notifiedHazards.current.add(h.id);
+      const dist = Math.round(distM);
+      // Временная опасная метка + залогинен → одно уведомление: предупреждение С
+      // кнопками-голосом (castMarkerVote через обработчик KIND_MARKER). Лимит ≤3
+      // из №5 сюда НЕ применяется — опасность важнее. Постоянная опасная метка или
+      // гость → без кнопок, как раньше.
+      if (h.temporary && uid) {
+        const ageMs = h.createdAt ? Date.now() - Date.parse(h.createdAt) : 0;
+        const content = hazardTempText(t, dogNameRef.current, h.type, dist, ageMs);
+        void scheduleNotif({
+          kind: KIND_MARKER,
+          categoryId: CAT_MARKER,
+          sound: 'alert',
+          actions: [
+            { identifier: ACT_MARKER_STILL, buttonTitle: t('marker.notif.still') },
+            { identifier: ACT_MARKER_GONE, buttonTitle: t('marker.notif.gone') },
+          ],
+          title: content.title,
+          body: content.body,
+          data: { markerId: h.id },
+          fireInSeconds: 1,
+        });
+      } else {
+        const content = hazardPermText(t, dogNameRef.current, h.type, dist);
+        presentWalkNotice(content.title, content.body, 'alert');
+      }
+    }
+  }
+  const hazardEvalRef = useRef(evaluateHazards);
+  hazardEvalRef.current = evaluateHazards;
+
+  // ── Сценарий №5: «Метка ещё актуальна?» при проходе рядом с временной меткой ──
+  // Кнопки = те же голоса, что в карточке метки. Раз на метку, не чаще 3 за
+  // прогулку, не своя метка, только для залогиненных (голос требует аккаунт).
+  function evaluateMarkerPrompts(pt: LatLng) {
+    if (!isNotificationsAvailable) return;
+    if (!canShow('marker')) return;
+    const uid = currentUserIdRef.current;
+    if (!uid) return; // гость голосовать не может
+    if (markerPromptCount.current >= MARKER_PROMPT_MAX) return;
+    const radius = proximityTestRef.current ? PROXIMITY_TEST_RADIUS_M : MARKER_RADIUS_M;
+    for (const m of tempMarkersRef.current) {
+      if (markerPromptCount.current >= MARKER_PROMPT_MAX) break;
+      if (notifiedMarkers.current.has(m.id)) continue;
+      if (m.userId === uid) continue; // не своя метка
+      if (haversine(pt, { latitude: m.lat, longitude: m.lng }) * 1000 > radius) continue;
+      notifiedMarkers.current.add(m.id);
+      markerPromptCount.current += 1;
+      const content = markerText(t, m.type);
+      void scheduleNotif({
+        kind: KIND_MARKER,
+        categoryId: CAT_MARKER,
+        sound: 'alert',
+        actions: [
+          { identifier: ACT_MARKER_STILL, buttonTitle: t('marker.notif.still') },
+          { identifier: ACT_MARKER_GONE, buttonTitle: t('marker.notif.gone') },
+        ],
+        title: content.title,
+        body: content.body,
+        data: { markerId: m.id },
+        fireInSeconds: 1,
+      });
+    }
+  }
+  const markerEvalRef = useRef(evaluateMarkerPrompts);
+  markerEvalRef.current = evaluateMarkerPrompts;
+
+  // Кнопки №5 → тот же голос, что в карточке метки (castMarkerVote), затем
+  // короткое подтверждение.
+  useEffect(() => {
+    return registerNotifHandler(KIND_MARKER, (data, action) => {
+      const markerId = typeof data.markerId === 'string' ? data.markerId : null;
+      const uid = currentUserIdRef.current;
+      if (!markerId || !uid) return;
+      const vote =
+        action === ACT_MARKER_STILL ? 'still_there' : action === ACT_MARKER_GONE ? 'gone' : null;
+      if (!vote) return;
+      void (async () => {
+        const err = await castMarkerVote(markerId, uid, vote);
+        if (!err) presentWalkNotice(t('marker.notif.thanksTitle'), t('marker.notif.thanksBody'), 'notify');
+      })();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t]);
+
+  // ── Сценарий №4: «Ты всё ещё гуляешь?» (только без домашней зоны) ────────────
+  function cancelStillWalking() {
+    if (stillWalkingScheduledId.current) {
+      cancelScheduledNotification(stillWalkingScheduledId.current);
+      stillWalkingScheduledId.current = null;
+    }
+    stillWalkingFireAt.current = null;
+  }
+
+  async function scheduleStillWalking(fireAtMs: number) {
+    cancelStillWalking();
+    stillWalkingFireAt.current = fireAtMs;
+    const content = stillText(t, fireAtMs - walkStartedAtMs);
+    const id = await scheduleNotif({
+      kind: KIND_STILL,
+      categoryId: CAT_STILL,
+      sound: 'home',
+      actions: [
+        { identifier: ACT_FINISH, buttonTitle: t('home.notif.finish'), opensApp: true },
+        { identifier: ACT_KEEP, buttonTitle: t('home.notif.keep') },
+      ],
+      title: content.title,
+      body: content.body,
+      fireInSeconds: Math.max(1, Math.round((fireAtMs - Date.now()) / 1000)),
+    });
+    if (stillWalkingFireAt.current === fireAtMs) stillWalkingScheduledId.current = id;
+    else if (id) cancelScheduledNotification(id);
+  }
+
+  function evaluateStillWalking(now: number) {
+    if (!isNotificationsAvailable) return;
+    if (!noHomeZoneRef.current || finishingRef.current || !canShow('still')) {
+      cancelStillWalking();
+      return;
+    }
+    if (stillWalkingFireAt.current == null) {
+      void scheduleStillWalking(walkStartedAtMs + stillWalkingIntervalMs.current);
+      return;
+    }
+    // Запланированное уже должно было показаться → дошлём следующее через +повтор.
+    if (now >= stillWalkingFireAt.current) {
+      void scheduleStillWalking(now + stillWalkingRepeatMs.current);
+    }
+  }
+  const stillEvalRef = useRef(evaluateStillWalking);
+  stillEvalRef.current = evaluateStillWalking;
+
+  // Кнопки №4: «Завершить» (открывает приложение — handleFinish читает таймер из
+  // состояния) → обычное завершение; «Ещё гуляю» → следующий вопрос через +повтор.
+  useEffect(() => {
+    const unreg = registerNotifHandler(KIND_STILL, (_data, action) => {
+      if (action === ACT_FINISH) {
+        cancelStillWalking();
+        void handleFinish();
+      } else if (action === ACT_KEEP) {
+        void scheduleStillWalking(Date.now() + stillWalkingRepeatMs.current);
+      }
+    });
+    return () => {
+      unreg();
+      cancelStillWalking();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t]);
+
+  // Кнопки подсказки №2: «Завершить» → forceHome + handleAutoFinish (завершение с
+  // прибытием к двери); «Ещё гуляю» → rejectHome (до следующего выхода из зоны).
+  useEffect(() => {
+    const unreg = registerNotifHandler(KIND_HOME, (_data, action) => {
+      if (action === ACT_FINISH) {
+        cancelHomePrompt();
+        const hit = autoDetector.current?.forceHome();
+        if (hit) void handleAutoFinish(hit);
+      } else if (action === ACT_KEEP) {
+        autoDetector.current?.rejectHome();
+        cancelHomePrompt();
+      }
+    });
+    return () => {
+      unreg();
+      cancelHomePrompt(); // конец прогулки / уход с экрана — снять запланированную подсказку
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t]);
 
   function runAutoFinishCheck() {
     if (finishingRef.current) return;
@@ -767,6 +1336,8 @@ export function WalkScreen({ navigation }: Props) {
     if (finishingRef.current) return;
     finishingRef.current = true;
     setFinishing(true);
+    cancelHomePrompt(); // прогулка завершается — подсказки больше не нужны
+    cancelStillWalking();
 
     // Трек режем на ВХОДЕ в домашнюю зону (routeCutLen), даже если время/дистанция
     // посчитаны до прибытия к двери: точки внутри зоны в сохранённый трек не идут.
@@ -788,6 +1359,13 @@ export function WalkScreen({ navigation }: Props) {
       heatStatusAtFinish: heatData.status,
     };
     await saveAutoFinished(walk);
+    // Приложение не открыто (фон) — иначе человек не узнает, что прогулка
+    // завершилась сама: отдельное уведомление без кнопок «Прогулка завершена».
+    // Открыто → сразу покажем экран итогов, уведомление не нужно.
+    if (AppState.currentState !== 'active') {
+      const content = autoFinishedText(t, walk.distanceKm.toFixed(2), Math.round(walk.durationS / 60));
+      presentWalkNotice(content.title, content.body, 'home');
+    }
     // park_checkout ДО остановки трекинга (с таймаутом): в фоне iOS усыпляет
     // приложение сразу после stopWalkTracking — fire-and-forget checkout терялся.
     await raceWithTimeout(endParkCheckinSession(), PARK_CHECKOUT_TIMEOUT_MS);
@@ -818,6 +1396,7 @@ export function WalkScreen({ navigation }: Props) {
       heatStatusAtFinish: walk.heatStatusAtFinish,
       autoFinishReason: walk.reason,
       autoFinishedAt: walk.endedAt,
+      devTrack: buildDevTrack(),
     });
   }
 
@@ -832,11 +1411,15 @@ export function WalkScreen({ navigation }: Props) {
     const id = setInterval(() => {
       autoCheckRef.current();
       tickParkCheckin(Date.now());
+      void homeEvalRef.current();
+      stillEvalRef.current(Date.now());
     }, AUTO_FINISH_CHECK_MS);
     const sub = AppState.addEventListener('change', (s) => {
       if (s !== 'active') return;
       autoCheckRef.current();
       tickParkCheckin(Date.now());
+      void homeEvalRef.current();
+      stillEvalRef.current(Date.now());
       autoResumeRef.current();
     });
     return () => {
@@ -871,6 +1454,8 @@ export function WalkScreen({ navigation }: Props) {
       // old timestamps, and an exit at its end must land before the dwell is
       // judged against Date.now().
       tickParkCheckin(Date.now());
+      void homeEvalRef.current(); // подсказка №2: кандидат «дом» мог появиться/исчезнуть
+      stillEvalRef.current(Date.now()); // подсказка №4: 2 ч без домашней зоны
       // Публикуем active_walks и из фонового пути (не только 60-с таймер, который
       // iOS не крутит при погашенном экране) — тем же троттл-гейтом. Иначе
       // updated_at протухает: нас теряют в «гуляют рядом» и сервер режет
@@ -886,12 +1471,18 @@ export function WalkScreen({ navigation }: Props) {
         return;
       }
       setLocationGranted(true);
+      const profile = await getDevGpsProfile(); // DEV-эксперимент; не-dev всегда 'current'
+      if (cancelled) return;
+      gpsProfileRef.current = profile;
       try {
-        await startWalkTracking({
-          notificationTitle: t('walk.fgsTitle'),
-          notificationBody: t('walk.fgsBody'),
-          notificationColor: '#2c5f25',
-        });
+        await startWalkTracking(
+          {
+            notificationTitle: t('walk.fgsTitle'),
+            notificationBody: t('walk.fgsBody'),
+            notificationColor: '#2c5f25',
+          },
+          profile,
+        );
       } catch (e) {
         console.warn('[WalkScreen] startWalkTracking failed:', e);
         if (!cancelled) Alert.alert(t('walk.geoErrorTitle'), t('walk.geoErrorBody')); // task failed → no timer
@@ -912,6 +1503,7 @@ export function WalkScreen({ navigation }: Props) {
     };
 
     function handleFix(loc: Location.LocationObject) {
+      gpsReceivedRef.current += 1; // DEV: все доставленные фиксы (до фильтров)
       // Everything below this line — marker, recorded track, distance,
       // the published presence row — is fed only by fixes that pass the
       // accuracy gate and then the plausibility gate. A bad fix used to
@@ -926,6 +1518,7 @@ export function WalkScreen({ navigation }: Props) {
       }
       const stamped = { ...loc.coords, timestamp: loc.timestamp };
       for (const coords of glitchFilter.accept(stamped, loc.timestamp)) {
+        gpsAcceptedRef.current += 1; // DEV: прошли оба фильтра, попали в маршрут
         const pt = { latitude: coords.latitude, longitude: coords.longitude };
         moveUserMarker(pt);
         reportGpsFix(coords);
@@ -940,6 +1533,8 @@ export function WalkScreen({ navigation }: Props) {
           { routeLen: routeRef.current.length, distanceKm: distanceKmRef.current, steps: stepsRef.current },
         );
         feedParkFix({ ...pt, accuracy: coords.accuracy, timestamp: coords.timestamp });
+        hazardEvalRef.current(pt); // №3: предупреждение при сближении с опасностью
+        markerEvalRef.current(pt); // №5: «метка ещё актуальна?» у временной метки
         followWith(pt);
         setUserLocation(pt);
 
@@ -1274,6 +1869,10 @@ export function WalkScreen({ navigation }: Props) {
       />
 
       <FirstWalkTipCard onSetupPrivacy={() => navigation.navigate('PrivacyRadius')} />
+
+      {/* Разрешение на уведомления — своя карточка «зачем» на первой прогулке,
+          после старта трека (гейтится trackingStarted), перед системным диалогом. */}
+      {trackingStarted && <FirstWalkNotifCard />}
 
       {/* Nearby dogs — same sheet as MapScreen, opened from the walkers row.
           box-none so the closed (off-screen) sheet never blocks the panel. */}

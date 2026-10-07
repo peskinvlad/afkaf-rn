@@ -16,6 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { supabase } from '../lib/supabase';
 import { MapMarker, MARKER_CONFIG, INFRA_MARKER_TYPES } from '../lib/markerConfig';
 import { ANDROID_MARKER_IMAGES } from '../lib/markerImages';
+import { castMarkerVote } from '../lib/markerVotes';
 import { haversine } from '../lib/geo';
 import { navigationRef } from '../lib/navigationRef';
 import { getDevVoteOwnMarkers } from '../constants/dev';
@@ -291,19 +292,14 @@ function CalloutBubble({
     // voting blocks a second tap while the request is in flight (no visual
     // graying — the buttons just stop responding).
     setVoting(true);
-    const { error } = await supabase
-      .from('marker_votes')
-      .upsert(
-        { marker_id: marker.id, user_id: currentUserId, vote },
-        { onConflict: 'marker_id,user_id' }
-      );
+    const error = await castMarkerVote(marker.id, currentUserId, vote);
     setVoting(false);
 
     if (error) {
       // supabase-js returns the error rather than throwing. Roll the optimistic
       // change back and tell the user, so a failed/offline vote is never
       // mistaken for a counted one.
-      console.warn('[MarkerCallout] vote failed:', error.message);
+      console.warn('[MarkerCallout] vote failed:', error);
       if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
       setCounts(prevCounts);
       setMyVote(prevVote);

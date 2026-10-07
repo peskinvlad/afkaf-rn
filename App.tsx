@@ -1,8 +1,9 @@
 import 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
-import { View } from 'react-native';
+import { View, Alert, AppState } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import { consumePendingTestResponse } from './src/lib/notifications';
 import {
   useFonts,
   Nunito_400Regular,
@@ -33,6 +34,20 @@ export default function App() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded]);
+
+  // Риск-чек уведомлений: если кнопка в тестовом уведомлении была нажата, пока
+  // приложение было закрыто/в фоне, покажем результат при открытии и активации.
+  useEffect(() => {
+    const check = () =>
+      consumePendingTestResponse().then((line) => {
+        if (line) Alert.alert('Тест уведомления', `Нажато: ${line}`);
+      });
+    check();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') check();
+    });
+    return () => sub.remove();
+  }, []);
 
   if (!fontsLoaded) return <View />;
 

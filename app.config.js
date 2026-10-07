@@ -1,42 +1,86 @@
 // app.config.js — тонкая надстройка над статичным app.json.
 //
 // Expo сам читает app.json и передаёт его содержимое сюда как `config`.
-// Единственное, что мы здесь делаем — дописываем ключ Google Maps для Android
-// из переменной окружения GOOGLE_MAPS_ANDROID_API_KEY (заведена в EAS для
-// окружений development и preview). Ключ НЕ хранится в git и НЕ попадает в
-// app.json. iOS-часть конфига не трогаем — она остаётся ровно как в app.json.
+// Здесь делаем три вещи (по порядку, каждая независима):
+//   1) подключаем config-плагин expo-notifications с кастомными звуками — ВСЕГДА;
+//   2) дописываем ключ Google Maps для Android из GOOGLE_MAPS_ANDROID_API_KEY —
+//      если переменная задана (иначе warn, не падаем);
+//   3) при APP_VARIANT=dev — отдельное dev-приложение рядом с TestFlight/стором.
 //
-// react-native-maps на Android читает этот ключ из манифеста
-// (com.google.android.geo.API_KEY). Без ключа карта на Android не «серая», а
-// РОНЯЕТ приложение при создании MapView
-// (java.lang.RuntimeException: API key not found).
+// Mapbox здесь НЕТ (dev-клиент уведомлений не тянет нативный @rnmapbox/maps).
+// Без APP_VARIANT конфиг остаётся обычным com.afkaf.app — ровно то, что нужно
+// профилю production-android (проверка: `npx expo config --type public --json`).
+//
+// scheme намеренно НЕ меняется (остаётся afkaf://): редирект входа через Google
+// в Supabase разрешён только для afkaf://auth/callback.
+
+const DEV_BUNDLE_ID = 'com.afkaf.app.dev';
+
+// Кастомные звуки уведомлений. Config-плагин expo-notifications бандлит их при
+// prebuild: на iOS — в бандл (ссылка по имени файла в content.sound), на Android
+// — в res/raw (ссылка по имени в sound канала). Нужно для ВСЕХ вариантов.
+const NOTIFICATION_SOUNDS = [
+  './assets/sounds/afkaf_home.wav',
+  './assets/sounds/afkaf_checkin.wav',
+  './assets/sounds/afkaf_alert.wav',
+  './assets/sounds/afkaf_notify.wav',
+];
 
 module.exports = ({ config }) => {
-  const apiKey = process.env.GOOGLE_MAPS_ANDROID_API_KEY;
+  // 1) Плагин уведомлений — всегда.
+  let next = {
+    ...config,
+    plugins: [
+      ...(config.plugins ?? []),
+      ['expo-notifications', { sounds: NOTIFICATION_SOUNDS }],
+    ],
+  };
 
-  // Локальный запуск без переменной (например `expo start` без EAS-окружения):
-  // не падаем на чтении конфига, просто не добавляем ключ. Предупреждаем явно,
-  // потому что Android-сборка без ключа для карты непригодна (см. выше).
-  if (!apiKey) {
+  // 2) Ключ Google Maps для Android. react-native-maps читает его из манифеста
+  //    (com.google.android.geo.API_KEY). Без ключа карта на Android не «серая»,
+  //    а РОНЯЕТ приложение при создании MapView
+  //    (java.lang.RuntimeException: API key not found). Ключ НЕ в git.
+  const apiKey = process.env.GOOGLE_MAPS_ANDROID_API_KEY;
+  if (apiKey) {
+    next = {
+      ...next,
+      android: {
+        ...next.android,
+        config: {
+          ...next.android?.config,
+          googleMaps: {
+            ...next.android?.config?.googleMaps,
+            apiKey,
+          },
+        },
+      },
+    };
+  } else {
     console.warn(
       '[app.config] GOOGLE_MAPS_ANDROID_API_KEY не задан — конфиг собран без ' +
         'ключа Google Maps. На Android карта упадёт при открытии. Задайте ' +
-        'переменную в EAS (окружения development/preview) для рабочей карты.'
+        'переменную в EAS (окружения development/preview/production) для рабочей карты.'
     );
-    return config;
   }
 
+  // 3) dev-вариант — только по APP_VARIANT=dev (production-android его не задаёт,
+  //    поэтому собирается обычный com.afkaf.app без изменений имени/пакета).
+  if (process.env.APP_VARIANT !== 'dev') return next;
+
   return {
-    ...config,
+    ...next,
+    name: 'afkaf dev',
+    ios: {
+      ...next.ios,
+      bundleIdentifier: DEV_BUNDLE_ID,
+    },
     android: {
-      ...config.android,
-      config: {
-        ...config.android?.config,
-        googleMaps: {
-          ...config.android?.config?.googleMaps,
-          apiKey,
-        },
-      },
+      ...next.android,
+      package: DEV_BUNDLE_ID,
+    },
+    extra: {
+      ...next.extra,
+      appVariant: 'dev',
     },
   };
 };

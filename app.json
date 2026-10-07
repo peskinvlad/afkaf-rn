@@ -3,7 +3,7 @@
     "name": "afkaf",
     "slug": "afkaf-rn",
     "scheme": "afkaf",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -23,6 +23,9 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.afkaf.app",
       "usesAppleSignIn": true,
+      "entitlements": {
+        "com.apple.developer.usernotifications.time-sensitive": true
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": ["location"],

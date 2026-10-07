@@ -14,15 +14,12 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useApp } from '../hooks/useApp';
 import { useTypography } from '../theme/fonts';
 import { LANGS } from '../i18n';
-import { MARKER_CONFIG } from '../lib/markerConfig';
+import { NotifType, loadNotifEnabled, setNotifEnabled } from '../lib/notifPrefs';
 import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
 
 export type Visibility = 'everyone' | 'friends' | 'nobody';
-type NotifRadius = '50' | '100' | '150';
 
 const VISIBILITY_OPTIONS: Visibility[] = ['everyone', 'friends', 'nobody'];
-const NOTIF_RADIUS_OPTIONS: NotifRadius[] = ['50', '100', '150'];
-const MARKER_TYPES = Object.keys(MARKER_CONFIG);
 
 // ── Section wrapper ────────────────────────────────────────────────────────────
 
@@ -106,51 +103,24 @@ export function SettingsScreen({ navigation }: any) {
   const [visibility, setVisibility] = useState<Visibility>('friends');
   const [homeRadius, setHomeRadius] = useState<number | null>(null);
 
-  // Notifications
-  const [notifHazards, setNotifHazards] = useState(true);
-  const [notifHeat, setNotifHeat] = useState(true);
-  const [notifFriendWalk, setNotifFriendWalk] = useState(true);
-  const [notifRadius, setNotifRadius] = useState<NotifRadius>('100');
-  const [ignoredTypes, setIgnoredTypes] = useState<Set<string>>(new Set());
+  // Notifications — выключатель на каждый из пяти типов уведомлений на прогулке
+  const [notifTypes, setNotifTypes] = useState<Record<NotifType, boolean>>({
+    park: true,
+    home: true,
+    hazard: true,
+    still: true,
+    marker: true,
+  });
 
   // Load all persisted values when screen focuses
   useFocusEffect(
     useCallback(() => {
-      AsyncStorage.multiGet([
-        'privacy_visibility',
-        'privacy_home_radius',
-        'notif_hazards',
-        'notif_heat',
-        'notif_friend_walk',
-        'notif_radius',
-        'notif_ignore_types',
-      ]).then((pairs) => {
-        const map = Object.fromEntries(pairs.map(([k, v]) => [k, v]));
+      AsyncStorage.multiGet(['privacy_visibility', 'privacy_home_radius']).then((pairs) => {
+        const map = Object.fromEntries(pairs);
         if (map.privacy_visibility) setVisibility(map.privacy_visibility as Visibility);
         setHomeRadius(map.privacy_home_radius ? Number(map.privacy_home_radius) : null);
-        if (map.notif_hazards !== null) {
-          setNotifHazards(map.notif_hazards !== 'false');
-        } else {
-          setNotifHazards(true);
-          AsyncStorage.setItem('notif_hazards', 'true');
-        }
-        if (map.notif_heat !== null) {
-          setNotifHeat(map.notif_heat !== 'false');
-        } else {
-          setNotifHeat(true);
-          AsyncStorage.setItem('notif_heat', 'true');
-        }
-        if (map.notif_friend_walk !== null) {
-          setNotifFriendWalk(map.notif_friend_walk !== 'false');
-        } else {
-          setNotifFriendWalk(true);
-          AsyncStorage.setItem('notif_friend_walk', 'true');
-        }
-        if (map.notif_radius) setNotifRadius(map.notif_radius as NotifRadius);
-        if (map.notif_ignore_types) {
-          try { setIgnoredTypes(new Set(JSON.parse(map.notif_ignore_types))); } catch {}
-        }
       });
+      loadNotifEnabled().then(setNotifTypes);
     }, []),
   );
 
@@ -163,32 +133,13 @@ export function SettingsScreen({ navigation }: any) {
     save('privacy_visibility', v);
   }
 
-  function handleNotifToggle(
-    key: string,
-    setter: (v: boolean) => void,
-    value: boolean,
-  ) {
-    setter(value);
-    save(key, String(value));
-  }
-
-  function handleNotifRadius(r: NotifRadius) {
-    setNotifRadius(r);
-    save('notif_radius', r);
-  }
-
-  function toggleIgnoreType(type: string) {
-    setIgnoredTypes((prev) => {
-      const next = new Set(prev);
-      next.has(type) ? next.delete(type) : next.add(type);
-      save('notif_ignore_types', JSON.stringify([...next]));
-      return next;
-    });
+  function handleNotifTypeToggle(type: NotifType, value: boolean) {
+    setNotifTypes((prev) => ({ ...prev, [type]: value }));
+    setNotifEnabled(type, value);
   }
 
   const langLabel = (code: string) => code.toUpperCase();
   const visLabel = (v: Visibility) => t(`settings.privacy.${v}`);
-  const radiusLabel = (r: NotifRadius) => `${r}м`;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -269,63 +220,31 @@ export function SettingsScreen({ navigation }: any) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('settings.notifications.title')}</Text>
 
-          {/* Toggles card */}
+          {/* Выключатель на каждый из пяти типов уведомлений на прогулке */}
           <View style={[styles.sectionCard, shadows.sm]}>
             {([
-              { icon: '🚨', key: 'notif_hazards', label: t('settings.notifications.hazards'), value: notifHazards, setter: setNotifHazards },
-              { icon: '🌡️', key: 'notif_heat',    label: t('settings.notifications.heat'),    value: notifHeat,    setter: setNotifHeat },
-              { icon: '🐾', key: 'notif_friend_walk', label: t('settings.notifications.friend_walk'), value: notifFriendWalk, setter: setNotifFriendWalk },
-            ] as const).map(({ icon, key, label, value, setter }, idx, arr) => (
-              <Row key={key} last={idx === arr.length - 1}>
+              { icon: '🐾', type: 'park' },
+              { icon: '🏠', type: 'home' },
+              { icon: '⚠️', type: 'hazard' },
+              { icon: '⏱️', type: 'still' },
+              { icon: '📍', type: 'marker' },
+            ] as const).map(({ icon, type }, idx, arr) => (
+              <Row key={type} last={idx === arr.length - 1}>
                 <View style={styles.rowLeft}>
                   <Text style={styles.rowIcon}>{icon}</Text>
-                  <Text style={styles.rowLabel}>{label}</Text>
+                  <Text style={styles.rowLabel}>{t(`settings.notifications.type.${type}`)}</Text>
                 </View>
                 <Switch
-                  value={value === true || (value as any) === 'true'}
-                  onValueChange={(v) => handleNotifToggle(key, setter as (v: boolean) => void, v)}
+                  value={notifTypes[type]}
+                  onValueChange={(v) => handleNotifTypeToggle(type, v)}
                   trackColor={{ false: colors.border, true: colors.primaryMid }}
-                  thumbColor={value ? colors.primary : colors.textSoft}
+                  thumbColor={notifTypes[type] ? colors.primary : colors.textSoft}
                 />
               </Row>
             ))}
           </View>
 
-          {/* Alert radius — separate card */}
-          <View style={[styles.subCard, shadows.sm]}>
-            <Text style={styles.subCardTitle}>{t('settings.notifications.radius')}</Text>
-            <PillGroup
-              options={NOTIF_RADIUS_OPTIONS}
-              value={notifRadius}
-              getLabel={radiusLabel}
-              onSelect={handleNotifRadius}
-              stretch
-            />
-          </View>
-
-          {/* Ignore types — separate card */}
-          <View style={[styles.subCard, shadows.sm]}>
-            <Text style={styles.subCardTitle}>{t('settings.notifications.ignore_types')}</Text>
-            <View style={styles.checkboxGrid}>
-              {MARKER_TYPES.map((type) => {
-                const cfg = MARKER_CONFIG[type];
-                const ignored = ignoredTypes.has(type);
-                return (
-                  <TouchableOpacity
-                    key={type}
-                    style={[styles.checkboxItem, ignored && styles.checkboxItemActive]}
-                    onPress={() => toggleIgnoreType(type)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.checkboxEmoji}>{cfg.emoji}</Text>
-                    <Text style={[styles.checkboxLabel, ignored && styles.checkboxLabelActive]}>
-                      {t('marker.type.' + type)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
+          <Text style={styles.visibilityDesc}>{t('settings.notifications.quietNote')}</Text>
         </View>
       </ScrollView>
     </View>

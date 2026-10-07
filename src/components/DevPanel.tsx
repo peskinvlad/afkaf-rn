@@ -22,6 +22,11 @@ import {
   DEV_VOTE_OWN_KEY,
   DEV_AUTO_FINISH_TEST_KEY,
   DEV_PARK_CHECKIN_TEST_KEY,
+  DEV_PARK_PROMPT_TEST_KEY,
+  DEV_HOME_PROMPT_TEST_KEY,
+  DEV_STILL_WALKING_TEST_KEY,
+  DEV_PROXIMITY_TEST_KEY,
+  DEV_GPS_PROFILE_KEY,
   emitDevSettingsChange,
 } from '../constants/dev';
 import { getAutoFinishDiagnostics, AutoFinishDiagnostics } from '../lib/autoFinish';
@@ -34,6 +39,36 @@ import {
   isBackgroundTrackingAvailable,
   TrackDiagnostics,
 } from '../lib/walkTracking';
+import {
+  isNotificationsAvailable,
+  scheduleTestNotification,
+  getTestLog,
+  ensurePermission,
+  ensureNotifChannels,
+  scheduleNotif,
+  presentWalkNotice,
+  KIND_PARK,
+  CAT_PARK,
+  ACT_PARK_HERE,
+  KIND_HOME,
+  CAT_HOME,
+  ACT_FINISH,
+  ACT_KEEP,
+  KIND_STILL,
+  CAT_STILL,
+  KIND_MARKER,
+  CAT_MARKER,
+  ACT_MARKER_STILL,
+  ACT_MARKER_GONE,
+} from '../lib/notifications';
+import {
+  parkText,
+  homeText,
+  hazardPermText,
+  hazardTempText,
+  stillText,
+  markerText,
+} from '../lib/notifText';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
 
@@ -52,7 +87,7 @@ interface Props {
 
 export function DevPanel({ visible, onClose }: Props) {
   const insets = useSafeAreaInsets();
-  const { isTrusted, confirmedCount, userLocation, heatData, heatOverrideActive, realSurfaceTempC } = useApp();
+  const { t, isTrusted, confirmedCount, userLocation, heatData, heatOverrideActive, realSurfaceTempC } = useApp();
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
 
@@ -67,6 +102,12 @@ export function DevPanel({ visible, onClose }: Props) {
   const [autoTest, setAutoTest] = useState(false);
   const [autoDiag, setAutoDiag] = useState<AutoFinishDiagnostics>(getAutoFinishDiagnostics());
   const [parkTest, setParkTest] = useState(false);
+  const [parkPromptTest, setParkPromptTest] = useState(false);
+  const [homePromptTest, setHomePromptTest] = useState(false);
+  const [stillWalkingTest, setStillWalkingTest] = useState(false);
+  const [proximityTest, setProximityTest] = useState(false);
+  const [gpsEco, setGpsEco] = useState(false); // профиль GPS: true = «Эконом»
+  const [dogName, setDogName] = useState<string | null>(null); // для {dog} в «Показать сейчас»
   const parkState = useParkCheckinState();
   // Короткие подтверждения «сброшено/применено» по ключу строки
   const [flash, setFlash] = useState<Record<string, string>>({});
@@ -75,15 +116,34 @@ export function DevPanel({ visible, onClose }: Props) {
   const [track, setTrack] = useState<TrackDiagnostics>(getTrackDiagnostics());
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   const [nowTick, setNowTick] = useState(Date.now());
+  // Риск-чек уведомлений: лог последних нажатий по тестовой кнопке.
+  const [notifLog, setNotifLog] = useState<string[]>([]);
   // Линкован ли нативный модуль Sign in with Apple в этот билд. Если модуля в
   // бинарнике нет — isAvailableAsync бросает, и мы показываем «НЕТ».
   const [appleLinked, setAppleLinked] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!visible) return;
+    // Каналы Android нужны до «Показать сейчас» из панели (WalkScreen создаёт их
+    // на прогулке; здесь — чтобы тест работал и вне прогулки).
+    void ensureNotifChannels({
+      home: t('notif.channel.walk'),
+      checkin: t('notif.channel.checkin'),
+      alert: t('notif.channel.alert'),
+      notify: t('notif.channel.notify'),
+    });
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       setUserId(session?.user?.id ?? null);
+      if (session?.user?.id) {
+        const { data: dog } = await supabase
+          .from('dogs')
+          .select('name')
+          .eq('owner_id', session.user.id)
+          .limit(1)
+          .maybeSingle();
+        setDogName((dog?.name as string | undefined)?.trim() || null);
+      }
 
       const entries = await AsyncStorage.multiGet([
         VISIBILITY_KEY,
@@ -94,6 +154,11 @@ export function DevPanel({ visible, onClose }: Props) {
         DEV_VOTE_OWN_KEY,
         DEV_AUTO_FINISH_TEST_KEY,
         DEV_PARK_CHECKIN_TEST_KEY,
+        DEV_PARK_PROMPT_TEST_KEY,
+        DEV_HOME_PROMPT_TEST_KEY,
+        DEV_STILL_WALKING_TEST_KEY,
+        DEV_PROXIMITY_TEST_KEY,
+        DEV_GPS_PROFILE_KEY,
       ]);
       const map = Object.fromEntries(entries) as Record<string, string | null>;
       setVisibility(map[VISIBILITY_KEY]);
@@ -107,6 +172,11 @@ export function DevPanel({ visible, onClose }: Props) {
       setVoteOwn(map[DEV_VOTE_OWN_KEY] === 'true');
       setAutoTest(map[DEV_AUTO_FINISH_TEST_KEY] === 'true');
       setParkTest(map[DEV_PARK_CHECKIN_TEST_KEY] === 'true');
+      setParkPromptTest(map[DEV_PARK_PROMPT_TEST_KEY] === 'true');
+      setHomePromptTest(map[DEV_HOME_PROMPT_TEST_KEY] === 'true');
+      setStillWalkingTest(map[DEV_STILL_WALKING_TEST_KEY] === 'true');
+      setProximityTest(map[DEV_PROXIMITY_TEST_KEY] === 'true');
+      setGpsEco(map[DEV_GPS_PROFILE_KEY] === 'eco');
 
       // Та же функция, что использует гейт active_walks (privacyZone.ts)
       setHomeZone(await loadHomeZone());
@@ -120,6 +190,8 @@ export function DevPanel({ visible, onClose }: Props) {
 
       // Текущее рантайм-состояние оверлея карты (env-дефолт или сохранённое).
       setMapDebugOn(mapDebug.enabled);
+
+      setNotifLog(await getTestLog());
     })();
   }, [visible]);
 
@@ -133,6 +205,7 @@ export function DevPanel({ visible, onClose }: Props) {
       setTrack(getTrackDiagnostics());
       setAutoDiag(getAutoFinishDiagnostics());
       setNowTick(Date.now());
+      getTestLog().then(setNotifLog);
     }, 1000);
     const sub = AppState.addEventListener('change', setAppState);
     return () => {
@@ -199,17 +272,169 @@ export function DevPanel({ visible, onClose }: Props) {
     else await AsyncStorage.removeItem(DEV_AUTO_FINISH_TEST_KEY);
   }
 
-  // То же для чек-ина на площадке: выдержка в зоне 1 мин вместо 5. Читается
-  // WalkScreen через getDevParkCheckinTest на старте прогулки.
+  // Чек-ин на площадке: выдержка в зоне 1 мин вместо 5. Читается WalkScreen
+  // через getDevParkCheckinTest на старте прогулки.
   async function toggleParkTest(next: boolean) {
     setParkTest(next);
     if (next) await AsyncStorage.setItem(DEV_PARK_CHECKIN_TEST_KEY, 'true');
     else await AsyncStorage.removeItem(DEV_PARK_CHECKIN_TEST_KEY);
   }
 
+  // Подсказка №1 «Ты на площадке?»: порог показа 30 с вместо 3 мин. Читается
+  // WalkScreen через getDevParkPromptTest на старте прогулки.
+  async function toggleParkPromptTest(next: boolean) {
+    setParkPromptTest(next);
+    if (next) await AsyncStorage.setItem(DEV_PARK_PROMPT_TEST_KEY, 'true');
+    else await AsyncStorage.removeItem(DEV_PARK_PROMPT_TEST_KEY);
+  }
+
+  // Ускорители порогов остальных уведомлений (читаются WalkScreen при старте).
+  async function toggleHomePromptTest(next: boolean) {
+    setHomePromptTest(next);
+    if (next) await AsyncStorage.setItem(DEV_HOME_PROMPT_TEST_KEY, 'true');
+    else await AsyncStorage.removeItem(DEV_HOME_PROMPT_TEST_KEY);
+  }
+
+  async function toggleStillWalkingTest(next: boolean) {
+    setStillWalkingTest(next);
+    if (next) await AsyncStorage.setItem(DEV_STILL_WALKING_TEST_KEY, 'true');
+    else await AsyncStorage.removeItem(DEV_STILL_WALKING_TEST_KEY);
+  }
+
+  async function toggleProximityTest(next: boolean) {
+    setProximityTest(next);
+    if (next) await AsyncStorage.setItem(DEV_PROXIMITY_TEST_KEY, 'true');
+    else await AsyncStorage.removeItem(DEV_PROXIMITY_TEST_KEY);
+  }
+
+  // Профиль GPS (эксперимент с батареей): 'eco' vs текущий. Применяется со
+  // следующей прогулки (читается WalkScreen через getDevGpsProfile на старте).
+  async function toggleGpsEco(next: boolean) {
+    setGpsEco(next);
+    if (next) await AsyncStorage.setItem(DEV_GPS_PROFILE_KEY, 'eco');
+    else await AsyncStorage.removeItem(DEV_GPS_PROFILE_KEY);
+  }
+
+  // «Показать сейчас» — настоящие уведомления (реальные кнопки/тексты/обработчики)
+  // через ~1 с. Нажатие кнопки вне прогулки попадёт в лог выше (обработчик
+  // сценария живёт в WalkScreen); на прогулке сработает реальное действие.
+  async function showNow(fn: () => Promise<unknown>) {
+    const perm = await ensurePermission();
+    if (perm !== 'granted') {
+      showFlash('notif', 'Нет разрешения на уведомления');
+      return;
+    }
+    await fn();
+    showFlash('notif', 'Показываем через ~1 с — заблокируй экран');
+  }
+
+  const showNowPark = () =>
+    showNow(() => {
+      const c = parkText(t, dogName);
+      return scheduleNotif({
+        kind: KIND_PARK,
+        categoryId: CAT_PARK,
+        sound: 'checkin',
+        actions: [{ identifier: ACT_PARK_HERE, buttonTitle: t('park.notif.action') }],
+        title: c.title,
+        body: c.body,
+        data: { parkId: 'dev-test' },
+        fireInSeconds: 1,
+      });
+    });
+
+  const showNowHome = () =>
+    showNow(() => {
+      const c = homeText(t, dogName);
+      return scheduleNotif({
+        kind: KIND_HOME,
+        categoryId: CAT_HOME,
+        sound: 'home',
+        actions: [
+          { identifier: ACT_FINISH, buttonTitle: t('home.notif.finish') },
+          { identifier: ACT_KEEP, buttonTitle: t('home.notif.keep') },
+        ],
+        title: c.title,
+        body: c.body,
+        fireInSeconds: 1,
+      });
+    });
+
+  // №3 постоянная опасная метка — без кнопок.
+  const showNowHazard = () =>
+    showNow(() => {
+      const c = hazardPermText(t, dogName, 'danger', 50);
+      return presentWalkNotice(c.title, c.body, 'alert');
+    });
+
+  // №3 ВРЕМЕННАЯ опасная метка — предупреждение С кнопками-голосом.
+  const showNowHazardVote = () =>
+    showNow(() => {
+      const c = hazardTempText(t, dogName, 'danger', 50, 10 * 60_000);
+      return scheduleNotif({
+        kind: KIND_MARKER,
+        categoryId: CAT_MARKER,
+        sound: 'alert',
+        actions: [
+          { identifier: ACT_MARKER_STILL, buttonTitle: t('marker.notif.still') },
+          { identifier: ACT_MARKER_GONE, buttonTitle: t('marker.notif.gone') },
+        ],
+        title: c.title,
+        body: c.body,
+        data: { markerId: 'dev-test' },
+        fireInSeconds: 1,
+      });
+    });
+
+  const showNowStill = () =>
+    showNow(() => {
+      const c = stillText(t, 2 * 60 * 60_000);
+      return scheduleNotif({
+        kind: KIND_STILL,
+        categoryId: CAT_STILL,
+        sound: 'home',
+        actions: [
+          { identifier: ACT_FINISH, buttonTitle: t('home.notif.finish'), opensApp: true },
+          { identifier: ACT_KEEP, buttonTitle: t('home.notif.keep') },
+        ],
+        title: c.title,
+        body: c.body,
+        fireInSeconds: 1,
+      });
+    });
+
+  const showNowMarker = () =>
+    showNow(() => {
+      const c = markerText(t, 'forbidden');
+      return scheduleNotif({
+        kind: KIND_MARKER,
+        categoryId: CAT_MARKER,
+        sound: 'alert',
+        actions: [
+          { identifier: ACT_MARKER_STILL, buttonTitle: t('marker.notif.still') },
+          { identifier: ACT_MARKER_GONE, buttonTitle: t('marker.notif.gone') },
+        ],
+        title: c.title,
+        body: c.body,
+        data: { markerId: 'dev-test' },
+        fireInSeconds: 1,
+      });
+    });
+
   async function toggleMapDebug(next: boolean) {
     setMapDebugOn(next);
     await mapDebug.setEnabled(next); // применяется сразу + persist, без перезапуска
+  }
+
+  async function runNotifTest(seconds: number) {
+    const res = await scheduleTestNotification(seconds);
+    const msg =
+      res === 'ok'
+        ? `Запланировано на +${seconds} с — заблокируй экран`
+        : res === 'denied'
+          ? 'Нет разрешения на уведомления'
+          : 'Модуль уведомлений не в этой сборке';
+    showFlash('notif', msg);
   }
 
   // Живой индикатор домашней зоны — та же формула, что в гейте active_walks
@@ -322,6 +547,25 @@ export function DevPanel({ visible, onClose }: Props) {
             </Text>
           </View>
 
+          {/* ── Профиль GPS (эксперимент с батареей) ── */}
+          <Text style={styles.sectionTitle}>Профиль GPS</Text>
+          <View style={styles.card}>
+            <View style={styles.switchRow}>
+              <Text style={styles.rowLabelFlex}>Эконом (High / 10 м)</Text>
+              <Switch
+                value={gpsEco}
+                onValueChange={toggleGpsEco}
+                trackColor={{ true: colors.primary, false: colors.border }}
+              />
+            </View>
+            <Text style={styles.note}>
+              Выкл = текущий профиль (BestForNavigation / 5 м). Вкл = Эконом
+              (Accuracy.High / 10 м). Применяется со следующей прогулки. В итогах
+              прогулки для dev — строка «профиль · принято/получено точек». Только
+              для DEV_USER_IDS.
+            </Text>
+          </View>
+
           {/* ── Автозавершение прогулки ── */}
           <Text style={styles.sectionTitle}>Автозавершение прогулки</Text>
           <View style={styles.card}>
@@ -352,10 +596,120 @@ export function DevPanel({ visible, onClose }: Props) {
                 trackColor={{ true: colors.primary, false: colors.border }}
               />
             </View>
+            <View style={styles.switchRow}>
+              <Text style={styles.rowLabelFlex}>Тест: подсказка 30 с</Text>
+              <Switch
+                value={parkPromptTest}
+                onValueChange={toggleParkPromptTest}
+                trackColor={{ true: colors.primary, false: colors.border }}
+              />
+            </View>
             <Text style={styles.note}>
               Авто-чек-ин после 1 мин в зоне dog_park (40 м) вместо 5 мин.
-              Применяется со следующей прогулки. Только для DEV_USER_IDS.
+              «Подсказка 30 с» — уведомление №1 «Ты на площадке?» через 30 с вместо
+              3 мин. Применяется со следующей прогулки. Только для DEV_USER_IDS.
             </Text>
+          </View>
+
+          {/* ── Уведомления (риск-чек) ── */}
+          <Text style={styles.sectionTitle}>Уведомления</Text>
+          <View style={styles.card}>
+            <InfoRow
+              label="expo-notifications в билде"
+              value={isNotificationsAvailable ? 'да' : 'НЕТ (модуль не в билде)'}
+              highlight={!isNotificationsAvailable}
+            />
+            <View style={styles.tempRow}>
+              <TouchableOpacity
+                style={[styles.btnPrimary, { flex: 1 }]}
+                onPress={() => runNotifTest(10)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.btnPrimaryTxt}>Тест (10 с)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btnPrimary, { flex: 1 }]}
+                onPress={() => runNotifTest(60)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.btnPrimaryTxt}>Тест (60 с)</Text>
+              </TouchableOpacity>
+            </View>
+            {flash.notif && <Text style={styles.flash}>{flash.notif}</Text>}
+            <Text style={styles.note}>
+              Через 10 / 60 с — локальное уведомление с кнопкой «Я здесь» (не
+              открывает приложение, не требует разблокировки). 60 с — чтобы успеть
+              начать прогулку и убрать телефон. Заблокируй экран и нажми кнопку:
+              строка в логе покажет время уведомления, время обработки, AppState и
+              источник (слушатель / getLast при запуске) — так видно, сработало ли
+              сразу в фоне или только при открытии. Плюс Alert при открытии.
+            </Text>
+            {notifLog.length > 0 && (
+              <>
+                <Text style={styles.rowLabel}>Последние нажатия</Text>
+                {notifLog.map((line, i) => (
+                  <Text key={i} style={styles.mono}>{line}</Text>
+                ))}
+              </>
+            )}
+          </View>
+
+          {/* ── Уведомления: тест сценариев ── */}
+          <Text style={styles.sectionTitle}>Уведомления: сценарии</Text>
+          <View style={styles.card}>
+            <View style={styles.switchRow}>
+              <Text style={styles.rowLabelFlex}>№2 «Уже дома?» — 30 с</Text>
+              <Switch
+                value={homePromptTest}
+                onValueChange={toggleHomePromptTest}
+                trackColor={{ true: colors.primary, false: colors.border }}
+              />
+            </View>
+            <View style={styles.switchRow}>
+              <Text style={styles.rowLabelFlex}>№4 «Всё ещё гуляешь?» — 2 мин</Text>
+              <Switch
+                value={stillWalkingTest}
+                onValueChange={toggleStillWalkingTest}
+                trackColor={{ true: colors.primary, false: colors.border }}
+              />
+            </View>
+            <View style={styles.switchRow}>
+              <Text style={styles.rowLabelFlex}>№3/№5 радиус — 150 м</Text>
+              <Switch
+                value={proximityTest}
+                onValueChange={toggleProximityTest}
+                trackColor={{ true: colors.primary, false: colors.border }}
+              />
+            </View>
+            <Text style={styles.note}>
+              Ускорители читаются при старте прогулки (№1 «подсказка 30 с» — выше, в
+              «Чек-ин на площадке»). «Показать сейчас» шлёт настоящее уведомление
+              через ~1 с для проверки текстов и кнопок; реальное действие кнопки —
+              на самой прогулке (вне прогулки нажатие попадёт в лог риск-чека).
+            </Text>
+            <View style={styles.tempRow}>
+              <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={showNowPark} activeOpacity={0.8}>
+                <Text style={styles.btnPrimaryTxt}>№1 сейчас</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={showNowHome} activeOpacity={0.8}>
+                <Text style={styles.btnPrimaryTxt}>№2 сейчас</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={showNowHazard} activeOpacity={0.8}>
+                <Text style={styles.btnPrimaryTxt}>№3 сейчас</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={[styles.tempRow, { marginTop: 8 }]}>
+              <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={showNowStill} activeOpacity={0.8}>
+                <Text style={styles.btnPrimaryTxt}>№4 сейчас</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={showNowMarker} activeOpacity={0.8}>
+                <Text style={styles.btnPrimaryTxt}>№5 сейчас</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={showNowHazardVote} activeOpacity={0.8}>
+                <Text style={styles.btnPrimaryTxt}>№3 врем.</Text>
+              </TouchableOpacity>
+            </View>
+            {flash.notif && <Text style={styles.flash}>{flash.notif}</Text>}
           </View>
 
           {/* ── Оверрайды ── */}

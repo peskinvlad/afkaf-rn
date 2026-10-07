@@ -2,7 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { HOME_ZONE_KEYS } from './privacyZone';
 import { PENDING_KEY } from './walkHistory';
 import { AUTO_FINISHED_KEY } from './walkFinalize';
-import { DEV_ASPHALT_OVERRIDE_KEY, DEV_VOTE_OWN_KEY, DEV_AUTO_FINISH_TEST_KEY } from '../constants/dev';
+import {
+  DEV_ASPHALT_OVERRIDE_KEY,
+  DEV_VOTE_OWN_KEY,
+  DEV_AUTO_FINISH_TEST_KEY,
+  DEV_GPS_PROFILE_KEY,
+} from '../constants/dev';
 
 // Local, per-user AsyncStorage state that must NOT survive logout or account
 // deletion: the home privacy zone, the walk-visibility setting, any queued
@@ -20,6 +25,7 @@ export async function clearLocalUserData(): Promise<void> {
       DEV_ASPHALT_OVERRIDE_KEY,
       DEV_VOTE_OWN_KEY,
       DEV_AUTO_FINISH_TEST_KEY,
+      DEV_GPS_PROFILE_KEY,
     ]);
   } catch (e) {
     console.warn('[localReset] clearLocalUserData failed:', e);
