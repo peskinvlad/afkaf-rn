@@ -27,12 +27,22 @@ const NOTIFICATION_SOUNDS = [
 ];
 
 module.exports = ({ config }) => {
-  // 1) Плагин уведомлений — всегда.
+  // 1) Плагин уведомлений — всегда. icon: белый силуэт на прозрачном фоне для
+  //    small-icon статус-бара Android (без него expo берёт app icon → белый
+  //    квадрат); Android рисует его по альфа-маске, тон задаёт color. На iOS
+  //    icon/color игнорируются (там small-icon берётся из app icon).
   let next = {
     ...config,
     plugins: [
       ...(config.plugins ?? []),
-      ['expo-notifications', { sounds: NOTIFICATION_SOUNDS }],
+      [
+        'expo-notifications',
+        {
+          sounds: NOTIFICATION_SOUNDS,
+          icon: './assets/notification-icon.png',
+          color: '#2c5f25',
+        },
+      ],
     ],
   };
 
