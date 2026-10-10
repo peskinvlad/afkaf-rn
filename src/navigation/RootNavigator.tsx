@@ -4,7 +4,6 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { LangScreen } from '../screens/LangScreen';
 import { OnboardingScreen } from '../screens/OnboardingScreen';
-import { PrivacyChoiceScreen } from '../screens/PrivacyChoiceScreen';
 import { MainScreen } from '../screens/MainScreen';
 import { WalkScreen } from '../screens/WalkScreen';
 import { WalkSummaryScreen } from '../screens/WalkSummaryScreen';
@@ -62,7 +61,6 @@ export function RootNavigator() {
         >
           <Stack.Screen name="Lang" component={LangScreen} />
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-          <Stack.Screen name="PrivacyChoice" component={PrivacyChoiceScreen} options={{ gestureEnabled: false }} />
           <Stack.Screen name="DogProfile" component={DogProfileScreen} options={{ gestureEnabled: false }} />
           <Stack.Screen name="Main" component={MainScreen} />
           <Stack.Screen name="Auth"            component={AuthScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: true }} />

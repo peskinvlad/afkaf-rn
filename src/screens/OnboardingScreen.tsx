@@ -32,15 +32,12 @@ export function OnboardingScreen({ navigation }: Props) {
       listRef.current?.scrollToIndex({ index: next, animated: true });
       setCurrent(next);
     } else {
-      // Последний шаг онбординга — обязательный выбор видимости (он сам уйдёт на
-      // Main, а существующим с уже заданным уровнем — мгновенно).
-      navigation.replace('PrivacyChoice');
+      navigation.replace('Main');
     }
   }
 
   function skip() {
-    // «Пропустить» слайды всё равно ведёт к выбору видимости (его не пропустить).
-    navigation.replace('PrivacyChoice');
+    navigation.replace('Main');
   }
 
   return (

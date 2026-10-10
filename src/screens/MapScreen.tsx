@@ -46,6 +46,9 @@ import { MAP_CAMERA_ZOOM_RANGE } from '../lib/mapConfig';
 import { ensureLocationPermission } from '../lib/locationPermission';
 import { isAccurateFix, createGlitchFilter } from '../lib/gpsQuality';
 import { supabase } from '../lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { PrivacyChoiceSheet } from '../components/PrivacyChoiceSheet';
+import type { Visibility } from './SettingsScreen';
 
 // Стартовая позиция карты — Бат-Ям (см. START_COORD/START_DELTA в lib/geo).
 // До первого GPS-фикса карта показывает этот регион; на первом фиксе один раз
@@ -131,6 +134,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   const [bottomPanelHeight, setBottomPanelHeight] = useState(130);
   const [detailMarker, setDetailMarker] = useState<import('../lib/markerConfig').MapMarker | null>(null);
   const [locationCardVisible, setLocationCardVisible] = useState(false);
+  const [privacySheetVisible, setPrivacySheetVisible] = useState(false);
 
   // Lift the heat card / FAB above NearbyDogsSheet while it's open, in sync
   // with its own open/close animation.
@@ -427,6 +431,27 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   const waterToRender = infraHidden ? [] : filteredWaterSources;
 
   async function handleStartWalk() {
+    // Выбор видимости — ОДИН раз, ДО системного запроса геолокации (не
+    // одновременно) и только залогиненному (гостям не показываем). Пока ключа
+    // нет — открываем шторку и ждём выбора; старт продолжит handlePrivacyChoose.
+    if (!isGuest) {
+      const stored = await AsyncStorage.getItem('privacy_visibility');
+      if (!stored) {
+        setPrivacySheetVisible(true);
+        return;
+      }
+    }
+    await proceedStartWalk();
+  }
+
+  // Выбор во шторке: сохраняем и сразу продолжаем старт, без лишних нажатий.
+  async function handlePrivacyChoose(v: Visibility) {
+    await AsyncStorage.setItem('privacy_visibility', v);
+    setPrivacySheetVisible(false);
+    await proceedStartWalk();
+  }
+
+  async function proceedStartWalk() {
     // Location gate strictly before the heat intercept — without it the
     // walk can start but never actually get tracked/saved (WalkScreen's
     // GPS watcher silently no-ops without permission).
@@ -776,6 +801,16 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
       )}
 
       {!isGuest && <ShareProfileSheet visible={shareVisible} onClose={() => setShareVisible(false)} />}
+
+      {/* Выбор видимости перед первой прогулкой (только залогиненным, пока нет
+          privacy_visibility). Закрытие по фону = прогулка не стартует. */}
+      {!isGuest && (
+        <PrivacyChoiceSheet
+          visible={privacySheetVisible}
+          onChoose={handlePrivacyChoose}
+          onClose={() => setPrivacySheetVisible(false)}
+        />
+      )}
 
       {/* Диагностический оверлей камеры/данных — только при EXPO_PUBLIC_MAP_DEBUG=1
           (preview). Без флага возвращает null и ничего не пишет. */}
