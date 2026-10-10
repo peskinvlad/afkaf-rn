@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
+import { supabase } from '../lib/supabase';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows, spacing } from '../theme/tokens';
 import type { Visibility } from '../screens/SettingsScreen';
@@ -41,11 +42,13 @@ export function PrivacyChoiceSheet({ visible, onChoose, onClose }: Props) {
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
   const translateY = useRef(new Animated.Value(400)).current;
-  // Предвыбор «только друзья» — текущее фактическое значение (см. шапку).
-  const [choice, setChoice] = useState<Visibility>('friends');
+  // Новичку (ноль прогулок) ничего не предвыбрано — «Продолжить» неактивна до
+  // выбора. Существующему (есть прогулка в walk_history) предвыбрано 'friends'
+  // (его текущее фактическое значение). Пока проверка не загрузилась / упала —
+  // считаем новичком (null).
+  const [choice, setChoice] = useState<Visibility | null>(null);
 
   useEffect(() => {
-    if (visible) setChoice('friends'); // сбрасываем на дефолт при каждом открытии
     Animated.spring(translateY, {
       toValue: visible ? 0 : 400,
       useNativeDriver: true,
@@ -53,6 +56,33 @@ export function PrivacyChoiceSheet({ visible, onChoose, onClose }: Props) {
       speed: 16,
     }).start();
   }, [visible, translateY]);
+
+  // Предвыбор по наличию прошлых прогулок. Сброс на null при каждом открытии;
+  // затем 'friends' — только если нашлась хотя бы одна прогулка И пользователь
+  // ещё ничего не тронул (гонка с тапом). Ошибка / гость / незагрузка → null.
+  useEffect(() => {
+    if (!visible) return;
+    setChoice(null);
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const uid = session?.user?.id;
+        if (!uid) return;
+        const { count, error } = await supabase
+          .from('walk_history')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', uid);
+        if (cancelled || error || (count ?? 0) === 0) return;
+        setChoice((prev) => (prev === null ? 'friends' : prev));
+      } catch {
+        // новичок по умолчанию — ничего не трогаем
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
 
   if (!visible) return null;
 
@@ -104,8 +134,9 @@ export function PrivacyChoiceSheet({ visible, onChoose, onClose }: Props) {
         </View>
 
         <TouchableOpacity
-          style={[styles.cta, shadows.md]}
-          onPress={() => onChoose(choice)}
+          style={[styles.cta, shadows.md, !choice && styles.ctaDisabled]}
+          onPress={() => choice && onChoose(choice)}
+          disabled={!choice}
           activeOpacity={0.85}
         >
           <Text style={styles.ctaTxt}>{t('onboarding.privacy.cta')}</Text>
@@ -222,6 +253,7 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) =>
       alignItems: 'center',
       marginTop: 2,
     },
+    ctaDisabled: { opacity: 0.45 },
     ctaTxt: {
       fontSize: 17,
       fontFamily: ty.font.heading,
