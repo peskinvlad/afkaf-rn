@@ -114,7 +114,9 @@ function PersonRow({ person, t, rtl }: { person: ParkPresencePerson; t: TFn; rtl
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
   const name = person.isMe ? t('park.you') : person.displayName || t('park.someone');
-  const label = person.dogName ? `${name} · ${person.dogName}` : name;
+  // Кличка первой: на площадке узнают собаку раньше, чем человека (как в списке
+  // «гуляют рядом»). RPC get_park_presence уже отдаёт dog_name — только порядок.
+  const label = person.dogName ? `${person.dogName} · ${name}` : name;
   return (
     <View style={[styles.personRow, rtl && styles.rowReverse]}>
       <Text style={styles.personAvatar}>{person.dogAvatar || '🐕'}</Text>
