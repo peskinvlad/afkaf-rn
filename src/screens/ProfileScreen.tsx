@@ -191,10 +191,13 @@ export function ProfileScreen({ navigation }: Props) {
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId);
 
+    // Сумма км — только по засчитанным прогулкам (как км-бейджи, см. lib/badges):
+    // невалидные (< 0.3 км / < 5 мин) в общий километраж профиля не идут.
     const { data: kmData } = await supabase
       .from('walk_history')
       .select('distance_km')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .eq('is_valid', true);
     const totalKm = (kmData ?? []).reduce((s, r) => s + (r.distance_km ?? 0), 0);
 
     // Marker count
