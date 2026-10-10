@@ -64,6 +64,8 @@ import {
 } from '../lib/autoFinish';
 import {
   getDevAutoFinishTest,
+  getDevCarFinishTest,
+  getDevCarSim,
   getDevParkCheckinTest,
   getDevParkPromptTest,
   getDevHomePromptTest,
@@ -118,6 +120,7 @@ import {
   parkText,
   homeText,
   autoFinishedText,
+  drivingFinishedText,
   hazardPermText,
   hazardTempText,
   stillText,
@@ -689,6 +692,8 @@ export function WalkScreen({ navigation }: Props) {
   const autoPendingRef = useRef<AutoFinishedWalk | null>(null);
   const autoRouteRef = useRef<LatLng[]>([]);
   const parksRef = useRef<LatLng[]>([]);
+  // DEV «Имитация: в машине»: тикер синтетической скорости (см. эффект ниже).
+  const [carSim, setCarSim] = useState(false);
   // ── Сценарий №2 «Уже дома?» ───────────────────────────────────────────────
   // Подсказку планируем в ОС на «вход в домашнюю зону (кандидат) + порог» (10 мин),
   // отменяем при выходе из зоны / «Ещё гуляю» / авто-завершении / конце прогулки.
@@ -833,13 +838,16 @@ export function WalkScreen({ navigation }: Props) {
   useEffect(() => {
     let disposed = false;
     (async () => {
-      const [zone, testMode, homePromptTest, proximityTest, stillWalkingTest] = await Promise.all([
-        loadHomeZone(),
-        getDevAutoFinishTest(),
-        getDevHomePromptTest(),
-        getDevProximityTest(),
-        getDevStillWalkingTest(),
-      ]);
+      const [zone, testMode, homePromptTest, proximityTest, stillWalkingTest, carFinishTest, carSimOn] =
+        await Promise.all([
+          loadHomeZone(),
+          getDevAutoFinishTest(),
+          getDevHomePromptTest(),
+          getDevProximityTest(),
+          getDevStillWalkingTest(),
+          getDevCarFinishTest(),
+          getDevCarSim(),
+        ]);
       if (disposed) return;
       homePromptThresholdMs.current = homePromptTest ? HOME_PROMPT_TEST_MS : HOME_PROMPT_MS;
       proximityTestRef.current = proximityTest;
@@ -848,9 +856,13 @@ export function WalkScreen({ navigation }: Props) {
       stillWalkingRepeatMs.current = stillWalkingTest
         ? STILL_WALKING_REPEAT_TEST_MS
         : STILL_WALKING_REPEAT_MS;
+      // Имитация подразумевает тест-пороги правила «вождение» (чтобы сработало
+      // стоя за ~1 мин). Включаем ticker синтетической скорости ниже.
+      setCarSim(carSimOn);
       autoDetector.current = createAutoFinishDetector({
         home: zone,
         testMode,
+        carTestMode: carFinishTest || carSimOn,
         isNearPark: (pt) => parksRef.current.some((p) => haversine(p, pt) * 1000 <= PARK_NEAR_M),
       });
     })();
@@ -860,6 +872,23 @@ export function WalkScreen({ navigation }: Props) {
       autoDetector.current = null;
     };
   }, []);
+
+  // DEV «Имитация: в машине»: пока включено, кормим детектор синтетической
+  // скоростью 40 км/ч и едущей фиктивной точкой — стоя на месте фиксов почти нет
+  // (distanceInterval 5 м их не даёт), а так растут и скорость, и смещение.
+  // Подразумевает тест-пороги (carTestMode выше) → срабатывает за ~1 мин. Флаг
+  // виден только dev-пользователю (getDevCarSim сам проверяет isDevUser).
+  useEffect(() => {
+    if (!carSim) return;
+    let lat = latestPos.current?.latitude ?? START_COORD.latitude;
+    const lng = latestPos.current?.longitude ?? START_COORD.longitude;
+    const id = setInterval(() => {
+      lat += 0.0002; // ≈22 м за тик ⇒ ≈40 км/ч при 2 с
+      autoDetector.current?.feedSpeed(11.1, { latitude: lat, longitude: lng }, Date.now());
+      autoCheckRef.current();
+    }, 2000);
+    return () => clearInterval(id);
+  }, [carSim]);
 
   // ── Park check-in (lib/parkCheckin) ─────────────────────────────────────
   // Signed-in walks only. Auto check-in after PARK_DWELL_MS inside a dog_park
@@ -1278,7 +1307,12 @@ export function WalkScreen({ navigation }: Props) {
     // завершилась сама: отдельное уведомление без кнопок «Прогулка завершена».
     // Открыто → сразу покажем экран итогов, уведомление не нужно.
     if (AppState.currentState !== 'active') {
-      const content = autoFinishedText(t, walk.distanceKm.toFixed(2), Math.round(walk.durationS / 60));
+      const km = walk.distanceKm.toFixed(2);
+      const min = Math.round(walk.durationS / 60);
+      const content =
+        hit.reason === 'driving'
+          ? drivingFinishedText(t, dogNameRef.current, km, min)
+          : autoFinishedText(t, km, min);
       presentWalkNotice(content.title, content.body, 'home');
     }
     // park_checkout ДО остановки трекинга (с таймаутом): в фоне iOS усыпляет
@@ -1424,6 +1458,15 @@ export function WalkScreen({ navigation }: Props) {
         return;
       }
       const stamped = { ...loc.coords, timestamp: loc.timestamp };
+      // Авто-завершение «машина»: мгновенную GPS-скорость подаём с СЫРОГО фикса
+      // (после accuracy-гейта, ДО glitch-фильтра — он придерживает быстрые шаги,
+      // иначе детектор голодал бы на скорости). speed<0/null = Android «неизвестно»
+      // → детектор посчитает по точкам.
+      autoDetector.current?.feedSpeed(
+        loc.coords.speed != null && loc.coords.speed >= 0 ? loc.coords.speed : null,
+        { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
+        loc.timestamp,
+      );
       for (const coords of glitchFilter.accept(stamped, loc.timestamp)) {
         gpsAcceptedRef.current += 1; // DEV: прошли оба фильтра, попали в маршрут
         const pt = { latitude: coords.latitude, longitude: coords.longitude };

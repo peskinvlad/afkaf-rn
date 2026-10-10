@@ -1,5 +1,6 @@
 import { haversine, LatLng } from './geo';
 import { HomeZone } from './privacyZone';
+import { GPS_MAX_STEP_GAP_MS } from './gpsQuality';
 
 // ── Автозавершение забытой прогулки ─────────────────────────────────────────
 // Чистая логика, без RN: WalkScreen кормит сюда принятые фиксы (уже прошедшие
@@ -29,6 +30,33 @@ export const STILL_NEAR_PARK_MS = 60 * 60_000;
 export const PARK_NEAR_M = 100;
 // Dev-переключатель «Тест: порог 1 мин» (DevPanel, только DEV_USER_IDS).
 export const TEST_THRESHOLD_MS = 60_000;
+
+// ── Правило «вождение» (забыл завершить, сел в машину) ───────────────────────
+// Независимо от дома/неподвижности: держится высокая скорость несколько минут
+// подряд с заметным смещением → человек едет, не гуляет. Трек режется по моменту
+// НАЧАЛА езды (всё, что записалось в машине, не учитывается). Скорость берём с
+// сырого фикса ДО glitch-фильтра (он придерживает быстрые шаги) — см.
+// WalkScreen.handleFix.feedSpeed.
+//
+// Пороги и обоснование:
+//   ENTER 8.3 м/с (30 км/ч) — выше кепа e-самоката (~25) и прогулочного
+//     велосипеда (15–22) и выше спринта хозяина/собаки (~20, и то не на минуты).
+//   EXIT 4.0 м/с (14.4 км/ч) — гистерезис: ниже = трафик/остановка/пешком.
+//   CONFIRM 3 мин подряд — отсекает короткий автобусный отрезок и всплески.
+//   RESET 1.5 мин ниже EXIT — вышел из машины / встал → кандидат снят.
+//   MIN_DISP 1 км — при 30 км/ч × 3 мин ≈ 1.5 км; глушит «стоячий» GPS-глич с
+//     высокой мнимой скоростью.
+//   OPEN_FIXES 2 — одиночный скачок кандидата не открывает.
+export const DRIVE_ENTER_MPS = 8.3;
+export const DRIVE_EXIT_MPS = 4.0;
+export const DRIVE_CONFIRM_MS = 3 * 60_000;
+export const DRIVE_RESET_MS = 90_000;
+export const DRIVE_MIN_DISP_M = 1000;
+export const DRIVE_OPEN_FIXES = 2;
+// Dev «Тест: машина» (DevPanel): быстрый шаг триггерит, порог 1 мин, смещение 30 м.
+export const DRIVE_TEST_ENTER_MPS = 1.5;
+export const DRIVE_TEST_CONFIRM_MS = 60_000;
+export const DRIVE_TEST_MIN_DISP_M = 30;
 
 // Гистерезис на границе зоны. «Внутри» — центр фикса в радиусе. «Уверенно
 // снаружи» — даже с поправкой на заявленную точность фикс дальше радиуса ещё
@@ -60,7 +88,7 @@ export const STILL_MOVE_CONFIRM_FIXES = 2;
 // Точность, если платформа её не прислала (редко) — умеренная, не нулевая.
 const DEFAULT_ACCURACY_M = 15;
 
-export type AutoFinishReason = 'home' | 'still';
+export type AutoFinishReason = 'home' | 'still' | 'driving';
 
 // Состояние трека в момент фикса — чтобы обрезать итог ровно по T.
 export interface TrackMark {
@@ -85,6 +113,9 @@ export interface AutoFinishConfig {
   home: HomeZone | null;
   // true → все пороги = TEST_THRESHOLD_MS (dev-тест).
   testMode: boolean;
+  // true → правило «вождение» на тест-порогах (DevPanel: «Тест: машина» /
+  // «Имитация»): быстрый шаг триггерит, 1 мин, смещение 30 м.
+  carTestMode: boolean;
   isNearPark: (pt: LatLng) => boolean;
 }
 
@@ -96,6 +127,7 @@ export interface AutoFinishDiagnostics {
   insideSince: number | null;  // кандидат на T по правилу «дом»
   stillSince: number | null;   // точка отсчёта неподвижности
   stillThresholdMs: number | null;
+  drivingSince: number | null; // начало поездки (кандидат правила «вождение»)
   firedAt: number | null;      // T сработавшего правила
   reason: AutoFinishReason | null;
 }
@@ -108,6 +140,7 @@ const diag: AutoFinishDiagnostics = {
   insideSince: null,
   stillSince: null,
   stillThresholdMs: null,
+  drivingSince: null,
   firedAt: null,
   reason: null,
 };
@@ -119,6 +152,10 @@ export function getAutoFinishDiagnostics(): AutoFinishDiagnostics {
 
 export interface AutoFinishDetector {
   feed: (fix: DetectorFix, mark: TrackMark) => void;
+  // Мгновенная GPS-скорость (м/с) сырого фикса — ДО glitch-фильтра, который
+  // придерживает быстрые шаги. null = платформа не дала (Android «неизвестно»);
+  // тогда скорость считается по точкам при разумном dt. Правило «вождение».
+  feedSpeed: (speedMps: number | null, pt: LatLng, nowMs: number) => void;
   check: (nowMs: number) => AutoFinishHit | null;
   // Шаговый датчик опроверг неподвижность — начать отсчёт заново с nowMs.
   rejectStill: (nowMs: number) => void;
@@ -138,8 +175,19 @@ export interface AutoFinishDetector {
 type Stamped = { fix: DetectorFix; mark: TrackMark };
 
 export function createAutoFinishDetector(config: AutoFinishConfig): AutoFinishDetector {
-  const { home, testMode, isNearPark } = config;
+  const { home, testMode, carTestMode, isNearPark } = config;
   const homeDwellMs = testMode ? TEST_THRESHOLD_MS : HOME_DWELL_MS;
+
+  // Правило «вождение» (независимо от home/still).
+  const driveEnterMps = carTestMode ? DRIVE_TEST_ENTER_MPS : DRIVE_ENTER_MPS;
+  const driveConfirmMs = carTestMode ? DRIVE_TEST_CONFIRM_MS : DRIVE_CONFIRM_MS;
+  const driveMinDispM = carTestMode ? DRIVE_TEST_MIN_DISP_M : DRIVE_MIN_DISP_M;
+  let drivePrev: { pt: LatLng; t: number } | null = null; // для фолбэка «по точкам»
+  let driveOpenRun = 0;                                    // подряд быстрых фиксов
+  let driveOpenFirst: { t: number; pt: LatLng; mark: TrackMark } | null = null;
+  let driveCand: { startAt: number; startPt: LatLng; mark: TrackMark } | null = null;
+  let driveLastPt: LatLng | null = null;
+  let driveSlowSince: number | null = null;                // ниже EXIT с этого момента → сброс
 
   // Правило «дом»
   let wasOutside = false;
@@ -169,6 +217,7 @@ export function createAutoFinishDetector(config: AutoFinishConfig): AutoFinishDe
     insideSince: null,
     stillSince: null,
     stillThresholdMs: null,
+    drivingSince: null,
     firedAt: null,
     reason: null,
   });
@@ -293,10 +342,87 @@ export function createAutoFinishDetector(config: AutoFinishConfig): AutoFinishDe
       else feedStill(s);
     },
 
+    feedSpeed(speedMps, pt, nowMs) {
+      if (fired) return;
+      driveLastPt = pt;
+      // Эффективная скорость: мгновенная GPS (если валидна), иначе по точкам при
+      // разумном dt. Нет сигнала — состояние не трогаем (ни открыть, ни сбросить).
+      let eff = speedMps;
+      if (eff == null && drivePrev) {
+        const dt = (nowMs - drivePrev.t) / 1000;
+        if (dt > 0 && dt <= GPS_MAX_STEP_GAP_MS / 1000) {
+          eff = (haversine(drivePrev.pt, pt) * 1000) / dt;
+        }
+      }
+      drivePrev = { pt, t: nowMs };
+      if (eff == null) return;
+
+      const fast = eff >= driveEnterMps;
+      const slow = eff < DRIVE_EXIT_MPS;
+
+      if (!driveCand) {
+        if (fast) {
+          if (driveOpenRun === 0) {
+            driveOpenFirst = {
+              t: nowMs,
+              pt,
+              // Метрики на момент начала езды = последний принятый (пеший) фикс
+              // до машины: трек/дистанцию/шаги режем сюда.
+              mark: last?.mark ?? { routeLen: 0, distanceKm: 0, steps: 0 },
+            };
+          }
+          driveOpenRun += 1;
+          if (driveOpenRun >= DRIVE_OPEN_FIXES && driveOpenFirst) {
+            driveCand = {
+              startAt: driveOpenFirst.t,
+              startPt: driveOpenFirst.pt,
+              mark: driveOpenFirst.mark,
+            };
+            driveSlowSince = null;
+            diag.drivingSince = driveCand.startAt;
+          }
+        } else {
+          driveOpenRun = 0;
+          driveOpenFirst = null;
+        }
+        return;
+      }
+
+      // Кандидат активен: сбрасываем только при устойчивой остановке — ниже EXIT
+      // дольше RESET (вышел из машины / встал). Нейтральная полоса EXIT..ENTER
+      // (пробка, светофор) не сбрасывает.
+      if (slow) {
+        if (driveSlowSince == null) driveSlowSince = nowMs;
+        if (nowMs - driveSlowSince >= DRIVE_RESET_MS) {
+          driveCand = null;
+          driveOpenRun = 0;
+          driveOpenFirst = null;
+          driveSlowSince = null;
+          diag.drivingSince = null;
+        }
+      } else {
+        driveSlowSince = null;
+      }
+    },
+
     check(nowMs) {
       if (fired) return null;
       let hit: AutoFinishHit | null = null;
-      if (home) {
+      // Вождение — приоритетнее дома/неподвижности.
+      if (
+        driveCand &&
+        nowMs - driveCand.startAt >= driveConfirmMs &&
+        driveLastPt &&
+        haversine(driveCand.startPt, driveLastPt) * 1000 >= driveMinDispM
+      ) {
+        hit = {
+          reason: 'driving',
+          endAt: driveCand.startAt,
+          mark: driveCand.mark,
+          routeCutLen: driveCand.mark.routeLen,
+        };
+      }
+      if (!hit && home) {
         if (candidate && nowMs - candidate.fix.timestamp >= homeDwellMs) {
           const arrival = homeArrival(candidate);
           // Трек для сохранения режем на ВХОДЕ в зону (приватность адреса), а
@@ -308,7 +434,7 @@ export function createAutoFinishDetector(config: AutoFinishConfig): AutoFinishDe
             routeCutLen: candidate.mark.routeLen,
           };
         }
-      } else if (anchor && nowMs - anchor.fix.timestamp >= anchorThresholdMs) {
+      } else if (!hit && anchor && nowMs - anchor.fix.timestamp >= anchorThresholdMs) {
         hit = {
           reason: 'still',
           endAt: anchor.fix.timestamp,

@@ -57,6 +57,14 @@ export const DEV_MAP_DEBUG_KEY = 'dev_map_debug_overlay';
 // «Тест: порог 1 мин» для автозавершения прогулки (DevPanel). Читается
 // WalkScreen при старте прогулки через getDevAutoFinishTest.
 export const DEV_AUTO_FINISH_TEST_KEY = 'dev_auto_finish_test';
+// «Тест: машина (порог 1 мин)» для правила «вождение» (DevPanel): быстрый шаг
+// триггерит, порог 1 мин, смещение 30 м вместо 30 км/ч / 3 мин / 1 км. Читается
+// WalkScreen при старте прогулки через getDevCarFinishTest.
+export const DEV_CAR_FINISH_TEST_KEY = 'dev_car_finish_test';
+// «Имитация: в машине» (DevPanel): WalkScreen кормит детектор синтетической
+// скоростью 40 км/ч с едущей фиктивной точкой — проверить авто-завершение
+// «машина» стоя на месте. Подразумевает тест-пороги. Читается при старте.
+export const DEV_CAR_SIM_KEY = 'dev_car_sim';
 // «Тест: порог 1 мин» для авто-чек-ина на площадке (DevPanel): выдержка в зоне
 // dog_park 1 мин вместо 5. Читается WalkScreen при старте прогулки.
 export const DEV_PARK_CHECKIN_TEST_KEY = 'dev_park_checkin_test';
@@ -128,6 +136,28 @@ export async function getDevAutoFinishTest(): Promise<boolean> {
     return (await AsyncStorage.getItem(DEV_AUTO_FINISH_TEST_KEY)) === 'true';
   } catch (e) {
     console.warn('[dev] getDevAutoFinishTest failed:', e);
+    return false;
+  }
+}
+
+export async function getDevCarFinishTest(): Promise<boolean> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!isDevUser(session?.user?.id)) return false;
+    return (await AsyncStorage.getItem(DEV_CAR_FINISH_TEST_KEY)) === 'true';
+  } catch (e) {
+    console.warn('[dev] getDevCarFinishTest failed:', e);
+    return false;
+  }
+}
+
+export async function getDevCarSim(): Promise<boolean> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!isDevUser(session?.user?.id)) return false;
+    return (await AsyncStorage.getItem(DEV_CAR_SIM_KEY)) === 'true';
+  } catch (e) {
+    console.warn('[dev] getDevCarSim failed:', e);
     return false;
   }
 }

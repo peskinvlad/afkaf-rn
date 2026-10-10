@@ -55,6 +55,21 @@ export function autoFinishedText(t: TFn, km: string, min: number): NotifContent 
   };
 }
 
+// Уведомление после авто-завершения по правилу «вождение» (сел в машину).
+export function drivingFinishedText(
+  t: TFn,
+  dog: string | null,
+  km: string,
+  min: number,
+): NotifContent {
+  return {
+    title: t('walk.autoFinished.driving.notifTitle'),
+    body: dog
+      ? t('walk.autoFinished.driving.notifBody_dog', { dog, km, min })
+      : t('walk.autoFinished.driving.notifBody', { km, min }),
+  };
+}
+
 // №3 постоянная опасная метка (без кнопок).
 export function hazardPermText(
   t: TFn,

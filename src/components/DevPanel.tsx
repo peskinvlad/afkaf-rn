@@ -21,6 +21,8 @@ import {
   DEV_ASPHALT_OVERRIDE_KEY,
   DEV_VOTE_OWN_KEY,
   DEV_AUTO_FINISH_TEST_KEY,
+  DEV_CAR_FINISH_TEST_KEY,
+  DEV_CAR_SIM_KEY,
   DEV_PARK_CHECKIN_TEST_KEY,
   DEV_PARK_PROMPT_TEST_KEY,
   DEV_HOME_PROMPT_TEST_KEY,
@@ -100,6 +102,8 @@ export function DevPanel({ visible, onClose }: Props) {
   const [voteOwn, setVoteOwn] = useState(false);
   const [mapDebugOn, setMapDebugOn] = useState(mapDebug.enabled);
   const [autoTest, setAutoTest] = useState(false);
+  const [carFinishTest, setCarFinishTest] = useState(false);
+  const [carSim, setCarSim] = useState(false);
   const [autoDiag, setAutoDiag] = useState<AutoFinishDiagnostics>(getAutoFinishDiagnostics());
   const [parkTest, setParkTest] = useState(false);
   const [parkPromptTest, setParkPromptTest] = useState(false);
@@ -153,6 +157,8 @@ export function DevPanel({ visible, onClose }: Props) {
         DEV_ASPHALT_OVERRIDE_KEY,
         DEV_VOTE_OWN_KEY,
         DEV_AUTO_FINISH_TEST_KEY,
+        DEV_CAR_FINISH_TEST_KEY,
+        DEV_CAR_SIM_KEY,
         DEV_PARK_CHECKIN_TEST_KEY,
         DEV_PARK_PROMPT_TEST_KEY,
         DEV_HOME_PROMPT_TEST_KEY,
@@ -171,6 +177,8 @@ export function DevPanel({ visible, onClose }: Props) {
       setTempInput(map[DEV_ASPHALT_OVERRIDE_KEY] ?? '');
       setVoteOwn(map[DEV_VOTE_OWN_KEY] === 'true');
       setAutoTest(map[DEV_AUTO_FINISH_TEST_KEY] === 'true');
+      setCarFinishTest(map[DEV_CAR_FINISH_TEST_KEY] === 'true');
+      setCarSim(map[DEV_CAR_SIM_KEY] === 'true');
       setParkTest(map[DEV_PARK_CHECKIN_TEST_KEY] === 'true');
       setParkPromptTest(map[DEV_PARK_PROMPT_TEST_KEY] === 'true');
       setHomePromptTest(map[DEV_HOME_PROMPT_TEST_KEY] === 'true');
@@ -270,6 +278,22 @@ export function DevPanel({ visible, onClose }: Props) {
     setAutoTest(next);
     if (next) await AsyncStorage.setItem(DEV_AUTO_FINISH_TEST_KEY, 'true');
     else await AsyncStorage.removeItem(DEV_AUTO_FINISH_TEST_KEY);
+  }
+
+  // Правило «вождение»: тест-пороги (быстрый шаг, 1 мин, 30 м). Читается
+  // WalkScreen через getDevCarFinishTest на старте прогулки.
+  async function toggleCarFinishTest(next: boolean) {
+    setCarFinishTest(next);
+    if (next) await AsyncStorage.setItem(DEV_CAR_FINISH_TEST_KEY, 'true');
+    else await AsyncStorage.removeItem(DEV_CAR_FINISH_TEST_KEY);
+  }
+
+  // Имитация «в машине»: WalkScreen кормит детектор синтетической 40 км/ч стоя на
+  // месте. Читается через getDevCarSim на старте прогулки (подразумевает тест-пороги).
+  async function toggleCarSim(next: boolean) {
+    setCarSim(next);
+    if (next) await AsyncStorage.setItem(DEV_CAR_SIM_KEY, 'true');
+    else await AsyncStorage.removeItem(DEV_CAR_SIM_KEY);
   }
 
   // Чек-ин на площадке: выдержка в зоне 1 мин вместо 5. Читается WalkScreen
@@ -582,6 +606,28 @@ export function DevPanel({ visible, onClose }: Props) {
               Вместо 20 мин (дом) / 30 / 60 мин (неподвижность) — 1 мин.
               Применяется со следующей прогулки. Только для DEV_USER_IDS.
             </Text>
+            <View style={styles.switchRow}>
+              <Text style={styles.rowLabelFlex}>Тест: машина (порог 1 мин)</Text>
+              <Switch
+                value={carFinishTest}
+                onValueChange={toggleCarFinishTest}
+                trackColor={{ true: colors.primary, false: colors.border }}
+              />
+            </View>
+            <View style={styles.switchRow}>
+              <Text style={styles.rowLabelFlex}>Имитация: в машине (40 км/ч)</Text>
+              <Switch
+                value={carSim}
+                onValueChange={toggleCarSim}
+                trackColor={{ true: colors.primary, false: colors.border }}
+              />
+            </View>
+            <Text style={styles.note}>
+              «Машина»: правило «вождение» на тест-порогах (быстрый шаг · 1 мин · 30 м)
+              вместо 30 км/ч · 3 мин · 1 км. «Имитация»: подаёт синтетическую скорость
+              40 км/ч — включи, начни прогулку и стой: завершится через ~1 мин.
+              Применяется со следующей прогулки. Только для DEV_USER_IDS.
+            </Text>
           </View>
 
           {/* ── Чек-ин на площадке ── */}
@@ -806,12 +852,20 @@ function formatAutoDiag(d: AutoFinishDiagnostics): string {
   if (!d.active && d.firedAt == null) return '— (прогулка не идёт)';
   const mode = d.mode === 'home' ? 'дом' : 'неподвижность';
   const test = d.testMode ? ' · ТЕСТ 1 мин' : '';
-  const reason = d.reason === 'home' ? 'дом' : d.reason === 'still' ? 'неподвижность' : '—';
+  const reason =
+    d.reason === 'home'
+      ? 'дом'
+      : d.reason === 'still'
+        ? 'неподвижность'
+        : d.reason === 'driving'
+          ? 'машина'
+          : '—';
   const since =
     d.mode === 'home'
       ? `снаружи был: ${d.wasOutside ? 'да' : 'нет'} · внутри с: ${formatTime(d.insideSince)}`
       : `без движения с: ${formatTime(d.stillSince)} (порог ${d.stillThresholdMs != null ? Math.round(d.stillThresholdMs / 60000) : '—'} мин)`;
-  return `режим: ${mode}${test}\n${since}\nT: ${formatTime(d.firedAt)} · причина: ${reason}`;
+  const driving = d.drivingSince != null ? `\nвождение с: ${formatTime(d.drivingSince)}` : '';
+  return `режим: ${mode}${test}\n${since}${driving}\nT: ${formatTime(d.firedAt)} · причина: ${reason}`;
 }
 
 function formatClockHM(at: number | null): string {
