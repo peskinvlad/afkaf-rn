@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -84,13 +85,22 @@ export function PrivacyChoiceSheet({ visible, onChoose, onClose }: Props) {
     };
   }, [visible]);
 
-  if (!visible) return null;
-
+  // Рендерим через Modal: нативный оверлей гарантированно выше всего на экране
+  // карты (кнопки центрирования/добавления метки, виджет температуры) на iOS и
+  // Android — не зависим от zIndex/elevation соседей. Своя slide-анимация шторки
+  // сохраняется (animationType="none"), фон Modal'а закрыт нашим backdrop.
   return (
-    <View style={styles.overlay} pointerEvents="box-none">
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.backdrop} />
-      </TouchableWithoutFeedback>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={styles.overlay} pointerEvents="box-none">
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={styles.backdrop} />
+        </TouchableWithoutFeedback>
 
       <Animated.View
         style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg, transform: [{ translateY }] }]}
@@ -142,7 +152,8 @@ export function PrivacyChoiceSheet({ visible, onChoose, onClose }: Props) {
           <Text style={styles.ctaTxt}>{t('onboarding.privacy.cta')}</Text>
         </TouchableOpacity>
       </Animated.View>
-    </View>
+      </View>
+    </Modal>
   );
 }
 
