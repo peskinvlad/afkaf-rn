@@ -18,6 +18,7 @@ import { useBadges } from '../hooks/useBadges';
 import { useFriends } from '../hooks/useFriends';
 import { BADGES } from '../constants/badges';
 import { supabase } from '../lib/supabase';
+import { resolveBreedLabel } from '../lib/breeds';
 import { clearLocalUserData } from '../lib/localReset';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
@@ -509,7 +510,7 @@ function DogCard({ dog, onEdit, t, lang }: { dog: Dog; onEdit: () => void; t: (k
   const styles = useMemo(() => makeStyles(ty), [ty]);
   const hasPhoto = !!dog.photo_url;
   const details  = [
-    dog.breed,
+    resolveBreedLabel(dog.breed, lang),
     dog.age ? formatDogAge(dog.age, lang, t) : null,
     dog.weight ? t('profile.dog.weight', { n: dog.weight }) : null,
   ].filter(Boolean).join(' · ');
