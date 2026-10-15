@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Pencil } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
+import { isDevUser } from '../constants/dev';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
 import { resolveBreedLabel } from '../lib/breeds';
@@ -46,6 +47,12 @@ export function DogProfileScreen({ navigation, route }: Props) {
 
   // Photo
   const [photoUri, setPhotoUri]   = useState<string | null>(null);
+  // true only after the user picks a NEW image this session. On edit, photoUri
+  // is seeded with the existing remote https URL (see load effect) — that is not
+  // a local file, so the upload must be skipped unless a fresh local image was
+  // chosen. Reading a remote URL with FileSystem.readAsStringAsync throws and
+  // used to blow up the whole save ("Не удалось сохранить").
+  const [photoChanged, setPhotoChanged] = useState(false);
   const [selectedIcon, setIcon]   = useState(DOG_ICONS[0]);
 
   // Fields
@@ -114,6 +121,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
     });
     if (!result.canceled && result.assets[0]) {
       setPhotoUri(result.assets[0].uri);
+      setPhotoChanged(true);
     }
   }
 
@@ -121,9 +129,11 @@ export function DogProfileScreen({ navigation, route }: Props) {
   async function handleSave() {
     if (saving) return;
     setSaving(true);
+    // Declared out here so the catch can gate the dev-only error detail on it.
+    let userId: string | undefined;
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const userId = session?.user?.id;
+      userId = session?.user?.id;
 
       // ── Validation (before any write) ──
       // owner_id and name are NOT NULL in the DB — don't fire a doomed INSERT.
@@ -156,7 +166,9 @@ export function DogProfileScreen({ navigation, route }: Props) {
       // ── Upload photo ──
       let photoUrl: string | null = null;
       let photoUploadErrorMsg: string | null = null;
-      if (photoUri && userId) {
+      // Only upload when a fresh local image was picked this session. Skipping
+      // leaves photo_url out of the payload below, so the existing photo stays.
+      if (photoChanged && photoUri && userId) {
         // Strip query params before extracting extension (iOS URIs can have ?token=...)
         const cleanUri = photoUri.split('?')[0];
         const ext      = (cleanUri.split('.').pop() ?? 'jpg').toLowerCase();
@@ -232,9 +244,14 @@ export function DogProfileScreen({ navigation, route }: Props) {
       }
       navigation.goBack();
     } catch (e) {
-      // Keep the screen open so the entered form data isn't lost.
-      console.warn('[DogProfile] save error:', e);
-      Alert.alert(t('common.save_error'));
+      // Keep the screen open so the entered form data isn't lost. Always log the
+      // real error; surface it in the Alert only for dev users (beta testers see
+      // the generic message).
+      console.error('[DogProfile] save error:', e);
+      const detail = e instanceof Error ? e.message : String(e);
+      Alert.alert(
+        isDevUser(userId) ? `${t('common.save_error')}\n\n${detail}` : t('common.save_error'),
+      );
     } finally {
       setSaving(false);
     }
