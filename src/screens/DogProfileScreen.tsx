@@ -21,6 +21,8 @@ import { useApp } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
+import { resolveBreedLabel } from '../lib/breeds';
+import { BreedPickerModal } from '../components/BreedPickerModal';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const DOG_ICONS = ['🐕', '🐩', '🐶', '🦮', '🐕‍🦺', '🐾', '🦴', '🐺'];
@@ -35,7 +37,7 @@ interface Props {
 // ── Screen ─────────────────────────────────────────────────────────────────────
 export function DogProfileScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
-  const { t } = useApp();
+  const { t, lang } = useApp();
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
 
@@ -57,6 +59,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
 
   const [saving, setSaving]         = useState(false);
   const [loadingDog, setLoadingDog] = useState(!!dogId);
+  const [breedPickerOpen, setBreedPickerOpen] = useState(false);
 
   // ── Edit mode: load existing dog and prefill the form ──────────────────────
   useEffect(() => {
@@ -323,16 +326,17 @@ export function DogProfileScreen({ navigation, route }: Props) {
           maxLength={50}
         />
 
-        {/* ── Breed ── */}
+        {/* ── Breed (opens the searchable picker) ── */}
         <Text style={styles.sectionLabel}>{t('dogProfile.breed')}</Text>
-        <TextInput
+        <TouchableOpacity
           style={styles.input}
-          placeholder={t('dogProfile.breedPlaceholder')}
-          placeholderTextColor={colors.textSoft}
-          value={breed}
-          onChangeText={setBreed}
-          maxLength={50}
-        />
+          onPress={() => setBreedPickerOpen(true)}
+          activeOpacity={0.7}
+        >
+          <Text style={breed ? styles.selectValue : styles.selectPlaceholder}>
+            {resolveBreedLabel(breed, lang) ?? t('dogProfile.breedSelect')}
+          </Text>
+        </TouchableOpacity>
 
         {/* ── Age + Weight in a row ── */}
         <View style={styles.rowFields}>
@@ -429,6 +433,13 @@ export function DogProfileScreen({ navigation, route }: Props) {
           )}
         </TouchableOpacity>
       </View>
+
+      <BreedPickerModal
+        visible={breedPickerOpen}
+        value={breed || null}
+        onChange={setBreed}
+        onClose={() => setBreedPickerOpen(false)}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -557,6 +568,17 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
     fontFamily: ty.font.body,
     color: colors.ink,
     ...shadows.sm,
+  },
+  // Breed select row reuses `input`; these style the text inside it.
+  selectValue: {
+    fontSize: 15,
+    fontFamily: ty.font.body,
+    color: colors.ink,
+  },
+  selectPlaceholder: {
+    fontSize: 15,
+    fontFamily: ty.font.body,
+    color: colors.textSoft,
   },
 
   // Row fields (Age + Weight)
