@@ -40,6 +40,8 @@ CREATE TABLE public.dogs (
   icon         text        NULL,
   photo_url    text        NULL,
   owner_name   text        NULL,
+  birth_date        date    NULL,                 -- дата рождения; при approx=true значащие только год+месяц (день=1)
+  birth_date_approx boolean NOT NULL DEFAULT false, -- true = «примерно» (месяц+год); false = точная дата
   CONSTRAINT dogs_pkey PRIMARY KEY (id),
   CONSTRAINT dogs_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.profiles(id) ON DELETE CASCADE,
   CONSTRAINT dogs_name_len CHECK (name IS NULL OR length(name) <= 50),
