@@ -24,6 +24,8 @@ import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
 import { resolveBreedLabel } from '../lib/breeds';
 import { BreedPickerModal } from '../components/BreedPickerModal';
+import { BirthDatePickerModal } from '../components/BirthDatePickerModal';
+import { approxDateFromAge, deriveLegacyAge, formatBirthField } from '../lib/birthDate';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const DOG_ICONS = ['🐕', '🐩', '🐶', '🦮', '🐕‍🦺', '🐾', '🦴', '🐺'];
@@ -58,7 +60,11 @@ export function DogProfileScreen({ navigation, route }: Props) {
   // Fields
   const [dogName, setDogName]     = useState('');
   const [breed, setBreed]         = useState('');
-  const [age, setAge]             = useState('');
+  // Birth date replaces the old free-text age. birthDate is 'YYYY-MM-DD' (or null);
+  // birthApprox marks a month+year-only value. The legacy `age` column is still
+  // written on save (derived in years) for builds that predate birth_date.
+  const [birthDate, setBirthDate]     = useState<string | null>(null);
+  const [birthApprox, setBirthApprox] = useState(false);
   const [weight, setWeight]       = useState('');
   const [gender, setGender]       = useState<Gender>('male');
   const [neutered, setNeutered]   = useState(false);
@@ -67,6 +73,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
   const [saving, setSaving]         = useState(false);
   const [loadingDog, setLoadingDog] = useState(!!dogId);
   const [breedPickerOpen, setBreedPickerOpen] = useState(false);
+  const [birthPickerOpen, setBirthPickerOpen] = useState(false);
 
   // ── Edit mode: load existing dog and prefill the form ──────────────────────
   useEffect(() => {
@@ -82,7 +89,18 @@ export function DogProfileScreen({ navigation, route }: Props) {
       if (data) {
         setDogName(data.name ?? '');
         setBreed(data.breed ?? '');
-        setAge(data.age ?? '');
+        // Prefer the real birth date; otherwise open an old dog (age-only) in
+        // "approximate" mode with the month+year derived from its numeric age.
+        if (data.birth_date) {
+          setBirthDate(data.birth_date);
+          setBirthApprox(!!data.birth_date_approx);
+        } else {
+          const approxFromAge = approxDateFromAge(data.age);
+          if (approxFromAge) {
+            setBirthDate(approxFromAge);
+            setBirthApprox(true);
+          }
+        }
         setWeight(data.weight ?? '');
         setGender((data.gender as Gender) ?? 'male');
         setNeutered(!!data.neutered);
@@ -212,7 +230,11 @@ export function DogProfileScreen({ navigation, route }: Props) {
         owner_name: ownerFirstName,
         name:       trimmedName,
         breed:      breed.trim() || null,
-        age:        age.trim() || null,
+        birth_date:        birthDate,
+        birth_date_approx: birthApprox,
+        // Keep the legacy age column in sync (whole years) so builds that don't
+        // know birth_date still show an age.
+        age:        deriveLegacyAge(birthDate),
         weight:     weight.trim() || null,
         gender,
         neutered,
@@ -355,31 +377,29 @@ export function DogProfileScreen({ navigation, route }: Props) {
           </Text>
         </TouchableOpacity>
 
-        {/* ── Age + Weight in a row ── */}
-        <View style={styles.rowFields}>
-          <View style={styles.rowField}>
-            <Text style={styles.sectionLabel}>{t('dogProfile.age')}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t('dogProfile.agePlaceholder')}
-              placeholderTextColor={colors.textSoft}
-              value={age}
-              onChangeText={setAge}
-              keyboardType="numeric"
-            />
-          </View>
-          <View style={styles.rowField}>
-            <Text style={styles.sectionLabel}>{t('dogProfile.weight')}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t('dogProfile.weightPlaceholder')}
-              placeholderTextColor={colors.textSoft}
-              value={weight}
-              onChangeText={setWeight}
-              keyboardType="numeric"
-            />
-          </View>
-        </View>
+        {/* ── Birth date (opens the JS date picker) ── */}
+        <Text style={styles.sectionLabel}>{t('dogProfile.birthDate')}</Text>
+        <TouchableOpacity
+          style={styles.input}
+          onPress={() => setBirthPickerOpen(true)}
+          activeOpacity={0.7}
+        >
+          <Text style={birthDate ? styles.selectValue : styles.selectPlaceholder}>
+            {formatBirthField(birthDate, birthApprox, lang) ?? t('dogProfile.birthDateSelect')}
+          </Text>
+        </TouchableOpacity>
+        <Text style={styles.hint}>{t('dogProfile.birthDateHint')}</Text>
+
+        {/* ── Weight ── */}
+        <Text style={styles.sectionLabel}>{t('dogProfile.weight')}</Text>
+        <TextInput
+          style={styles.input}
+          placeholder={t('dogProfile.weightPlaceholder')}
+          placeholderTextColor={colors.textSoft}
+          value={weight}
+          onChangeText={setWeight}
+          keyboardType="numeric"
+        />
 
         {/* ── Gender ── */}
         <Text style={styles.sectionLabel}>{t('dogProfile.gender')}</Text>
@@ -461,6 +481,15 @@ export function DogProfileScreen({ navigation, route }: Props) {
         value={breed || null}
         onChange={setBreed}
         onClose={() => setBreedPickerOpen(false)}
+      />
+
+      <BirthDatePickerModal
+        visible={birthPickerOpen}
+        value={birthDate}
+        approx={birthApprox}
+        onChange={(date, approx) => { setBirthDate(date); setBirthApprox(approx); }}
+        onClear={() => { setBirthDate(null); setBirthApprox(false); }}
+        onClose={() => setBirthPickerOpen(false)}
       />
     </KeyboardAvoidingView>
   );
@@ -603,12 +632,13 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
     color: colors.textSoft,
   },
 
-  // Row fields (Age + Weight)
-  rowFields: {
-    flexDirection: 'row',
-    gap: 12,
+  // Hint under the birth-date field
+  hint: {
+    fontSize: 12,
+    fontFamily: ty.font.body,
+    color: colors.textMuted,
+    marginTop: 4,
   },
-  rowField: { flex: 1, gap: 10 },
 
   // Gender pills
   pillRow: {

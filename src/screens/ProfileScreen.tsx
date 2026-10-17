@@ -37,7 +37,9 @@ interface Dog {
   id: string;
   name: string | null;
   breed: string | null;
-  age: string | null;
+  age: string | null;              // legacy free-text age; still written for old builds
+  birth_date: string | null;       // 'YYYY-MM-DD'; при approx — значащие только год+месяц (день=1)
+  birth_date_approx: boolean | null;
   weight: string | null;
   gender: string | null;
   icon: string | null;
@@ -81,12 +83,67 @@ function ruYearWord(n: number): string {
   return 'лет';
 }
 
-// Dog age is free-text (a numeric field the owner fills in). English "{n} yrs"
-// and Hebrew "גיל {n}" are unambiguous, so they keep the existing i18n string.
-// Only Russian gets special treatment: under a year → "N мес.", a whole number
-// declines normally, a fractional value always takes «года» ("2,5 года") with a
-// comma decimal. Unparseable Russian text is shown as-is rather than "… г.".
-function formatDogAge(
+// Russian month word: 1 → «месяц», 2–4 → «месяца», else «месяцев» (11–14 stay
+// «месяцев»). Same shape as ruYearWord.
+function ruMonthWord(n: number): string {
+  const lastTwo = n % 100;
+  const last = n % 10;
+  if (lastTwo >= 11 && lastTwo <= 14) return 'месяцев';
+  if (last === 1) return 'месяц';
+  if (last >= 2 && last <= 4) return 'месяца';
+  return 'месяцев';
+}
+
+type AgeParts = { years: number; months: number };
+
+// Whole years + remaining months between a 'YYYY-MM-DD' birth date and today.
+// Parsed field-by-field to avoid the UTC shift of `new Date('YYYY-MM-DD')`.
+// A future date (or unparseable) → null, so the caller can fall back.
+function ageParts(birthDate: string): AgeParts | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate.trim());
+  if (!m) return null;
+  const by = +m[1], bm = +m[2], bd = +m[3];
+  const now = new Date();
+  let months = (now.getFullYear() - by) * 12 + (now.getMonth() + 1 - bm);
+  if (now.getDate() < bd) months -= 1; // day-of-month not reached this month
+  if (months < 0) return null;
+  return { years: Math.floor(months / 12), months: months % 12 };
+}
+
+// Format whole years/months per language. Under a year → months only; the second
+// year → «1 год [и N месяцев]»; from two years → years only. Russian uses
+// declension helpers; HE/EN use the dictated i18n templates.
+function formatAgeFromParts(
+  { years, months }: AgeParts,
+  lang: Lang,
+  t: (k: string, vars?: Record<string, string | number>) => string,
+): string {
+  if (years === 0) {
+    if (months === 0) {
+      return lang === 'ru' ? 'меньше месяца' : t('profile.dog.ageUnderMonth');
+    }
+    return lang === 'ru'
+      ? `${months} ${ruMonthWord(months)}`
+      : t('profile.dog.ageMonths', { n: months });
+  }
+  if (years === 1) {
+    if (months === 0) {
+      return lang === 'ru' ? '1 год' : t('profile.dog.ageYear');
+    }
+    return lang === 'ru'
+      ? `1 год и ${months} ${ruMonthWord(months)}`
+      : t('profile.dog.ageYearMonths', { m: months });
+  }
+  return lang === 'ru'
+    ? `${years} ${ruYearWord(years)}`
+    : t('profile.dog.ageYears', { n: years });
+}
+
+// Legacy free-text age (numeric string the owner typed), used only when a dog has
+// no birth_date. English "{n} yrs" / Hebrew "גיל {n}" keep the existing string;
+// Russian declines: under a year → "N мес.", whole number declines, a fractional
+// value takes «года» ("2,5 года"). Unparseable Russian text is shown as-is.
+function formatLegacyAge(
   raw: string,
   lang: Lang,
   t: (k: string, vars?: Record<string, string | number>) => string,
@@ -105,6 +162,23 @@ function formatDogAge(
     return `${String(value).replace('.', ',')} года`;
   }
   return `${value} ${ruYearWord(value)}`;
+}
+
+// Age shown on a dog card: from birth_date when set (approx → «~» prefix),
+// otherwise the legacy free-text age. null when neither is known.
+function formatDogAgeDisplay(
+  dog: Pick<Dog, 'birth_date' | 'birth_date_approx' | 'age'>,
+  lang: Lang,
+  t: (k: string, vars?: Record<string, string | number>) => string,
+): string | null {
+  if (dog.birth_date) {
+    const parts = ageParts(dog.birth_date);
+    if (parts) {
+      const label = formatAgeFromParts(parts, lang, t);
+      return dog.birth_date_approx ? `~${label}` : label;
+    }
+  }
+  return dog.age ? formatLegacyAge(dog.age, lang, t) : null;
 }
 
 function formatDate(iso: string, lang: Lang): string {
@@ -173,7 +247,7 @@ export function ProfileScreen({ navigation }: Props) {
     // Dogs
     const { data: dogsData } = await supabase
       .from('dogs')
-      .select('id, name, breed, age, weight, gender, icon, photo_url, neutered, sociability')
+      .select('id, name, breed, age, birth_date, birth_date_approx, weight, gender, icon, photo_url, neutered, sociability')
       .eq('owner_id', userId);
     setDogs((dogsData ?? []) as Dog[]);
 
@@ -511,7 +585,7 @@ function DogCard({ dog, onEdit, t, lang }: { dog: Dog; onEdit: () => void; t: (k
   const hasPhoto = !!dog.photo_url;
   const details  = [
     resolveBreedLabel(dog.breed, lang),
-    dog.age ? formatDogAge(dog.age, lang, t) : null,
+    formatDogAgeDisplay(dog, lang, t),
     dog.weight ? t('profile.dog.weight', { n: dog.weight }) : null,
   ].filter(Boolean).join(' · ');
 
