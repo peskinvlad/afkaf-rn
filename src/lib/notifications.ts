@@ -68,11 +68,13 @@ export const KIND_HOME = 'home_prompt'; // №2 «Уже дома?»
 export const KIND_HAZARD = 'hazard'; // №3 «Опасность рядом» (без кнопок)
 export const KIND_STILL = 'still_walking'; // №4 «Ты всё ещё гуляешь?»
 export const KIND_MARKER = 'marker_prompt'; // №5 «Метка ещё актуальна?»
+export const KIND_BIRTHDAY = 'birthday'; // №6 «С днём рождения» (вне прогулки, без кнопок)
 
 export const CAT_PARK = 'afkaf_park';
 export const CAT_HOME = 'afkaf_home';
 export const CAT_STILL = 'afkaf_still';
 export const CAT_MARKER = 'afkaf_marker';
+export const CAT_BIRTHDAY = 'afkaf_birthday';
 
 export const ACT_PARK_HERE = 'park_here'; // №1
 export const ACT_FINISH = 'finish'; // «Завершить» (№2, №4)
@@ -387,6 +389,64 @@ export async function cancelScheduledNotification(id: string): Promise<void> {
   } catch {
     // уже сработало / уже отменено — не важно
   }
+}
+
+// ── №6 «С днём рождения» ─────────────────────────────────────────────────────
+// Не повторяющийся YEARLY-триггер, а разовые DATE-триггеры на ближайшие дни
+// рождения (их считает вызывающий, см. nextBirthdays в birthDate.ts) — каждый
+// запуск приложения пересобирает расписание заново. Так 29 февраля честно
+// уходит на 28-е в невисокосный год (календарный триггер iOS с day=29 сработал
+// бы только раз в 4 года), а дата из прошлого не «догоняет» на старте.
+// id детерминированный (dogId + год): повторное планирование того же дня
+// заменяет запись, а не дублирует её.
+const BIRTHDAY_ID_PREFIX = 'afkaf-birthday-';
+
+export interface BirthdayNotifInput {
+  dogId: string;
+  at: Date; // момент показа, локальное время
+  title: string;
+  body: string;
+}
+
+// Снять ВСЕ запланированные birthday-уведомления (по префиксу id или kind).
+export async function cancelBirthdayNotifs(): Promise<void> {
+  const N = lib();
+  if (!N) return;
+  const all = await N.getAllScheduledNotificationsAsync();
+  for (const req of all) {
+    const kind = (req.content.data as { kind?: unknown } | null)?.kind;
+    if (req.identifier.startsWith(BIRTHDAY_ID_PREFIX) || kind === KIND_BIRTHDAY) {
+      await N.cancelScheduledNotificationAsync(req.identifier).catch(() => {});
+    }
+  }
+}
+
+// Запланировать список. Без разрешения — ничего (системный диалог отсюда не
+// поднимаем, как и для остальных видов). Возвращает число запланированных.
+export async function scheduleBirthdayNotifs(items: BirthdayNotifInput[]): Promise<number> {
+  const N = lib();
+  if (!N || items.length === 0) return 0;
+  const perm = await N.getPermissionsAsync();
+  if (!perm.granted) return 0;
+  let count = 0;
+  for (const item of items) {
+    await N.scheduleNotificationAsync({
+      identifier: `${BIRTHDAY_ID_PREFIX}${item.dogId}-${item.at.getFullYear()}`,
+      content: {
+        title: item.title,
+        body: item.body,
+        data: { kind: KIND_BIRTHDAY, dogId: item.dogId },
+        ...alertContent(N, 'notify'),
+      },
+      trigger: {
+        type: N.SchedulableTriggerInputTypes.DATE,
+        date: item.at,
+        channelId: SOUND.notify.channelId,
+      },
+    });
+    count++;
+  }
+  return count;
 }
 
 // Короткий результат нажатия «Я здесь» (успех/отказ): приложение не открывалось,

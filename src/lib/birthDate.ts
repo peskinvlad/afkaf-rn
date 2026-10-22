@@ -43,6 +43,23 @@ export function yearsFromBirthDate(date: string): number | null {
   return Math.floor(months / 12);
 }
 
+// The next `count` birthday moments (local time, `hour`:00) strictly after `now`
+// — for the yearly «Happy birthday» notification. A Feb 29 birthday falls on
+// Feb 28 in non-leap years. The birth day itself isn't a birthday, so occurrences
+// start the year after birth. Unparseable date → [].
+export function nextBirthdays(date: string, count: number, hour: number, now = new Date()): Date[] {
+  const ymd = parseDate(date);
+  if (!ymd || ymd.month < 1 || ymd.month > 12) return [];
+  const out: Date[] = [];
+  const firstYear = Math.max(now.getFullYear(), ymd.year + 1);
+  for (let year = firstYear; out.length < count && year <= firstYear + count; year++) {
+    const day = Math.min(ymd.day, daysInMonth(year, ymd.month));
+    const at = new Date(year, ymd.month - 1, day, hour, 0, 0, 0);
+    if (at.getTime() > now.getTime()) out.push(at);
+  }
+  return out;
+}
+
 // Legacy free-text age (whole years) still written to dogs.age so old builds that
 // don't know birth_date keep showing something. null when no/invalid date.
 export function deriveLegacyAge(date: string | null): string | null {
