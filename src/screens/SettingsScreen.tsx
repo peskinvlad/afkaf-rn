@@ -14,7 +14,14 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useApp } from '../hooks/useApp';
 import { useTypography } from '../theme/fonts';
 import { LANGS } from '../i18n';
-import { NotifType, loadNotifEnabled, setNotifEnabled } from '../lib/notifPrefs';
+import {
+  NotifType,
+  loadNotifEnabled,
+  setNotifEnabled,
+  loadBirthdayEnabled,
+  setBirthdayEnabled,
+} from '../lib/notifPrefs';
+import { syncBirthdayNotifications } from '../lib/birthdayNotif';
 import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
 
 export type Visibility = 'everyone' | 'friends' | 'nobody';
@@ -111,6 +118,8 @@ export function SettingsScreen({ navigation }: any) {
     still: true,
     marker: true,
   });
+  // №6 «С днём рождения» — отдельный флаг (не уведомление прогулки)
+  const [birthdayOn, setBirthdayOn] = useState(true);
 
   // Load all persisted values when screen focuses
   useFocusEffect(
@@ -121,6 +130,7 @@ export function SettingsScreen({ navigation }: any) {
         setHomeRadius(map.privacy_home_radius ? Number(map.privacy_home_radius) : null);
       });
       loadNotifEnabled().then(setNotifTypes);
+      loadBirthdayEnabled().then(setBirthdayOn);
     }, []),
   );
 
@@ -136,6 +146,12 @@ export function SettingsScreen({ navigation }: any) {
   function handleNotifTypeToggle(type: NotifType, value: boolean) {
     setNotifTypes((prev) => ({ ...prev, [type]: value }));
     setNotifEnabled(type, value);
+  }
+
+  async function handleBirthdayToggle(value: boolean) {
+    setBirthdayOn(value);
+    await setBirthdayEnabled(value);
+    void syncBirthdayNotifications(t);
   }
 
   const langLabel = (code: string) => code.toUpperCase();
@@ -220,7 +236,7 @@ export function SettingsScreen({ navigation }: any) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('settings.notifications.title')}</Text>
 
-          {/* Выключатель на каждый из пяти типов уведомлений на прогулке */}
+          {/* Выключатель на каждый из пяти типов уведомлений на прогулке + день рождения */}
           <View style={[styles.sectionCard, shadows.sm]}>
             {([
               { icon: '🐾', type: 'park' },
@@ -228,8 +244,8 @@ export function SettingsScreen({ navigation }: any) {
               { icon: '⚠️', type: 'hazard' },
               { icon: '⏱️', type: 'still' },
               { icon: '📍', type: 'marker' },
-            ] as const).map(({ icon, type }, idx, arr) => (
-              <Row key={type} last={idx === arr.length - 1}>
+            ] as const).map(({ icon, type }) => (
+              <Row key={type}>
                 <View style={styles.rowLeft}>
                   <Text style={styles.rowIcon}>{icon}</Text>
                   <Text style={styles.rowLabel}>{t(`settings.notifications.type.${type}`)}</Text>
@@ -242,6 +258,18 @@ export function SettingsScreen({ navigation }: any) {
                 />
               </Row>
             ))}
+            <Row last>
+              <View style={styles.rowLeft}>
+                <Text style={styles.rowIcon}>🎂</Text>
+                <Text style={styles.rowLabel}>{t('settings.notifications.type.birthday')}</Text>
+              </View>
+              <Switch
+                value={birthdayOn}
+                onValueChange={handleBirthdayToggle}
+                trackColor={{ false: colors.border, true: colors.primaryMid }}
+                thumbColor={birthdayOn ? colors.primary : colors.textSoft}
+              />
+            </Row>
           </View>
 
           <Text style={styles.visibilityDesc}>{t('settings.notifications.quietNote')}</Text>
