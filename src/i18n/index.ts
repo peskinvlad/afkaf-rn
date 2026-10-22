@@ -255,7 +255,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'notif.channel.checkin': 'גינות',
     'notif.channel.alert': 'סכנות',
     'notif.channel.notify': 'אחר',
-    'birthday.notif.title': 'יום הולדת שמח ל{dog}! 🎂',
+    'birthday.notif.title': 'יום הולדת שמח, {dog}! 🎂',
     'birthday.notif.body': 'היום החגיגה של {dog} — פנקו בחטיף וצאו לטיול חגיגי 🐾',
     'hazardTmp.notif.title': '⚠️ {type} במרחק {dist} מ׳',
     'hazardTmp.notif.body': 'דווח לפני {ago}. כדאי לשמור על הכלב ברצועה קצרה — ואם תראו, אשרו.',
