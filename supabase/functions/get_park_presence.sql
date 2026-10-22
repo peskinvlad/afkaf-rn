@@ -20,6 +20,10 @@
 --
 -- Собака — первая по created_at, как в get_user_previews.
 --
+-- Имя (2026-10-22, fix/first-name-strangers): полное display_name — себе и
+-- принятым друзьям; всем остальным named (manual / 'everyone') — только первое
+-- слово. Миграция: supabase/migrations/2026-10-22_first_name_strangers.sql.
+--
 -- Ответ: { total, anon, named: [{user_id, display_name, dog_name, dog_avatar,
 --          is_friend, is_me, manual, since}], me: {checked_in, manual} }
 --
@@ -87,7 +91,12 @@ BEGIN
       jsonb_agg(
         jsonb_build_object(
           'user_id',      cl.user_id,
-          'display_name', pr.display_name,
+          -- Полное имя — себе и принятым друзьям; остальным первое слово
+          -- (первая непробельная группа). Пустое имя — как было.
+          'display_name', CASE
+                            WHEN cl.is_me OR cl.is_friend THEN pr.display_name
+                            ELSE COALESCE(substring(pr.display_name FROM '\S+'), pr.display_name)
+                          END,
           'dog_name',     d.name,
           'dog_avatar',   d.icon,
           'is_friend',    cl.is_friend,

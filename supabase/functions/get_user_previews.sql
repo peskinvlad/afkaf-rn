@@ -1,4 +1,8 @@
--- Снимок от 2026-09-13. RPC для превью пользователей (имя + одна собака) в
+-- Снимок от 2026-09-13, обновлён 2026-10-22 (fix/first-name-strangers,
+-- миграция supabase/migrations/2026-10-22_first_name_strangers.sql): полное
+-- display_name видят только принятые друзья (status='accepted'), всем остальным
+-- (заявки в любую сторону, «гуляют рядом») — только первое слово.
+-- RPC для превью пользователей (имя + одна собака) в
 -- списке друзей/заявок и в «рядом». SECURITY DEFINER ОБЯЗАТЕЛЕН: profiles/dogs
 -- owner-only под RLS, иначе имена и клички приходят null. Строки отдаются ТОЛЬКО
 -- для пользователей, с кем у auth.uid() есть строка в friendships (любой статус)
@@ -13,7 +17,17 @@ CREATE OR REPLACE FUNCTION public.get_user_previews(ids uuid[])
 AS $function$
   SELECT
     p.id,
-    p.display_name,
+    -- Полное имя — только принятым друзьям; остальным первое слово (первая
+    -- непробельная группа). Пустое/из одних пробелов имя — как было.
+    CASE
+      WHEN EXISTS (
+        SELECT 1 FROM friendships fa
+        WHERE fa.status = 'accepted'
+          AND ((fa.requester_id = auth.uid() AND fa.addressee_id = p.id)
+            OR (fa.addressee_id = auth.uid() AND fa.requester_id = p.id))
+      ) THEN p.display_name
+      ELSE COALESCE(substring(p.display_name FROM '\S+'), p.display_name)
+    END AS display_name,
     d.name AS dog_name,
     d.icon AS dog_avatar
   FROM profiles p
