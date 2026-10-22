@@ -421,6 +421,20 @@ export async function cancelBirthdayNotifs(): Promise<void> {
   }
 }
 
+// Для DevPanel: что сейчас стоит в расписании (момент показа + заголовок).
+export async function listBirthdayNotifs(): Promise<{ at: number; title: string }[]> {
+  const N = lib();
+  if (!N) return [];
+  const all = await N.getAllScheduledNotificationsAsync();
+  return all
+    .filter((req) => req.identifier.startsWith(BIRTHDAY_ID_PREFIX))
+    .map((req) => ({
+      at: Number((req.content.data as { at?: unknown } | null)?.at) || 0,
+      title: req.content.title ?? '',
+    }))
+    .sort((a, b) => a.at - b.at);
+}
+
 // Запланировать список. Без разрешения — ничего (системный диалог отсюда не
 // поднимаем, как и для остальных видов). Возвращает число запланированных.
 export async function scheduleBirthdayNotifs(items: BirthdayNotifInput[]): Promise<number> {
@@ -435,7 +449,7 @@ export async function scheduleBirthdayNotifs(items: BirthdayNotifInput[]): Promi
       content: {
         title: item.title,
         body: item.body,
-        data: { kind: KIND_BIRTHDAY, dogId: item.dogId },
+        data: { kind: KIND_BIRTHDAY, dogId: item.dogId, at: item.at.getTime() },
         ...alertContent(N, 'notify'),
       },
       trigger: {

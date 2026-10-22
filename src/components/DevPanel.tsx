@@ -60,7 +60,11 @@ import {
   CAT_MARKER,
   ACT_MARKER_STILL,
   ACT_MARKER_GONE,
+  KIND_BIRTHDAY,
+  CAT_BIRTHDAY,
+  listBirthdayNotifs,
 } from '../lib/notifications';
+import { syncBirthdayNotifications } from '../lib/birthdayNotif';
 import {
   parkText,
   homeText,
@@ -68,6 +72,7 @@ import {
   hazardTempText,
   stillText,
   markerText,
+  birthdayText,
 } from '../lib/notifText';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
@@ -118,6 +123,8 @@ export function DevPanel({ visible, onClose }: Props) {
   const [nowTick, setNowTick] = useState(Date.now());
   // Риск-чек уведомлений: лог последних нажатий по тестовой кнопке.
   const [notifLog, setNotifLog] = useState<string[]>([]);
+  // №6: что стоит в расписании «С днём рождения» (момент + заголовок).
+  const [birthdays, setBirthdays] = useState<{ at: number; title: string }[]>([]);
   // Линкован ли нативный модуль Sign in with Apple в этот билд. Если модуля в
   // бинарнике нет — isAvailableAsync бросает, и мы показываем «НЕТ».
   const [appleLinked, setAppleLinked] = useState<boolean | null>(null);
@@ -192,6 +199,7 @@ export function DevPanel({ visible, onClose }: Props) {
       setMapDebugOn(mapDebug.enabled);
 
       setNotifLog(await getTestLog());
+      setBirthdays(await listBirthdayNotifs());
     })();
   }, [visible]);
 
@@ -420,6 +428,27 @@ export function DevPanel({ visible, onClose }: Props) {
         fireInSeconds: 1,
       });
     });
+
+  // №6 «С днём рождения» — тот же текст/звук/канал, что и в расписании.
+  const showNowBirthday = () =>
+    showNow(() => {
+      const c = birthdayText(t, dogName ?? 'Rex');
+      return scheduleNotif({
+        kind: KIND_BIRTHDAY,
+        categoryId: CAT_BIRTHDAY,
+        sound: 'notify',
+        title: c.title,
+        body: c.body,
+        data: { dogId: 'dev-test' },
+        fireInSeconds: 1,
+      });
+    });
+
+  async function resyncBirthdays() {
+    await syncBirthdayNotifications(t);
+    setBirthdays(await listBirthdayNotifs());
+    showFlash('birthday', 'Расписание пересобрано');
+  }
 
   async function toggleMapDebug(next: boolean) {
     setMapDebugOn(next);
@@ -710,6 +739,30 @@ export function DevPanel({ visible, onClose }: Props) {
               </TouchableOpacity>
             </View>
             {flash.notif && <Text style={styles.flash}>{flash.notif}</Text>}
+          </View>
+
+          {/* ── №6 «С днём рождения» ── */}
+          <Text style={styles.sectionTitle}>Уведомления: день рождения</Text>
+          <View style={styles.card}>
+            <TouchableOpacity style={styles.btnPrimary} onPress={showNowBirthday} activeOpacity={0.8}>
+              <Text style={styles.btnPrimaryTxt}>Тест: день рождения (показать сейчас)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.btnPrimary, { marginTop: 8 }]} onPress={resyncBirthdays} activeOpacity={0.8}>
+              <Text style={styles.btnPrimaryTxt}>Пересобрать расписание</Text>
+            </TouchableOpacity>
+            {flash.birthday && <Text style={styles.flash}>{flash.birthday}</Text>}
+            {flash.notif && <Text style={styles.flash}>{flash.notif}</Text>}
+            <Text style={styles.rowLabel}>В расписании: {birthdays.length}</Text>
+            {birthdays.map((b, i) => (
+              <Text key={i} style={styles.mono}>
+                {b.at ? new Date(b.at).toLocaleString('ru-RU') : '—'} · {b.title}
+              </Text>
+            ))}
+            <Text style={styles.note}>
+              «Показать сейчас» — настоящий текст/звук/канал через ~1 с (кличка первой
+              собаки). В расписании — только собаки с точной датой, по 2 ближайших дня
+              рождения в 10:00 (29.02 → 28.02 в невисокосный год).
+            </Text>
           </View>
 
           {/* ── Оверрайды ── */}
