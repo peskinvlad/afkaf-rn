@@ -37,3 +37,15 @@ export async function loadNotifEnabled(): Promise<Record<NotifType, boolean>> {
 export async function setNotifEnabled(type: NotifType, enabled: boolean): Promise<void> {
   await AsyncStorage.setItem(NOTIF_TYPE_KEY[type], String(enabled));
 }
+
+// №6 «С днём рождения» — не уведомление прогулки, поэтому вне NotifType (не
+// участвует в тихих часах и в canShow WalkScreen). По умолчанию включено.
+export const BIRTHDAY_NOTIF_KEY = 'notif_type_birthday';
+
+export async function loadBirthdayEnabled(): Promise<boolean> {
+  return (await AsyncStorage.getItem(BIRTHDAY_NOTIF_KEY)) !== 'false';
+}
+
+export async function setBirthdayEnabled(enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(BIRTHDAY_NOTIF_KEY, String(enabled));
+}
