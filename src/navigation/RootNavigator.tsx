@@ -17,6 +17,7 @@ import { SettingsScreen } from '../screens/SettingsScreen';
 import { PrivacyRadiusScreen } from '../screens/PrivacyRadiusScreen';
 import AboutScreen from '../screens/AboutScreen';
 import { FriendsScreen } from '../screens/FriendsScreen';
+import { BlockedUsersScreen } from '../screens/BlockedUsersScreen';
 import { WalksScreen } from '../screens/WalksScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { AddFriendSheet } from '../components/AddFriendSheet';
@@ -80,6 +81,7 @@ export function RootNavigator() {
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="Friends" component={FriendsScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
           <Stack.Screen name="PrivacyRadius" component={PrivacyRadiusScreen} />
         </Stack.Navigator>
       </NavigationContainer>
