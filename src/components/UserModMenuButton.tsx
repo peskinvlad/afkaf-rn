@@ -3,6 +3,7 @@ import { Alert, StyleSheet, Text, TouchableOpacity, ViewStyle } from 'react-nati
 import { useApp } from '../hooks/useApp';
 import { useTypography } from '../theme/fonts';
 import { useReportSheet } from './ReportSheet';
+import { confirmBlock } from '../lib/moderationActions';
 import { colors } from '../theme/tokens';
 
 // Данные пользователя для модерационных действий (жалоба/блок). Имя/собака нужны,
@@ -14,10 +15,8 @@ export interface ModUser {
   dogAvatar?: string | null;
 }
 
-// «⋯» на карточке/строке чужого пользователя → меню действий. Гостю и на свою
-// строку НЕ рендерится (вызывающий не передаёт is_me; гостя гасим здесь).
-// В этом коммите в меню только «Пожаловаться»; «Заблокировать» добавляется
-// следующим коммитом.
+// «⋯» на карточке/строке чужого пользователя → меню «Пожаловаться» / «Заблокировать».
+// Гостю и на свою строку НЕ рендерится (вызывающий не передаёт is_me; гостя гасим здесь).
 export function UserModMenuButton({ user, style }: { user: ModUser; style?: ViewStyle }) {
   const { t, isGuest } = useApp();
   const { openReport } = useReportSheet();
@@ -33,6 +32,11 @@ export function UserModMenuButton({ user, style }: { user: ModUser; style?: View
       {
         text: t('reportUserAction'),
         onPress: () => openReport({ type: 'user', id: user.userId, name: user.displayName ?? null }),
+      },
+      {
+        text: t('blockUserAction'),
+        style: 'destructive',
+        onPress: () => confirmBlock(t, user),
       },
       { text: t('reportUserCancel'), style: 'cancel' },
     ]);

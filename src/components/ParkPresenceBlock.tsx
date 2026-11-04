@@ -5,6 +5,7 @@ import { checkInHere } from '../lib/parkCheckin';
 import { navigationRef } from '../lib/navigationRef';
 import { useParkPresence, useParkCheckinState, ParkPresencePerson } from '../hooks/useParkPresence';
 import { UserModMenuButton } from './UserModMenuButton';
+import { useBlocks } from '../hooks/useBlocks';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, typography } from '../theme/tokens';
 
@@ -26,6 +27,7 @@ export function ParkPresenceBlock({
 }) {
   const { presence, refresh } = useParkPresence(markerId);
   const checkin = useParkCheckinState();
+  const { blockedIds } = useBlocks();
   const [sending, setSending] = useState(false);
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
@@ -62,9 +64,13 @@ export function ParkPresenceBlock({
     }
   }
 
-  const total = presence?.total ?? 0;
-  const shown = presence?.named.slice(0, MAX_NAMED_ROWS) ?? [];
-  const moreNamed = (presence?.named.length ?? 0) - shown.length;
+  // Мгновенное скрытие заблокированных: сервер уберёт их из get_park_presence со
+  // следующим опросом, до него фильтруем named локально и вычитаем из счётчика.
+  const namedVisible = (presence?.named ?? []).filter((p) => !blockedIds.has(p.userId));
+  const hiddenNamed = (presence?.named.length ?? 0) - namedVisible.length;
+  const total = Math.max(0, (presence?.total ?? 0) - hiddenNamed);
+  const shown = namedVisible.slice(0, MAX_NAMED_ROWS);
+  const moreNamed = namedVisible.length - shown.length;
   const anon = presence?.anon ?? 0;
 
   return (

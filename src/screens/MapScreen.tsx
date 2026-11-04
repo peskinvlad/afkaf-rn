@@ -29,6 +29,7 @@ import { useHeading } from '../hooks/useHeading';
 import { useSmoothedPosition } from '../hooks/useSmoothedPosition';
 import { useCalloutAnchor } from '../hooks/useCalloutAnchor';
 import { useNearbyDogs } from '../hooks/useNearbyDogs';
+import { useBlocks } from '../hooks/useBlocks';
 import { useFriends } from '../hooks/useFriends';
 import { sendFriendRequest } from '../lib/friendships';
 import { LocateButton } from '../components/LocateButton';
@@ -95,7 +96,15 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   const styles = useMemo(() => makeStyles(font), [font]);
 
   const { markers, waterSources } = useMapMarkers();
-  const { dogs: nearbyDogs, hiddenCount: nearbyHiddenCount, locationAvailable: nearbyLocationAvailable, refresh: refreshNearby } = useNearbyDogs(userLocation);
+  const { dogs: rawNearbyDogs, hiddenCount: nearbyHiddenCount, locationAvailable: nearbyLocationAvailable, refresh: refreshNearby } = useNearbyDogs(userLocation);
+  const { blockedIds } = useBlocks();
+  // Мгновенное скрытие заблокированных: сервер уберёт их со следующим опросом, но
+  // до него фильтруем локально — так и карточки «рядом», и пины друзей исчезают
+  // сразу после блокировки.
+  const nearbyDogs = useMemo(
+    () => rawNearbyDogs.filter((d) => !blockedIds.has(d.userId)),
+    [rawNearbyDogs, blockedIds],
+  );
   const nearbyTotal = nearbyDogs.length + nearbyHiddenCount;
   const { statusByUser: friendStatusByUser, refresh: refreshFriends } = useFriends();
   const [sendingFriendId, setSendingFriendId] = useState<string | null>(null);
