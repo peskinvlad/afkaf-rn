@@ -211,3 +211,49 @@ CREATE TABLE public.park_checkins (
 --   UNIQUE INDEX park_checkins_one_open_per_user ON (user_id) WHERE ended_at IS NULL
 --     — не больше одного открытого чек-ина на пользователя;
 --   INDEX park_checkins_open_by_marker ON (marker_id) WHERE ended_at IS NULL.
+
+-- ============================================================
+-- blocks  (добавлена 2026-11-04, feat/moderation)
+-- ============================================================
+-- Взаимная блокировка пользователей (UGC-требование Google Play). Запись —
+-- ТОЛЬКО через SECURITY DEFINER RPC block_user/unblock_user (чтобы блок атомарно
+-- рвал дружбу); клиент имеет лишь SELECT своих строк (policies/blocks.sql).
+-- Сокрытие в обе стороны считает public.is_blocked (functions/is_blocked.sql).
+CREATE TABLE public.blocks (
+  blocker_id  uuid        NOT NULL,
+  blocked_id  uuid        NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT blocks_pkey PRIMARY KEY (blocker_id, blocked_id),
+  CONSTRAINT blocks_not_self CHECK (blocker_id <> blocked_id),
+  CONSTRAINT blocks_blocker_id_fkey FOREIGN KEY (blocker_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  CONSTRAINT blocks_blocked_id_fkey FOREIGN KEY (blocked_id) REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+-- ============================================================
+-- reports  (добавлена 2026-11-04, feat/moderation)
+-- ============================================================
+-- Жалобы на контент/людей (UGC-требование Google Play). Клиент: INSERT от своего
+-- имени + SELECT только своих (policies/reports.sql). Триаж — через Dashboard
+-- (supabase/queries/open-reports.sql). target_id — markers.id или profiles.id
+-- в зависимости от target_type; FK на них НЕ ставим (две разные цели в одной
+-- колонке), целостность — на уровне приложения.
+CREATE TABLE public.reports (
+  id           uuid        NOT NULL DEFAULT gen_random_uuid(),
+  reporter_id  uuid        NOT NULL,
+  target_type  text        NOT NULL,
+  target_id    uuid        NOT NULL,
+  reason       text        NOT NULL,
+  comment      text        NULL,
+  status       text        NOT NULL DEFAULT 'open',
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT reports_pkey PRIMARY KEY (id),
+  CONSTRAINT reports_reporter_id_fkey FOREIGN KEY (reporter_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  CONSTRAINT reports_target_type_check CHECK (target_type = ANY (ARRAY['marker'::text, 'user'::text])),
+  CONSTRAINT reports_reason_check CHECK (reason = ANY (ARRAY['missing'::text, 'wrong_location'::text, 'wrong_type'::text, 'inappropriate'::text, 'spam'::text, 'harassment'::text, 'impersonation'::text, 'dangerous'::text, 'other'::text])),
+  CONSTRAINT reports_comment_check CHECK (comment IS NULL OR length(comment) <= 1000),
+  CONSTRAINT reports_status_check CHECK (status = ANY (ARRAY['open'::text, 'reviewed'::text, 'dismissed'::text]))
+);
+-- NB: частичный уникальный индекс (на нём держится защита от дублей):
+--   UNIQUE INDEX reports_one_open_per_target ON (reporter_id, target_type, target_id)
+--     WHERE status = 'open' — одна открытая жалоба на цель от юзера; повтор даёт
+--     23505, клиент показывает то же «спасибо».

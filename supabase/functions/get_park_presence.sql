@@ -70,6 +70,8 @@ BEGIN
       AND c.expires_at > now()
       AND aw.updated_at > now() - interval '30 minutes'
       AND aw.visibility <> 'nobody'
+      AND NOT public.is_blocked(c.user_id)   -- 2026-11-04 (feat/moderation): блок в обе
+                                             -- стороны; исключаем ДО k-анонимности и счётчиков
   ),
   classified AS (
     SELECT

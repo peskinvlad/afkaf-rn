@@ -20,8 +20,11 @@
 -- бы пины/карточки; ошибку же клиент ловит и ОСТАВЛЯЕТ прошлые данные.
 --
 -- VOLATILE (по умолчанию): внутри пишет rpc_rate_limit — в STABLE запись нельзя.
--- Гранты: REVOKE PUBLIC/anon, GRANT authenticated (RLS active_walks в заходе А НЕ
--- трогаем — прямой доступ к сырым координатам сузим в заходе Б).
+-- Гранты: REVOKE PUBLIC/anon, GRANT authenticated.
+-- 2026-11-04 (feat/moderation): + AND NOT public.is_blocked(aw.user_id) — скрываем
+-- заблокированных в обе стороны (functions/is_blocked.sql). Заход Б выполнен:
+-- прямой доступ к сырым координатам 'everyone' сужен в policies/active_walks.sql
+-- (теперь прямой select чужой строки — только принятым друзьям).
 
 CREATE OR REPLACE FUNCTION public.get_nearby_walks(user_lat double precision, user_lng double precision)
  RETURNS TABLE(user_id uuid, lat double precision, lng double precision, updated_at timestamptz, is_friend boolean)
@@ -60,6 +63,7 @@ BEGIN
     ) fr
     WHERE aw.updated_at > now() - interval '30 minutes'
       AND aw.user_id <> auth.uid()
+      AND NOT public.is_blocked(aw.user_id)
       AND (aw.visibility = 'everyone' OR (aw.visibility = 'friends' AND fr.is_friend))
   ) c
   WHERE (

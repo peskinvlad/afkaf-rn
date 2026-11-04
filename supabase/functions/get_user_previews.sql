@@ -4,6 +4,9 @@
 -- для пользователей, с кем у auth.uid() есть строка в friendships (любой статус)
 -- ИЛИ у кого есть active_walk, видимый auth.uid() (та же логика, что RLS
 -- active_walks_select). RLS на таблицах НЕ расширяется.
+-- 2026-11-04 (feat/moderation): + AND NOT public.is_blocked(p.id) — не отдаём
+-- превью заблокированных в обе стороны (functions/is_blocked.sql). Для списка
+-- «Заблокированные» имена берём отдельной RPC get_my_blocks (эта их прячет).
 -- Гранты: REVOKE PUBLIC/anon, GRANT authenticated.
 CREATE OR REPLACE FUNCTION public.get_user_previews(ids uuid[])
  RETURNS TABLE(id uuid, display_name text, dog_name text, dog_avatar text)
@@ -26,6 +29,7 @@ AS $function$
   ) d ON true
   WHERE p.id = ANY(ids)
     AND p.id <> auth.uid()
+    AND NOT public.is_blocked(p.id)
     AND (
       -- любая строка дружбы между мной и этим пользователем (любой статус)
       EXISTS (
