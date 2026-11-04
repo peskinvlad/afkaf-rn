@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { checkInHere } from '../lib/parkCheckin';
 import { navigationRef } from '../lib/navigationRef';
 import { useParkPresence, useParkCheckinState, ParkPresencePerson } from '../hooks/useParkPresence';
+import { UserModMenuButton } from './UserModMenuButton';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, typography } from '../theme/tokens';
 
@@ -124,6 +125,17 @@ function PersonRow({ person, t, rtl }: { person: ParkPresencePerson; t: TFn; rtl
         {label}
       </Text>
       {person.isFriend ? <Text style={styles.friendTag}>{t('park.friend')}</Text> : null}
+      {/* Жалоба/блок — на чужие строки, не на себя. Гостя гасит сам компонент. */}
+      {!person.isMe ? (
+        <UserModMenuButton
+          user={{
+            userId: person.userId,
+            displayName: person.displayName,
+            dogName: person.dogName,
+            dogAvatar: person.dogAvatar,
+          }}
+        />
+      ) : null}
     </View>
   );
 }

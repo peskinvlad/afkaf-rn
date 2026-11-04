@@ -11,6 +11,7 @@ import {
 import { useApp } from '../hooks/useApp';
 import { supabase } from '../lib/supabase';
 import { navigationRef } from '../lib/navigationRef';
+import { UserModMenuButton } from './UserModMenuButton';
 import { colors, radii, shadows, spacing } from '../theme/tokens';
 import { useTypography } from '../theme/fonts';
 
@@ -165,6 +166,11 @@ export function AddFriendSheet({ visible, friendId, onClose }: Props) {
                 <Text style={styles.name} numberOfLines={1}>{profile?.display_name ?? t('profile.anonymous')}</Text>
                 {!!dogLine && <Text style={styles.dogLine} numberOfLines={1}>{dogLine}</Text>}
               </View>
+              {friendId && (
+                <UserModMenuButton
+                  user={{ userId: friendId, displayName: profile?.display_name, dogName: dog?.name, dogAvatar: dog?.icon }}
+                />
+              )}
             </View>
 
             {state === 'sent' && (

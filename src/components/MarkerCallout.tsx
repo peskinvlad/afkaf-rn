@@ -31,6 +31,7 @@ import { animation, colors, radii, shadows } from '../theme/tokens';
 import { useApp } from '../hooks/useApp';
 import { useTypography } from '../theme/fonts';
 import { ParkPresenceBlock } from './ParkPresenceBlock';
+import { useReportSheet } from './ReportSheet';
 
 type VoteValue = 'still_there' | 'gone';
 
@@ -199,6 +200,7 @@ function CalloutBubble({
 }) {
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
+  const { openReport } = useReportSheet();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [myVote, setMyVote] = useState<VoteValue | null>(null);
   const [counts, setCounts] = useState<VoteCounts>({ still_there: 0, gone: 0 });
@@ -494,6 +496,20 @@ function CalloutBubble({
             />
           </View>
         )}
+
+        {/* Жалоба на метку — для всех типов (вкл. OSM-инфраструктуру), кроме своей
+            метки и гостя (reports требует auth). Вода (water_sources) сюда не
+            попадает — у неё нативный callout, не этот компонент. */}
+        {!isGuest && currentUserId !== marker.user_id && (
+          <TouchableOpacity
+            style={styles.reportBtn}
+            onPress={() => openReport({ type: 'marker', id: marker.id })}
+            activeOpacity={0.6}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Text style={[styles.reportTxt, rtl && styles.txtRight]}>{t('reportMarkerAction')}</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {!below && tail}
@@ -660,6 +676,14 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
     paddingVertical: 6,
+  },
+  // «Пожаловаться» — мелкая приглушённая ссылка под основным содержимым баббла.
+  reportBtn: { alignSelf: 'center', paddingTop: 2 },
+  reportTxt: {
+    ...ty.variants.xs,
+    fontFamily: ty.font.bodyBold,
+    color: colors.textMuted,
+    textDecorationLine: 'underline',
   },
 
   voteRow: {

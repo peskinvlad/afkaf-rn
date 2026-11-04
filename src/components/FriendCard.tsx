@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { Check, X } from 'lucide-react-native';
 import { FriendEntry } from '../hooks/useFriends';
+import { UserModMenuButton } from './UserModMenuButton';
 import { colors, radii, shadows, spacing } from '../theme/tokens';
 import { useTypography } from '../theme/fonts';
 
@@ -60,6 +61,14 @@ export function FriendCard({
       </View>
 
       <View style={[styles.cardActions, rtl && styles.rowReverse]}>
+        <UserModMenuButton
+          user={{
+            userId: entry.other_user_id,
+            displayName: entry.display_name,
+            dogName: entry.dog_name,
+            dogAvatar: entry.dog_icon,
+          }}
+        />
         {tab === 'friends' && (
           <TouchableOpacity style={styles.btnGhost} onPress={onRemove} disabled={busy} activeOpacity={0.7}>
             <Text style={styles.btnGhostTxt}>{t('friends.btn_remove')}</Text>
