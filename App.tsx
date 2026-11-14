@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { View, Alert, AppState } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { consumePendingTestResponse } from './src/lib/notifications';
+import { logAppOpen } from './src/lib/appPing';
 import {
   useFonts,
   Nunito_400Regular,
@@ -44,6 +45,17 @@ export default function App() {
     check();
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') check();
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Анонимный пинг открытия для метрик: холодный старт + возврат на передний
+  // план. logAppOpen сам гейтит «раз в день» и пропускает dev-пользователя;
+  // любые ошибки глушит внутри — приложению он навредить не может.
+  useEffect(() => {
+    logAppOpen();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') logAppOpen();
     });
     return () => sub.remove();
   }, []);
