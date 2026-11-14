@@ -150,16 +150,22 @@ export function useAsphaltTemp(lang: Lang): AsphaltTempResult {
         if (cancelled) return true;
         setIsFallbackLocation(usedFallback);
 
+        // Квантуем координаты до 2 знаков (~1 км) перед запросами к OpenWeatherMap:
+        // точную позицию наружу не отдаём. Одни и те же округлённые координаты
+        // идут и в weather, и в forecast (и в локальный расчёт асфальта).
+        const qLat = Math.round(coords.latitude * 100) / 100;
+        const qLon = Math.round(coords.longitude * 100) / 100;
+
         // Fire both requests in parallel, but unblock loading as soon as current weather arrives
-        const currentPromise = fetchCurrentWeather(coords.latitude, coords.longitude, lang);
-        const forecastPromise = fetchForecast(coords.latitude, coords.longitude, lang);
+        const currentPromise = fetchCurrentWeather(qLat, qLon, lang);
+        const forecastPromise = fetchForecast(qLat, qLon, lang);
 
         const current = await currentPromise;
         if (cancelled) return true;
         if (current !== null) {
           setAirTempC(Math.round(current.temp));
           setSurfaceTempC(
-            surfaceFromWeather(current.temp, current.clouds, Date.now(), coords.latitude, coords.longitude),
+            surfaceFromWeather(current.temp, current.clouds, Date.now(), qLat, qLon),
           );
           setFeelsLikeC(Math.round(current.feelsLike));
           setWeatherDescription(current.description);
