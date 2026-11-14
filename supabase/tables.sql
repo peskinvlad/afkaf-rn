@@ -257,3 +257,25 @@ CREATE TABLE public.reports (
 --   UNIQUE INDEX reports_one_open_per_target ON (reporter_id, target_type, target_id)
 --     WHERE status = 'open' — одна открытая жалоба на цель от юзера; повтор даёт
 --     23505, клиент показывает то же «спасибо».
+
+-- ============================================================
+-- app_pings  (feat/app-ping, применено 2026-11-14)
+-- Анонимный пинг открытия приложения: одна строка на устройство в день.
+-- Пишет только RPC log_app_open (SECURITY DEFINER); клиент прав не имеет.
+-- ============================================================
+CREATE TABLE public.app_pings (
+  device_id    uuid        NOT NULL,
+  day          date        NOT NULL,
+  platform     text        NOT NULL,
+  app_version  text        NOT NULL,
+  user_id      uuid        NULL,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT app_pings_pkey PRIMARY KEY (device_id, day),
+  CONSTRAINT app_pings_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL,
+  CONSTRAINT app_pings_platform_check CHECK (platform = ANY (ARRAY['ios'::text, 'android'::text])),
+  CONSTRAINT app_pings_app_version_check CHECK (char_length(app_version) >= 1 AND char_length(app_version) <= 20)
+);
+-- NB: отдельные индексы (вне области этого файла по правилу выше, но важны):
+--   CREATE INDEX app_pings_day_idx  ON (day);
+--   CREATE INDEX app_pings_user_idx ON (user_id) WHERE user_id IS NOT NULL;
+--   regex-валидация app_version ^[0-9A-Za-z.-]+$ — в функции log_app_open, не в таблице.
