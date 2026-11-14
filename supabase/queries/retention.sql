@@ -220,3 +220,147 @@ left join events e on e.user_id = u.id
 cross join params p
 group by u.id, u.is_tester, u.registered_at, p.tz
 order by max(e.at) desc nulls last;
+
+
+-- ############################################################
+-- ОТКРЫТИЯ ПРИЛОЖЕНИЯ (app_pings, feat/app-ping)
+-- ############################################################
+-- Пинг = одно открытие приложения на устройство в день (анонимный device_id,
+-- без координат; см. supabase/migrations/2026-11-14_app_ping.sql). dev-устройство
+-- не пингуется (гейт в клиенте), поэтому отдельных исключений по user_id тут нет.
+-- day уже хранится по Asia/Jerusalem. Все запросы ниже — ТОЛЬКО SELECT.
+
+
+-- ============================================================
+-- 6. Активные устройства по дням (DAU) + разбивка платформ и гость/вошёл
+-- ============================================================
+select
+  day,
+  count(*)                                             as devices,
+  count(*) filter (where platform = 'ios')             as ios,
+  count(*) filter (where platform = 'android')         as android,
+  count(*) filter (where user_id is null)              as guests,
+  count(*) filter (where user_id is not null)          as signed_in
+from app_pings
+group by day
+order by day desc;
+
+
+-- ============================================================
+-- 7. Активные устройства по неделям (WAU, неделя с понедельника по Иерусалиму)
+-- ============================================================
+with pings as (
+  select device_id, user_id, platform,
+    date_trunc('week', day::timestamp)::date as week_from_monday
+  from app_pings)
+select
+  coalesce(to_char(week_from_monday, 'YYYY-MM-DD'), 'ВСЕГО')   as week_from_monday,
+  count(distinct device_id)                                    as devices,
+  count(distinct device_id) filter (where platform = 'ios')    as ios,
+  count(distinct device_id) filter (where platform = 'android') as android
+from pings
+group by grouping sets ((week_from_monday), ())
+order by week_from_monday;
+
+
+-- ============================================================
+-- 8. iOS vs Android — всего уникальных устройств за всё время
+-- ============================================================
+select
+  platform,
+  count(distinct device_id)                                 as devices,
+  min(day)                                                  as first_seen,
+  max(day)                                                  as last_seen
+from app_pings
+group by platform
+order by devices desc;
+
+
+-- ============================================================
+-- 9. Гости vs вошедшие — уникальные устройства за всё время
+--    (устройство считаем «вошедшим», если хоть раз пинговало с user_id)
+-- ============================================================
+with per_device as (
+  select device_id,
+    bool_or(user_id is not null) as ever_signed_in
+  from app_pings
+  group by device_id)
+select
+  count(*)                                     as devices_total,
+  count(*) filter (where ever_signed_in)       as ever_signed_in,
+  count(*) filter (where not ever_signed_in)   as guests_only,
+  round(100.0 * count(*) filter (where ever_signed_in) / nullif(count(*), 0)) as signed_in_pct
+from per_device;
+
+
+-- ============================================================
+-- 10. Доля устройств, открывших приложение, но БЕЗ прогулки за неделю
+--     Прогулка = walk_history.started_at ИЛИ active_walks (по пользователю).
+--     Учитываем только вошедшие устройства (у гостя нет user_id → прогулку к
+--     устройству не привязать); считаем за последние 7 дней (Иерусалим).
+-- ============================================================
+with
+params as (select 'Asia/Jerusalem'::text as tz),
+window_pings as (
+  select distinct device_id, user_id
+  from app_pings, params p
+  where user_id is not null
+    and day >= (now() at time zone p.tz)::date - 6),
+walk_users as (
+            select user_id, started_at as at from walk_history
+  union all select user_id, started_at from active_walks),
+flagged as (
+  select wp.device_id, wp.user_id,
+    exists (
+      select 1 from walk_users w, params p
+      where w.user_id = wp.user_id
+        and (w.at at time zone p.tz)::date >= (now() at time zone p.tz)::date - 6
+    ) as walked
+  from window_pings wp)
+select
+  count(*)                                    as opened_signed_in_devices,
+  count(*) filter (where not walked)          as opened_without_walk,
+  round(100.0 * count(*) filter (where not walked) / nullif(count(*), 0)) as opened_without_walk_pct
+from flagged;
+
+
+-- ============================================================
+-- 11. Возвращаемость устройств по неделе ПЕРВОГО пинга (device retention)
+--     Неделя 0 = неделя первого открытия; W1/W2/W3 — открывал ли снова.
+--     Неделя засчитывается в знаменатель, только если уже целиком прошла.
+-- ============================================================
+with
+params as (select 'Asia/Jerusalem'::text as tz),
+first_seen as (
+  select device_id, min(day) as d0
+  from app_pings
+  group by device_id),
+cohort as (
+  select device_id,
+    date_trunc('week', d0::timestamp)::date as cohort_week,
+    d0
+  from first_seen),
+grid as (
+  select c.device_id, c.cohort_week, c.d0, k.n
+  from cohort c, (values (1), (2), (3)) k(n)),
+ret as (
+  select g.cohort_week, g.n,
+    (g.d0 + (7 * (g.n + 1)) <= (now() at time zone p.tz)::date) as window_passed,
+    exists (
+      select 1 from app_pings a
+      where a.device_id = g.device_id
+        and a.day >= g.d0 + 7 * g.n
+        and a.day <  g.d0 + 7 * (g.n + 1)
+    ) as returned
+  from grid g, params p)
+select cohort_week,
+  (select count(distinct device_id) from cohort c where c.cohort_week = r.cohort_week) as cohort_size,
+  count(*) filter (where n = 1 and window_passed)                as w1_eligible,
+  count(*) filter (where n = 1 and window_passed and returned)   as w1_returned,
+  count(*) filter (where n = 2 and window_passed)                as w2_eligible,
+  count(*) filter (where n = 2 and window_passed and returned)   as w2_returned,
+  count(*) filter (where n = 3 and window_passed)                as w3_eligible,
+  count(*) filter (where n = 3 and window_passed and returned)   as w3_returned
+from ret r
+group by cohort_week
+order by cohort_week;
