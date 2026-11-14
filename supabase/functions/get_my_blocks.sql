@@ -1,33 +1,20 @@
--- Снимок от 2026-11-04 (feat/moderation). Список СВОИХ блокировок с превью (имя +
--- одна собака) для экрана «Заблокированные» + разблокировки. SECURITY DEFINER:
--- profiles/dogs owner-only под RLS, а get_user_previews заблокированных намеренно
--- прячет — поэтому имена для этого экрана отдаёт отдельная функция. Возвращает
--- строки ТОЛЬКО там, где blocker_id = auth.uid(). Собака — первая по created_at,
--- как в get_user_previews/get_park_presence.
+-- Снимок от 2026-11-04 (feat/moderation); обновлён 2026-11-14 (markers_privacy_step1).
+-- Список СВОИХ блокировок для экрана «Заблокированные» + разблокировки.
+-- SECURITY DEFINER. Возвращает строки ТОЛЬКО там, где blocker_id = auth.uid().
+-- 2026-11-14 (№2): имя/иконка берутся из СНИМКА blocks.blocked_name/blocked_avatar
+--   (его пишет block_user), без live-join к profiles/dogs — чтобы не раскрывать имя
+--   того, кого я не мог видеть. NULL → клиент показывает «Пользователь». dog_name
+--   больше не отдаём (снимок хранит только имя владельца и иконку) — колонка NULL
+--   для совместимости сигнатуры.
 -- Гранты: REVOKE PUBLIC/anon, GRANT authenticated.
 CREATE OR REPLACE FUNCTION public.get_my_blocks()
  RETURNS TABLE(user_id uuid, display_name text, dog_name text, dog_avatar text, created_at timestamptz)
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
 AS $function$
-  SELECT
-    b.blocked_id,
-    p.display_name,
-    d.name AS dog_name,
-    d.icon AS dog_avatar,
-    b.created_at
-  FROM blocks b
-  LEFT JOIN profiles p ON p.id = b.blocked_id
-  LEFT JOIN LATERAL (
-    SELECT dg.name, dg.icon
-    FROM dogs dg
-    WHERE dg.owner_id = b.blocked_id
-    ORDER BY dg.created_at ASC
-    LIMIT 1
-  ) d ON true
-  WHERE b.blocker_id = auth.uid()
-  ORDER BY b.created_at DESC;
+  select b.blocked_id, b.blocked_name, null::text as dog_name, b.blocked_avatar, b.created_at
+  from blocks b
+  where b.blocker_id = auth.uid()
+  order by b.created_at desc;
 $function$;
 
 REVOKE ALL ON FUNCTION public.get_my_blocks() FROM PUBLIC;

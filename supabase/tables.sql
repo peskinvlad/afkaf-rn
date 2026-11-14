@@ -60,7 +60,9 @@ CREATE TABLE public.dogs (
 -- ============================================================
 CREATE TABLE public.markers (
   id             uuid        NOT NULL DEFAULT gen_random_uuid(),
-  user_id        uuid        NOT NULL,
+  -- DEFAULT auth.uid() добавлен 2026-11-14 (markers_privacy_step1): user_id ставит
+  -- сервер, клиент его больше не шлёт. WITH CHECK (auth.uid()=user_id) по-прежнему держит.
+  user_id        uuid        NOT NULL DEFAULT auth.uid(),
   type           text        NOT NULL,
   lat            double precision NOT NULL,
   lng            double precision NOT NULL,
@@ -225,9 +227,14 @@ CREATE TABLE public.park_checkins (
 -- рвал дружбу); клиент имеет лишь SELECT своих строк (policies/blocks.sql).
 -- Сокрытие в обе стороны считает public.is_blocked (functions/is_blocked.sql).
 CREATE TABLE public.blocks (
-  blocker_id  uuid        NOT NULL,
-  blocked_id  uuid        NOT NULL,
-  created_at  timestamptz NOT NULL DEFAULT now(),
+  blocker_id     uuid        NOT NULL,
+  blocked_id     uuid        NOT NULL,
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  -- Снимок имени/иконки на момент блокировки (markers_privacy_step1, 2026-11-14):
+  -- заполняется block_user ТОЛЬКО если человек был виден мне через get_user_previews,
+  -- иначе NULL → get_my_blocks/клиент показывают нейтральное «Пользователь».
+  blocked_name   text        NULL,
+  blocked_avatar text        NULL,
   CONSTRAINT blocks_pkey PRIMARY KEY (blocker_id, blocked_id),
   CONSTRAINT blocks_not_self CHECK (blocker_id <> blocked_id),
   CONSTRAINT blocks_blocker_id_fkey FOREIGN KEY (blocker_id) REFERENCES auth.users(id) ON DELETE CASCADE,
