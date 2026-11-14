@@ -10,17 +10,19 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
+import * as Application from 'expo-application';
 import { useApp } from '../hooks/useApp';
+import { LINKS } from '../constants/links';
 import { useTypography, FontRole } from '../theme/fonts';
 import { supabase } from '../lib/supabase';
 import { isDevUser } from '../constants/dev';
 import { DevPanel } from '../components/DevPanel';
 
-// Keep in sync with app.json → expo.version
-const APP_VERSION = '0.1.0';
-// Public privacy policy (web/privacy.html once deployed). Update if the
-// hosting URL changes.
-const PRIVACY_URL = 'https://afkaf.netlify.app/privacy.html';
+// Реальная версия приложения — из встроенного app.json (expoConfig.version),
+// с фолбэком на версию нативного бинарника. Не хардкодить: иначе строка в UI
+// расходится с app.json (так и было — показывало 0.1.0 на сборке 0.2.0).
+const APP_VERSION =
+  Constants.expoConfig?.version ?? Application.nativeApplicationVersion ?? '';
 
 // Beta feedback shortcut. Fill in the number in international format — digits
 // only, no "+" or spaces, e.g. 972501234567.
@@ -388,7 +390,7 @@ export default function AboutScreen({ navigation }: any) {
         <TouchableOpacity style={styles.contactDevBtn} onPress={contactDeveloper} activeOpacity={0.85}>
           <Text style={styles.contactDevTxt}>{t.contactDev}</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_URL)} activeOpacity={0.7}>
+        <TouchableOpacity onPress={() => Linking.openURL(LINKS.privacy)} activeOpacity={0.7}>
           <Text style={styles.privacyLink}>{t.privacy}</Text>
         </TouchableOpacity>
         <Text style={styles.footerText}>{t.madeWith}</Text>

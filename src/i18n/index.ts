@@ -459,6 +459,8 @@ const strings: Record<Lang, Record<string, string>> = {
     'auth.terms': 'תנאי השימוש',
     'auth.legalAnd': 'ו',
     'auth.privacy': 'מדיניות הפרטיות',
+    'auth.error.title': 'ההתחברות נכשלה',
+    'auth.error.body': 'משהו השתבש. נסו שוב בעוד רגע.',
 
     'addMarker.title': 'סימון חדש',
     'addMarker.typeLabel': 'סוג הסימון',
@@ -1039,6 +1041,8 @@ const strings: Record<Lang, Record<string, string>> = {
     'auth.terms': 'Terms of Service',
     'auth.legalAnd': 'and',
     'auth.privacy': 'Privacy Policy',
+    'auth.error.title': 'Sign-in failed',
+    'auth.error.body': 'Something went wrong. Please try again.',
 
     'addMarker.title': 'New marker',
     'addMarker.typeLabel': 'Marker type',
@@ -1619,6 +1623,8 @@ const strings: Record<Lang, Record<string, string>> = {
     'auth.terms': 'Условиями использования',
     'auth.legalAnd': 'и',
     'auth.privacy': 'Политикой конфиденциальности',
+    'auth.error.title': 'Не удалось войти',
+    'auth.error.body': 'Что-то пошло не так. Попробуй ещё раз.',
 
     'addMarker.title': 'Новая метка',
     'addMarker.typeLabel': 'Тип метки',
