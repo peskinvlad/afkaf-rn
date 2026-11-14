@@ -1,9 +1,10 @@
--- Снимок от 2026-11-14 (feat/app-ping). Единственная точка записи в app_pings
--- (таблица без политик и без клиентских прав). SECURITY DEFINER.
+-- Снимок от 2026-11-14 (feat/app-ping; обновлён fix/security-1 2026-11-14 —
+-- coalesce(p_platform,'')). Единственная точка записи в app_pings (таблица без
+-- политик и без клиентских прав). SECURITY DEFINER.
 -- user_id берётся из auth.uid() на сервере (NULL у гостя) — клиент его не шлёт и
 -- подменить не может. day = сегодня по Asia/Jerusalem. Повтор за день — no-op
--- (ON CONFLICT DO NOTHING). Кривой ввод (null device, чужая платформа, версия не
--- 1..20 символов или не ^[0-9A-Za-z.-]+$) — тихий return, без исключения.
+-- (ON CONFLICT DO NOTHING). Кривой ввод (null device, чужая/NULL платформа,
+-- версия не 1..20 символов или не ^[0-9A-Za-z.-]+$) — тихий return, без исключения.
 -- Гранты: REVOKE PUBLIC, GRANT anon + authenticated (пинг шлют и гости).
 CREATE OR REPLACE FUNCTION public.log_app_open(p_device_id uuid, p_platform text, p_app_version text)
  RETURNS void
@@ -13,7 +14,7 @@ CREATE OR REPLACE FUNCTION public.log_app_open(p_device_id uuid, p_platform text
 AS $function$
 begin
   if p_device_id is null
-     or p_platform not in ('ios','android')
+     or coalesce(p_platform, '') not in ('ios','android')
      or p_app_version is null
      or char_length(p_app_version) not between 1 and 20
      or p_app_version !~ '^[0-9A-Za-z.\-]+$' then

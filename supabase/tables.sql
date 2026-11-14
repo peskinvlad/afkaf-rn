@@ -9,6 +9,11 @@
 --   RLS-политики — policies/*.sql, функции — functions/*.sql, триггеры — triggers.sql.
 -- Не покрыто здесь: отдельные (не-constraint) индексы, comment'ы, grants, RLS.
 -- FK на auth.users(id) — на чужую (auth) схему Supabase.
+--
+-- Гранты (не в области файла, но для справки): fix/security-1 2026-11-14 отозвал
+-- TRUNCATE у anon/authenticated на ВСЕХ таблицах public и закрыл rpc_rate_limit
+-- целиком (таблица + EXECUTE функции) у клиентских ролей. Полный скрипт —
+-- migrations/2026-11-14_security_hardening.sql.
 
 -- ============================================================
 -- profiles  (id = auth.users.id)

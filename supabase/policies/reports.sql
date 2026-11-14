@@ -18,3 +18,7 @@ CREATE POLICY reports_insert ON public.reports
 REVOKE ALL ON public.reports FROM anon;
 REVOKE UPDATE, DELETE, TRUNCATE ON public.reports FROM authenticated;
 GRANT SELECT, INSERT ON public.reports TO authenticated;
+
+-- 2026-11-14 (fix/security-1): status/created_at форсятся сервером на INSERT
+-- триггером reports_force_defaults (triggers.sql / functions/reports_force_defaults.sql),
+-- а не доверяются присланным клиентом значениям.

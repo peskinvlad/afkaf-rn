@@ -22,7 +22,9 @@ CREATE TABLE IF NOT EXISTS public.rpc_rate_limit (
 );
 
 ALTER TABLE public.rpc_rate_limit ENABLE ROW LEVEL SECURITY;
--- Политик нет: доступ только через SECURITY DEFINER-функции.
+-- Политик нет: доступ только через SECURITY DEFINER-функции. Плюс явный REVOKE
+-- всех прав на таблицу у клиентских ролей (fix/security-1, 2026-11-14).
+REVOKE ALL ON public.rpc_rate_limit FROM anon, authenticated, public;
 
 -- Возвращает true, если вызов в пределах лимита (и учитывает его), иначе false.
 -- VOLATILE обязателен: функция пишет (INSERT/UPDATE) — в STABLE/IMMUTABLE запись
@@ -52,6 +54,8 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.rpc_rate_limit(text, integer, interval) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.rpc_rate_limit(text, integer, interval) FROM anon;
--- Вызывается только из других SECURITY DEFINER-функций; прямой EXECUTE клиенту не нужен.
+-- Вызывается только из других SECURITY DEFINER-функций; прямой EXECUTE клиенту
+-- не нужен. EXECUTE отозван у public, anon и authenticated (fix/security-1).
+REVOKE ALL    ON FUNCTION public.rpc_rate_limit(text, integer, interval) FROM PUBLIC;
+REVOKE ALL    ON FUNCTION public.rpc_rate_limit(text, integer, interval) FROM anon;
+REVOKE EXECUTE ON FUNCTION public.rpc_rate_limit(text, integer, interval) FROM authenticated;
