@@ -42,7 +42,11 @@ export interface MapMarker {
   lat: number;
   lng: number;
   description: string | null;
-  user_id: string | null;  // author — used for "own marker" check in voting
+  // Автор НЕ раскрывается клиенту: сервер (get_map_markers) отдаёт только признак
+  // «моя метка» = (user_id = auth.uid()). Используется для «моей метки» и гейта жалобы.
+  is_mine: boolean;
+  confirmations?: number | null; // кэш-счётчик из markers (get_map_markers)
+  denials?: number | null;
   created_at?: string | null; // freshness label in MarkerCallout
   expires_at?: string | null; // null = постоянная (инфраструктура); иначе временная
 }

@@ -20,7 +20,9 @@ import { mapDebug } from '../lib/mapDebug';
 // (addLocalMarker below puts their own marker on the map immediately).
 const REFRESH_MS = 60_000;
 
-export const MARKER_COLUMNS = 'id, type, lat, lng, description, user_id, created_at, expires_at';
+// Колонки для RETURNING своей метки после INSERT (AddMarkerScreen). БЕЗ user_id:
+// чужой автор клиенту не отдаётся; для своей строки is_mine добавляем вручную (=true).
+export const MARKER_COLUMNS = 'id, type, lat, lng, description, created_at, expires_at, confirmations, denials';
 
 let markerCache: MapMarker[] = [];
 let waterCache: WaterSource[] = [];
@@ -79,11 +81,9 @@ function publishMarkers(next: MapMarker[]) {
 // query would inherit — created_at is stamped by the inserting device, not by
 // the server.
 async function refreshMarkers() {
-  const now = new Date().toISOString();
-  const { data, error } = await supabase
-    .from('markers')
-    .select(MARKER_COLUMNS)
-    .or(`expires_at.is.null,expires_at.gt."${now}"`);
+  // get_map_markers (SECURITY DEFINER): без user_id, с is_mine; TTL и shadow-фильтр
+  // (единый для гостя и вошедшего) — на сервере. Прямой SELECT на markers больше не нужен.
+  const { data, error } = await supabase.rpc('get_map_markers');
   if (error) {
     // Keep whatever is on the map. A failed poll on a patchy connection must
     // not blank the layer mid-walk.

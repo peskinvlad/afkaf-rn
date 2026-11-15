@@ -744,7 +744,7 @@ export function WalkScreen({ navigation }: Props) {
       id: string;
       lat: number;
       lng: number;
-      userId: string | null;
+      isMine: boolean;
       type: string;
       temporary: boolean;
       createdAt: string | null;
@@ -763,7 +763,7 @@ export function WalkScreen({ navigation }: Props) {
   const stillWalkingFireAt = useRef<number | null>(null);
   // ── Сценарий №5 «Метка ещё актуальна?» ──────────────────────────────────────
   const tempMarkersRef = useRef<
-    Array<{ id: string; lat: number; lng: number; userId: string | null; type: string }>
+    Array<{ id: string; lat: number; lng: number; isMine: boolean; type: string }>
   >([]);
   const notifiedMarkers = useRef<Set<string>>(new Set());
   const markerPromptCount = useRef<number>(0);
@@ -793,7 +793,7 @@ export function WalkScreen({ navigation }: Props) {
         id: m.id,
         lat: m.lat,
         lng: m.lng,
-        userId: m.user_id,
+        isMine: m.is_mine,
         type: m.type,
         temporary: m.expires_at != null, // временная (пользовательская) vs постоянная
         createdAt: m.created_at ?? null,
@@ -805,7 +805,7 @@ export function WalkScreen({ navigation }: Props) {
   useEffect(() => {
     tempMarkersRef.current = markers
       .filter((m) => !INFRA_MARKER_TYPES.includes(m.type) && !HAZARD_TYPES.includes(m.type))
-      .map((m) => ({ id: m.id, lat: m.lat, lng: m.lng, userId: m.user_id, type: m.type }));
+      .map((m) => ({ id: m.id, lat: m.lat, lng: m.lng, isMine: m.is_mine, type: m.type }));
   }, [markers]);
 
   // Кто я и где мой дом — для фильтра «не предупреждать о своих метках и о метках
@@ -1100,7 +1100,7 @@ export function WalkScreen({ navigation }: Props) {
     const uid = currentUserIdRef.current;
     for (const h of hazardsRef.current) {
       if (notifiedHazards.current.has(h.id)) continue;
-      if (uid && h.userId === uid) continue;
+      if (h.isMine) continue; // не предупреждать о своей метке
       if (zone && isInsideHomeZone(h.lat, h.lng, zone)) continue;
       const distM = haversine(pt, { latitude: h.lat, longitude: h.lng }) * 1000;
       if (distM > radius) continue;
@@ -1148,7 +1148,7 @@ export function WalkScreen({ navigation }: Props) {
     for (const m of tempMarkersRef.current) {
       if (markerPromptCount.current >= MARKER_PROMPT_MAX) break;
       if (notifiedMarkers.current.has(m.id)) continue;
-      if (m.userId === uid) continue; // не своя метка
+      if (m.isMine) continue; // не своя метка
       if (haversine(pt, { latitude: m.lat, longitude: m.lng }) * 1000 > radius) continue;
       notifiedMarkers.current.add(m.id);
       markerPromptCount.current += 1;
@@ -1182,7 +1182,7 @@ export function WalkScreen({ navigation }: Props) {
         action === ACT_MARKER_STILL ? 'still_there' : action === ACT_MARKER_GONE ? 'gone' : null;
       if (!vote) return;
       void (async () => {
-        const err = await castMarkerVote(markerId, uid, vote);
+        const err = await castMarkerVote(markerId, vote);
         if (!err) presentWalkNotice(t('marker.notif.thanksTitle'), t('marker.notif.thanksBody'), 'notify');
       })();
     });
