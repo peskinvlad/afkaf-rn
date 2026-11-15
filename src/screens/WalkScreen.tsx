@@ -141,6 +141,9 @@ const ANDROID_CAMERA_ZOOM = Platform.OS === 'android' ? { zoom: STREET_ZOOM } : 
 // чтобы в форграунде не было двойных запросов. Гейт чуть меньше интервала —
 // иначе регулярный тик таймера глох бы о собственную частоту.
 const ACTIVE_WALK_SYNC_GATE_MS = 50000;
+// Повтор снятия строки active_walks, если delete() не подтвердился (сеть и т.п.).
+// Пока не подтвердилось — пользователю НЕ показываем «скрыт» (он ещё виден другим).
+const HIDE_RETRY_INTERVAL_MS = 30000;
 // park_checkout при финише ждём не дольше этого, потом всё равно глушим трекинг.
 const PARK_CHECKOUT_TIMEOUT_MS = 5000;
 // WalkScreen bottom-panel height ABOVE the safe-area inset (measured from the
@@ -570,6 +573,10 @@ export function WalkScreen({ navigation }: Props) {
   // Skipped entirely for guests and for visibility='nobody'.
   const activeWalkUserId = useRef<string | null>(null);
   const activeWalkRowExists = useRef(false);
+  // Снятие строки active_walks запрошено, но delete() ещё не подтверждён (ошибка).
+  // Пока true — строка, возможно, видна другим, поэтому «скрыт» не показываем и
+  // повторяем удаление (GPS внутри зоны / возврат в активное состояние / таймер).
+  const pendingHideRef = useRef(false);
   // Зеркало activeWalkRowExists в state для бейджа: показывает, публикуется ли
   // позиция ПРЯМО СЕЙЧАС. Читает ТО ЖЕ решение (см. syncActiveWalkRow), а не
   // считает геометрию зоны заново. Обновляется только там, где меняется сам
@@ -655,9 +662,28 @@ export function WalkScreen({ navigation }: Props) {
 
   async function stopActiveWalkRow() {
     if (!activeWalkRowExists.current || !activeWalkUserId.current) return;
+    const { error } = await supabase
+      .from('active_walks')
+      .delete()
+      .eq('user_id', activeWalkUserId.current);
+    if (error) {
+      // Удаление НЕ подтверждено: строка, возможно, ещё видна другим. Не сбрасываем
+      // флаг и НЕ говорим «скрыт» — ставим задачу на повтор (retryPendingHide).
+      pendingHideRef.current = true;
+      console.warn('[walk] stopActiveWalkRow delete failed:', error.message);
+      return;
+    }
+    // Только после подтверждённого delete: считаем строку снятой и показываем «скрыт».
+    pendingHideRef.current = false;
     activeWalkRowExists.current = false;
     setIsPublishing(false);
-    await supabase.from('active_walks').delete().eq('user_id', activeWalkUserId.current);
+  }
+
+  // Повтор отложенного снятия строки (после неудачного delete). Безопасен к
+  // частым вызовам: stopActiveWalkRow сам выходит, если снимать уже нечего.
+  async function retryPendingHide() {
+    if (!pendingHideRef.current) return;
+    await stopActiveWalkRow();
   }
 
   // Single publish gate used by both the first fix and every 60s ping.
@@ -670,10 +696,14 @@ export function WalkScreen({ navigation }: Props) {
     const zone = homeZone.current;
     const inside = zone != null && isInsideHomeZone(pt.latitude, pt.longitude, zone);
     if (inside) {
-      // Entered zone → remove the row, don't leave a stale edge point up for 30 min
+      // Entered zone → remove the row, don't leave a stale edge point up for 30 min.
+      // Если delete не пройдёт, stopActiveWalkRow оставит pendingHide — следующий
+      // фикс внутри зоны (сюда же) повторит снятие.
       await stopActiveWalkRow();
       return;
     }
+    // Снаружи зоны мы публикуемся → отложенное скрытие больше не актуально.
+    pendingHideRef.current = false;
     if (activeWalkRowExists.current) {
       await pingActiveWalkRow(pt);
     } else {
@@ -697,6 +727,17 @@ export function WalkScreen({ navigation }: Props) {
     if (!ok) return;
     await syncActiveWalkRow(pt);
   }
+
+  // Повтор отложенного снятия строки active_walks: при возврате приложения в
+  // активное состояние и по таймеру, пока delete не подтвердится. (GPS-путь
+  // внутри зоны повторяет снятие сам — см. syncActiveWalkRow.)
+  useEffect(() => {
+    const id = setInterval(() => { void retryPendingHide(); }, HIDE_RETRY_INTERVAL_MS);
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') void retryPendingHide();
+    });
+    return () => { clearInterval(id); sub.remove(); };
+  }, []);
 
   // DEV-строка в итогах прогулки: профиль GPS + принято/отброшено точек. Только
   // для DEV_USER_IDS; для остальных — undefined (строка не показывается).
@@ -788,7 +829,7 @@ export function WalkScreen({ navigation }: Props) {
       id: string;
       lat: number;
       lng: number;
-      userId: string | null;
+      isMine: boolean;
       type: string;
       temporary: boolean;
       createdAt: string | null;
@@ -807,7 +848,7 @@ export function WalkScreen({ navigation }: Props) {
   const stillWalkingFireAt = useRef<number | null>(null);
   // ── Сценарий №5 «Метка ещё актуальна?» ──────────────────────────────────────
   const tempMarkersRef = useRef<
-    Array<{ id: string; lat: number; lng: number; userId: string | null; type: string }>
+    Array<{ id: string; lat: number; lng: number; isMine: boolean; type: string }>
   >([]);
   const notifiedMarkers = useRef<Set<string>>(new Set());
   const markerPromptCount = useRef<number>(0);
@@ -837,7 +878,7 @@ export function WalkScreen({ navigation }: Props) {
         id: m.id,
         lat: m.lat,
         lng: m.lng,
-        userId: m.user_id,
+        isMine: m.is_mine,
         type: m.type,
         temporary: m.expires_at != null, // временная (пользовательская) vs постоянная
         createdAt: m.created_at ?? null,
@@ -849,7 +890,7 @@ export function WalkScreen({ navigation }: Props) {
   useEffect(() => {
     tempMarkersRef.current = markers
       .filter((m) => !INFRA_MARKER_TYPES.includes(m.type) && !HAZARD_TYPES.includes(m.type))
-      .map((m) => ({ id: m.id, lat: m.lat, lng: m.lng, userId: m.user_id, type: m.type }));
+      .map((m) => ({ id: m.id, lat: m.lat, lng: m.lng, isMine: m.is_mine, type: m.type }));
   }, [markers]);
 
   // Кто я и где мой дом — для фильтра «не предупреждать о своих метках и о метках
@@ -1144,7 +1185,7 @@ export function WalkScreen({ navigation }: Props) {
     const uid = currentUserIdRef.current;
     for (const h of hazardsRef.current) {
       if (notifiedHazards.current.has(h.id)) continue;
-      if (uid && h.userId === uid) continue;
+      if (h.isMine) continue; // не предупреждать о своей метке
       if (zone && isInsideHomeZone(h.lat, h.lng, zone)) continue;
       const distM = haversine(pt, { latitude: h.lat, longitude: h.lng }) * 1000;
       if (distM > radius) continue;
@@ -1192,7 +1233,7 @@ export function WalkScreen({ navigation }: Props) {
     for (const m of tempMarkersRef.current) {
       if (markerPromptCount.current >= MARKER_PROMPT_MAX) break;
       if (notifiedMarkers.current.has(m.id)) continue;
-      if (m.userId === uid) continue; // не своя метка
+      if (m.isMine) continue; // не своя метка
       if (haversine(pt, { latitude: m.lat, longitude: m.lng }) * 1000 > radius) continue;
       notifiedMarkers.current.add(m.id);
       markerPromptCount.current += 1;
@@ -1226,7 +1267,7 @@ export function WalkScreen({ navigation }: Props) {
         action === ACT_MARKER_STILL ? 'still_there' : action === ACT_MARKER_GONE ? 'gone' : null;
       if (!vote) return;
       void (async () => {
-        const err = await castMarkerVote(markerId, uid, vote);
+        const err = await castMarkerVote(markerId, vote);
         if (!err) presentWalkNotice(t('marker.notif.thanksTitle'), t('marker.notif.thanksBody'), 'notify');
       })();
     });

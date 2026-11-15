@@ -1,6 +1,8 @@
 # Static site for afkaf.netlify.app — served from web/. No build step.
 [build]
   publish = "web"
+  # Skip the deploy unless web/ or this file changed (0 = skip, non-0 = build).
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- web/ netlify.toml"
 
 # Pretty URLs → the actual .html files (200 = rewrite, URL stays clean).
 [[redirects]]

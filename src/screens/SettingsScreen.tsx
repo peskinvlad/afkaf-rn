@@ -94,7 +94,7 @@ function PillGroup<T extends string>({
 
 export function SettingsScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
-  const { t, lang, setLang } = useApp();
+  const { t, lang, setLang, isGuest } = useApp();
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
   const rtl = I18nManager.isRTL;
@@ -196,7 +196,7 @@ export function SettingsScreen({ navigation }: any) {
           </Row>
 
           {/* Home radius */}
-          <Row last>
+          <Row last={isGuest}>
             <TouchableOpacity
               style={styles.rowSpread}
               onPress={() => navigation.navigate('PrivacyRadius')}
@@ -214,6 +214,23 @@ export function SettingsScreen({ navigation }: any) {
               <Text style={styles.chevron}>{rtl ? '‹' : '›'}</Text>
             </TouchableOpacity>
           </Row>
+
+          {/* Заблокированные профили — только для залогиненных */}
+          {!isGuest && (
+            <Row last>
+              <TouchableOpacity
+                style={styles.rowSpread}
+                onPress={() => navigation.navigate('BlockedUsers')}
+                activeOpacity={0.7}
+              >
+                <View style={styles.rowLeft}>
+                  <Text style={styles.rowIcon}>🚫</Text>
+                  <Text style={styles.rowLabel}>{t('blockedUsersTitle')}</Text>
+                </View>
+                <Text style={styles.chevron}>{rtl ? '‹' : '›'}</Text>
+              </TouchableOpacity>
+            </Row>
+          )}
         </Section>
 
         {/* ── Section 3: Notifications ── */}

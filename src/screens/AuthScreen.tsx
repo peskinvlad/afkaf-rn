@@ -15,6 +15,8 @@ import { X } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { useTypography, FontRole } from '../theme/fonts';
 import { supabase } from '../lib/supabase';
+import { isDevUser } from '../constants/dev';
+import { LINKS } from '../constants/links';
 import { colors, radii, shadows } from '../theme/tokens';
 
 // Tells expo-web-browser to close itself when the auth session completes
@@ -28,14 +30,6 @@ const REDIRECT_URI = 'afkaf://auth/callback';
 // а ссылку доставила ОС мимо промиса openAuthSessionAsync. Двух минут хватает
 // на ввод пароля и 2FA; вне окна любой afkaf://auth/callback игнорируется.
 const OAUTH_ACCEPT_MS = 120_000;
-
-// TEMP (бета): любую заминку входа показываем Alert'ом с текстом. Иначе флоу
-// гасит ошибку в console.warn и на устройстве видно лишь «мигание» экрана без
-// причины. Заголовок захардкожен (как и был у Google) — не через i18n. Убрать,
-// когда причины входа подтвердятся на билде.
-function authAlert(stage: string, detail?: string, title = 'Google sign-in failed'): void {
-  Alert.alert(title, detail ? `${stage}\n\n${detail}` : stage);
-}
 
 // Detect "new user" — created within last 60 seconds
 function isNewUser(createdAt: string | undefined): boolean {
@@ -54,6 +48,28 @@ export function AuthScreen({ navigation }: Props) {
   const styles = useMemo(() => makeStyles(font), [font]);
 
   const [loadingProvider, setLoadingProvider] = useState<'google' | 'apple' | null>(null);
+
+  // Сырой текст ошибки показываем только dev-пользователю (gate по auth.users.id).
+  // На экране входа сессии обычно ещё нет → false, и обычный пользователь всегда
+  // видит только дружелюбный текст. После успешного Apple-входа флаг обновляем,
+  // чтобы возможная ошибка записи профиля ниже тоже была подробной для dev.
+  const isDevRef = useRef(false);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      isDevRef.current = isDevUser(session?.user?.id);
+    });
+  }, []);
+
+  // Единая дружелюбная ошибка входа. stage/detail — технические подробности, их
+  // видит только dev; обычный пользователь всегда видит текст из i18n. Отмену
+  // входа (cancel/dismiss) сюда НЕ передаём — это не ошибка, Alert не показываем.
+  function showAuthError(stage: string, detail?: string): void {
+    if (isDevRef.current) {
+      Alert.alert(t('auth.error.title'), detail ? `${stage}\n\n${detail}` : stage);
+    } else {
+      Alert.alert(t('auth.error.title'), t('auth.error.body'));
+    }
+  }
 
   // ── Session established → navigate ────────────────────────────────────────
   useEffect(() => {
@@ -92,7 +108,7 @@ export function AuthScreen({ navigation }: Props) {
     const code = new URLSearchParams(query).get('code');
     if (!code) {
       console.warn('[Auth] redirect URL carried no authorization code');
-      authAlert('Redirect без кода авторизации', url);
+      showAuthError('Redirect без кода авторизации', url);
       setLoadingProvider(null);
       return;
     }
@@ -100,7 +116,7 @@ export function AuthScreen({ navigation }: Props) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
       console.warn('[Auth] exchangeCodeForSession error:', error.message);
-      authAlert('exchangeCodeForSession', error.message);
+      showAuthError('exchangeCodeForSession', error.message);
       setLoadingProvider(null);
       return;
     }
@@ -139,7 +155,7 @@ export function AuthScreen({ navigation }: Props) {
       });
       if (error || !data.url) {
         console.warn('[Auth] signInWithOAuth error:', error?.message);
-        authAlert('signInWithOAuth', error?.message ?? 'провайдер не вернул URL (data.url пуст)');
+        showAuthError('signInWithOAuth', error?.message ?? 'провайдер не вернул URL (data.url пуст)');
         oauthDeadlineRef.current = 0;
         setLoadingProvider(null);
         return;
@@ -152,18 +168,16 @@ export function AuthScreen({ navigation }: Props) {
       if (result.type === 'success') {
         await completeOAuthRedirect(result.url);
       } else {
-        // type === 'cancel' or 'dismiss' — Linking listener may still fire if OS handled the deep link
-        console.warn('[Auth] WebBrowser did not return success — waiting for Linking listener');
-        // На iOS (бета-таргет) успешный редирект всегда приходит как 'success';
-        // 'cancel'/'dismiss' здесь = браузер закрылся без редиректа. Показываем,
-        // чтобы отличить это от «URL не вернулся». (Android-фолбэк через Linking
-        // может позже сам довести флоу — тогда onAuthStateChange навигирует.)
-        authAlert('WebBrowser', `браузер закрылся без редиректа (type: ${result.type})`);
+        // type === 'cancel' / 'dismiss' — пользователь закрыл браузер без
+        // редиректа. Это НЕ ошибка: Alert не показываем, просто снимаем лоадер.
+        // (Android-фолбэк через Linking может позже сам довести флоу — тогда
+        // onAuthStateChange навигирует.)
+        console.warn(`[Auth] WebBrowser closed without redirect (type: ${result.type})`);
         setLoadingProvider(null);
       }
     } catch (e: any) {
       console.warn('[Auth] signInWith exception:', e);
-      authAlert('Исключение при входе', String(e?.message ?? e));
+      showAuthError('Исключение при входе', String(e?.message ?? e));
       oauthDeadlineRef.current = 0;
       setLoadingProvider(null);
     }
@@ -188,7 +202,7 @@ export function AuthScreen({ navigation }: Props) {
       });
       if (!credential.identityToken) {
         console.warn('[Auth] Apple credential carried no identityToken');
-        authAlert('signInAsync', 'Apple не вернул identityToken', 'Apple sign-in failed');
+        showAuthError('signInAsync', 'Apple не вернул identityToken');
         setLoadingProvider(null);
         return;
       }
@@ -198,10 +212,14 @@ export function AuthScreen({ navigation }: Props) {
       });
       if (error) {
         console.warn('[Auth] signInWithIdToken error:', error.message);
-        authAlert('signInWithIdToken', error.message, 'Apple sign-in failed');
+        showAuthError('signInWithIdToken', error.message);
         setLoadingProvider(null);
         return;
       }
+
+      // Теперь есть user.id — обновляем dev-флаг, чтобы ошибка записи профиля
+      // ниже показала подробности dev-пользователю (на входе сессии ещё не было).
+      isDevRef.current = isDevUser(data.user?.id) || isDevRef.current;
 
       // Имя. Apple кладёт его НЕ в identityToken, а в credential.fullName и
       // отдаёт ТОЛЬКО при первом входе (дальше — null). У Google имя приходит
@@ -220,7 +238,7 @@ export function AuthScreen({ navigation }: Props) {
           .eq('id', uid);
         if (pErr) {
           console.warn('[Auth] Apple name → profile update failed:', pErr.message);
-          authAlert('запись профиля', pErr.message, 'Apple sign-in failed');
+          showAuthError('запись профиля', pErr.message);
         }
       }
     } catch (e: any) {
@@ -228,7 +246,7 @@ export function AuthScreen({ navigation }: Props) {
       // молча выходим без Alert. Всё остальное — показываем.
       if (e?.code !== 'ERR_REQUEST_CANCELED') {
         console.warn('[Auth] Apple signIn exception:', e);
-        authAlert('signInAsync', String(e?.message ?? e), 'Apple sign-in failed');
+        showAuthError('signInAsync', String(e?.message ?? e));
       }
       setLoadingProvider(null);
     }
@@ -286,11 +304,11 @@ export function AuthScreen({ navigation }: Props) {
         {/* Legal */}
         <Text style={styles.legal}>
           {t('auth.legalPrefix')}{' '}
-          <Text style={styles.legalLink} onPress={() => Linking.openURL('https://afkaf.netlify.app/terms')}>
+          <Text style={styles.legalLink} onPress={() => Linking.openURL(LINKS.terms)}>
             {t('auth.terms')}
           </Text>
           {' '}{t('auth.legalAnd')}{' '}
-          <Text style={styles.legalLink} onPress={() => Linking.openURL('https://afkaf.netlify.app/privacy')}>
+          <Text style={styles.legalLink} onPress={() => Linking.openURL(LINKS.privacy)}>
             {t('auth.privacy')}
           </Text>
         </Text>

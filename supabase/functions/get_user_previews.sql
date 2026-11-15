@@ -1,56 +1,48 @@
--- Снимок от 2026-09-13. RPC для превью пользователей (имя + одна собака) в
--- списке друзей/заявок и в «рядом». SECURITY DEFINER ОБЯЗАТЕЛЕН: profiles/dogs
--- owner-only под RLS, иначе имена и клички приходят null. Строки отдаются ТОЛЬКО
--- для пользователей, с кем у auth.uid() есть строка в friendships (любой статус)
--- ИЛИ у кого есть active_walk, видимый auth.uid() (та же логика, что RLS
--- active_walks_select). RLS на таблицах НЕ расширяется.
+-- Снимок от 2026-09-13; обновлён 2026-11-14 (fix/security-1, markers_privacy_step1).
+-- RPC для превью пользователей (имя + одна собака) в списке друзей/заявок и
+-- «рядом». SECURITY DEFINER ОБЯЗАТЕЛЕН: profiles/dogs owner-only под RLS. Строки
+-- отдаются ТОЛЬКО для пользователей, с кем есть видимая связь. RLS не расширяется.
+-- 2026-11-04 (feat/moderation): + AND NOT public.is_blocked(p.id) в обе стороны.
+-- 2026-11-14 (№8): дружба-предикат ужесточён — pending-заявку видит ТОЛЬКО её
+--   адресат (чтобы решить). Инициатор исходящей pending-заявки превью адресата
+--   НЕ получает до принятия. accepted — в обе стороны, как раньше.
 -- Гранты: REVOKE PUBLIC/anon, GRANT authenticated.
 CREATE OR REPLACE FUNCTION public.get_user_previews(ids uuid[])
  RETURNS TABLE(id uuid, display_name text, dog_name text, dog_avatar text)
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
 AS $function$
-  SELECT
-    p.id,
-    p.display_name,
-    d.name AS dog_name,
-    d.icon AS dog_avatar
-  FROM profiles p
-  LEFT JOIN LATERAL (
-    SELECT dg.name, dg.icon
-    FROM dogs dg
-    WHERE dg.owner_id = p.id
-    ORDER BY dg.created_at ASC
-    LIMIT 1
-  ) d ON true
-  WHERE p.id = ANY(ids)
-    AND p.id <> auth.uid()
-    AND (
-      -- любая строка дружбы между мной и этим пользователем (любой статус)
-      EXISTS (
-        SELECT 1 FROM friendships f
-        WHERE (f.requester_id = auth.uid() AND f.addressee_id = p.id)
-           OR (f.addressee_id = auth.uid() AND f.requester_id = p.id)
+  select p.id, p.display_name, d.name as dog_name, d.icon as dog_avatar
+  from profiles p
+  left join lateral (
+    select dg.name, dg.icon from dogs dg
+    where dg.owner_id = p.id order by dg.created_at asc limit 1
+  ) d on true
+  where p.id = any(ids)
+    and p.id <> auth.uid()
+    and not public.is_blocked(p.id)
+    and (
+      exists (
+        select 1 from friendships f
+        where (
+          f.status = 'accepted' and (
+            (f.requester_id = auth.uid() and f.addressee_id = p.id)
+            or (f.addressee_id = auth.uid() and f.requester_id = p.id))
+        ) or (
+          f.status = 'pending'
+          and f.addressee_id = auth.uid() and f.requester_id = p.id
+        )
       )
-      -- ИЛИ у пользователя есть active_walk, видимый мне (та же логика, что RLS)
-      OR EXISTS (
-        SELECT 1 FROM active_walks aw
-        WHERE aw.user_id = p.id
-          AND aw.updated_at > now() - interval '30 minutes'
-          AND (
+      or exists (
+        select 1 from active_walks aw
+        where aw.user_id = p.id
+          and aw.updated_at > now() - interval '30 minutes'
+          and (
             aw.visibility = 'everyone'
-            OR (
-              aw.visibility = 'friends'
-              AND EXISTS (
-                SELECT 1 FROM friendships f2
-                WHERE f2.status = 'accepted'
-                  AND (
-                    (f2.requester_id = auth.uid() AND f2.addressee_id = aw.user_id)
-                    OR (f2.addressee_id = auth.uid() AND f2.requester_id = aw.user_id)
-                  )
-              )
-            )
+            or (aw.visibility = 'friends' and exists (
+              select 1 from friendships f2
+              where f2.status = 'accepted'
+                and ((f2.requester_id = auth.uid() and f2.addressee_id = aw.user_id)
+                  or (f2.addressee_id = auth.uid() and f2.requester_id = aw.user_id))))
           )
       )
     );

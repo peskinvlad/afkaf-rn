@@ -262,6 +262,7 @@ export function AddMarkerScreen({ navigation }: Props) {
       // marker goes onto the map right away instead of waiting for the next
       // poll, and it carries the coordinate the database actually holds rather
       // than a second copy of it assembled here.
+      // user_id НЕ шлём — сервер ставит его сам (markers.user_id DEFAULT auth.uid()).
       const { data, error } = await supabase
         .from('markers')
         .insert({
@@ -269,14 +270,15 @@ export function AddMarkerScreen({ navigation }: Props) {
           description: description.trim() || null,
           lat:        markerCoords.latitude,
           lng:        markerCoords.longitude,
-          user_id:    userId,
           created_at: new Date().toISOString(),
           expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         })
         .select(MARKER_COLUMNS)
         .single();
       if (error) throw error;
-      if (data) addLocalMarker(data as MapMarker);
+      // RETURNING своей строки не содержит user_id (MARKER_COLUMNS без него) —
+      // это заведомо моя метка, поэтому is_mine = true добавляем вручную.
+      if (data) addLocalMarker({ ...(data as object), is_mine: true } as MapMarker);
       navigation.goBack();
     } catch (e) {
       // Keep the screen open so the typed description isn't lost.

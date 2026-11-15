@@ -2,6 +2,10 @@
 -- (docs/sql/friendships-guard.sql): INSERT только 'pending', иммутабельность
 -- сторон при UPDATE — триггером friendships_guard_update (см. supabase/triggers.sql
 -- и supabase/functions/friendships_guard_update.sql).
+-- 2026-11-04 (feat/moderation): friendships_insert + NOT public.is_blocked(addressee_id)
+-- — нельзя слать заявку заблокированному/заблокировавшему (блок в обе стороны,
+-- functions/is_blocked.sql). Сам блок (block_user) удаляет уже существующие строки
+-- дружбы/заявок в обе стороны.
 ALTER TABLE public.friendships ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS friendships_select ON public.friendships;
@@ -15,6 +19,7 @@ CREATE POLICY friendships_insert ON public.friendships
   WITH CHECK (
     auth.uid() = requester_id
     AND status = 'pending'
+    AND NOT public.is_blocked(addressee_id)
     AND NOT EXISTS (
       SELECT 1 FROM friendships f
       WHERE f.requester_id = friendships.addressee_id

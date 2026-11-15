@@ -10,17 +10,19 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
+import * as Application from 'expo-application';
 import { useApp } from '../hooks/useApp';
+import { LINKS } from '../constants/links';
 import { useTypography, FontRole } from '../theme/fonts';
 import { supabase } from '../lib/supabase';
 import { isDevUser } from '../constants/dev';
 import { DevPanel } from '../components/DevPanel';
 
-// Keep in sync with app.json → expo.version
-const APP_VERSION = '0.1.0';
-// Public privacy policy (web/privacy.html once deployed). Update if the
-// hosting URL changes.
-const PRIVACY_URL = 'https://afkaf.netlify.app/privacy.html';
+// Реальная версия приложения — из встроенного app.json (expoConfig.version),
+// с фолбэком на версию нативного бинарника. Не хардкодить: иначе строка в UI
+// расходится с app.json (так и было — показывало 0.1.0 на сборке 0.2.0).
+const APP_VERSION =
+  Constants.expoConfig?.version ?? Application.nativeApplicationVersion ?? '';
 
 // Beta feedback shortcut. Fill in the number in international format — digits
 // only, no "+" or spaces, e.g. 972501234567.
@@ -58,7 +60,7 @@ const DEV_TAP_GAP_MS = 1000;
 const STRINGS = {
   ru: {
     title: 'О проекте',
-    tagline: 'Карта для выгула собак\nв Яфо и Тель-Авиве',
+    tagline: 'Карта для выгула собак в Гуш-Дане',
     description: 'afkaf — карта для выгула собак. Отмечай опасные места, находи воду и парки, проверяй температуру асфальта перед прогулкой. Сделано владельцами собак для владельцев собак.',
     faqTitle: 'Частые вопросы',
     faq: [
@@ -112,11 +114,11 @@ const STRINGS = {
     contactEmail: 'peskin.vlad@gmail.com',
     contactDev: 'Написать разработчику',
     privacy: 'Политика конфиденциальности',
-    madeWith: 'Сделано с ❤️ для Шерлока и всех собак Яфо',
+    madeWith: 'Сделано с ❤️ для Шерлока и всех собак Гуш-Дана',
   },
   en: {
     title: 'About',
-    tagline: 'Dog walking map\nfor Jaffa & Tel Aviv',
+    tagline: 'A dog-walking map for Gush Dan',
     description: 'afkaf is a community map for dog walks. Mark hazards, find water and parks, check pavement temperature before you head out. Made by dog owners, for dog owners.',
     faqTitle: 'FAQ',
     faq: [
@@ -170,11 +172,11 @@ const STRINGS = {
     contactEmail: 'peskin.vlad@gmail.com',
     contactDev: 'Message the developer',
     privacy: 'Privacy Policy',
-    madeWith: 'Made with ❤️ for Sherlock and all the dogs of Jaffa',
+    madeWith: 'Made with ❤️ for Sherlock and all the dogs of Gush Dan',
   },
   he: {
     title: 'על הפרויקט',
-    tagline: 'מפת טיולים לכלבים\nביפו ותל אביב',
+    tagline: 'מפה לטיולים עם כלבים בגוש דן',
     description: 'afkaf היא מפה קהילתית לטיולים עם כלבים. סמן מקומות מסוכנים, מצא מים ופארקים, בדוק את טמפרטורת המדרכה לפני היציאה. נעשה על ידי בעלי כלבים, לבעלי כלבים.',
     faqTitle: 'שאלות נפוצות',
     faq: [
@@ -228,7 +230,7 @@ const STRINGS = {
     contactEmail: 'peskin.vlad@gmail.com',
     contactDev: 'כתוב למפתח',
     privacy: 'מדיניות פרטיות',
-    madeWith: '❤️ נעשה מתוך אהבה לשרלוק ולכל כלבי יפו',
+    madeWith: '❤️ נעשה מתוך אהבה לשרלוק ולכל כלבי גוש דן',
   },
 };
 
@@ -388,7 +390,7 @@ export default function AboutScreen({ navigation }: any) {
         <TouchableOpacity style={styles.contactDevBtn} onPress={contactDeveloper} activeOpacity={0.85}>
           <Text style={styles.contactDevTxt}>{t.contactDev}</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_URL)} activeOpacity={0.7}>
+        <TouchableOpacity onPress={() => Linking.openURL(LINKS.privacy)} activeOpacity={0.7}>
           <Text style={styles.privacyLink}>{t.privacy}</Text>
         </TouchableOpacity>
         <Text style={styles.footerText}>{t.madeWith}</Text>

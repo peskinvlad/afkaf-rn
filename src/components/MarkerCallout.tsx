@@ -34,6 +34,7 @@ import { animation, colors, radii, shadows } from '../theme/tokens';
 import { useApp } from '../hooks/useApp';
 import { useTypography } from '../theme/fonts';
 import { ParkPresenceBlock } from './ParkPresenceBlock';
+import { useReportSheet } from './ReportSheet';
 
 type VoteValue = 'still_there' | 'gone';
 
@@ -202,6 +203,7 @@ function CalloutBubble({
 }) {
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
+  const { openReport } = useReportSheet();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [myVote, setMyVote] = useState<VoteValue | null>(null);
   const [counts, setCounts] = useState<VoteCounts>({ still_there: 0, gone: 0 });
@@ -235,25 +237,19 @@ function CalloutBubble({
     if (isPermanentPlace) return; // у постоянных мест голосования нет — не дёргаем marker_votes
     setLoading(true);
     try {
-      const { data } = await supabase
-        .from('marker_votes')
-        .select('vote, user_id')
-        .eq('marker_id', marker.id);
-
-      if (data) {
-        const still = data.filter((r) => r.vote === 'still_there').length;
-        const gone  = data.filter((r) => r.vote === 'gone').length;
-        setCounts({ still_there: still, gone });
-
-        if (currentUserId) {
-          const mine = data.find((r) => r.user_id === currentUserId);
-          setMyVote((mine?.vote as VoteValue) ?? null);
-        }
+      // get_marker_votes: счётчики + ТОЛЬКО мой голос. Чужие user_id не приходят.
+      const { data, error } = await supabase
+        .rpc('get_marker_votes', { p_marker_id: marker.id })
+        .single();
+      const row = data as { still_there: number; gone: number; my_vote: string | null } | null;
+      if (!error && row) {
+        setCounts({ still_there: row.still_there ?? 0, gone: row.gone ?? 0 });
+        setMyVote((row.my_vote as VoteValue) ?? null);
       }
     } finally {
       setLoading(false);
     }
-  }, [marker.id, currentUserId, isPermanentPlace]);
+  }, [marker.id, isPermanentPlace]);
 
   useEffect(() => {
     loadVotes();
@@ -292,7 +288,7 @@ function CalloutBubble({
     // voting blocks a second tap while the request is in flight (no visual
     // graying — the buttons just stop responding).
     setVoting(true);
-    const error = await castMarkerVote(marker.id, currentUserId, vote);
+    const error = await castMarkerVote(marker.id, vote);
     setVoting(false);
 
     if (error) {
@@ -315,7 +311,8 @@ function CalloutBubble({
   }
 
   const cfg = MARKER_CONFIG[marker.type] ?? { emoji: '📍', pinColor: colors.ink };
-  const isOwnMarker = currentUserId != null && marker.user_id === currentUserId && !devVoteOwn;
+  // «Моя метка» теперь из серверного признака is_mine (user_id клиенту не отдаётся).
+  const isOwnMarker = marker.is_mine && !devVoteOwn;
 
   const typeLabel =
     t(`marker.type.${marker.type}`) !== `marker.type.${marker.type}`
@@ -520,6 +517,20 @@ function CalloutBubble({
             />
           </View>
         )}
+
+        {/* Жалоба на метку — для всех типов (вкл. OSM-инфраструктуру), кроме своей
+            метки и гостя (reports требует auth). Вода (water_sources) сюда не
+            попадает — у неё нативный callout, не этот компонент. */}
+        {!isGuest && !marker.is_mine && (
+          <TouchableOpacity
+            style={styles.reportBtn}
+            onPress={() => openReport({ type: 'marker', id: marker.id })}
+            activeOpacity={0.6}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Text style={[styles.reportTxt, rtl && styles.txtRight]}>{t('reportMarkerAction')}</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {!below && tail}
@@ -693,6 +704,14 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
     paddingVertical: 6,
+  },
+  // «Пожаловаться» — мелкая приглушённая ссылка под основным содержимым баббла.
+  reportBtn: { alignSelf: 'center', paddingTop: 2 },
+  reportTxt: {
+    ...ty.variants.xs,
+    fontFamily: ty.font.bodyBold,
+    color: colors.textMuted,
+    textDecorationLine: 'underline',
   },
 
   voteRow: {

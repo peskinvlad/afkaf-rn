@@ -49,6 +49,8 @@ export function DogProfileScreen({ navigation, route }: Props) {
 
   // Photo
   const [photoUri, setPhotoUri]   = useState<string | null>(null);
+  // Реальный MIME выбранного фото (из пикера) — надёжнее расширения URI.
+  const [photoMime, setPhotoMime] = useState<string | null>(null);
   // true only after the user picks a NEW image this session. On edit, photoUri
   // is seeded with the existing remote https URL (see load effect) — that is not
   // a local file, so the upload must be skipped unless a fresh local image was
@@ -139,6 +141,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
     });
     if (!result.canceled && result.assets[0]) {
       setPhotoUri(result.assets[0].uri);
+      setPhotoMime(result.assets[0].mimeType ?? null);
       setPhotoChanged(true);
     }
   }
@@ -187,10 +190,24 @@ export function DogProfileScreen({ navigation, route }: Props) {
       // Only upload when a fresh local image was picked this session. Skipping
       // leaves photo_url out of the payload below, so the existing photo stays.
       if (photoChanged && photoUri && userId) {
-        // Strip query params before extracting extension (iOS URIs can have ?token=...)
-        const cleanUri = photoUri.split('?')[0];
-        const ext      = (cleanUri.split('.').pop() ?? 'jpg').toLowerCase();
-        const safeExt  = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
+        // contentType ДОЛЖЕН попадать в allowed_mime_types бакета dog-photos
+        // (image/jpeg|png|webp|heic|heif) — иначе Storage отклонит загрузку.
+        // Раньше для .jpg слалось image/jpg (такого MIME нет); после введения
+        // ограничения это бы ломало загрузку. Берём реальный тип из пикера
+        // (asset.mimeType), с фолбэком на расширение URI.
+        const MIME_BY_EXT: Record<string, string> = {
+          jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+          webp: 'image/webp', heic: 'image/heic', heif: 'image/heif',
+        };
+        const EXT_BY_MIME: Record<string, string> = {
+          'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
+          'image/heic': 'heic', 'image/heif': 'heif',
+        };
+        const cleanUri = photoUri.split('?')[0]; // iOS URIs can carry ?token=...
+        const ext      = (cleanUri.split('.').pop() ?? '').toLowerCase();
+        const contentType =
+          photoMime && EXT_BY_MIME[photoMime] ? photoMime : (MIME_BY_EXT[ext] ?? 'image/jpeg');
+        const safeExt  = EXT_BY_MIME[contentType]; // расширение пути из итогового типа
         const path     = `${userId}/dog.${safeExt}`;
 
         const base64 = await FileSystem.readAsStringAsync(photoUri, {
@@ -205,7 +222,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
         const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
         const { error: uploadError } = await supabase.storage
           .from('dog-photos')
-          .upload(path, arrayBuffer, { upsert: true, contentType: `image/${safeExt}` });
+          .upload(path, arrayBuffer, { upsert: true, contentType });
 
         if (uploadError) {
           console.warn('[DogProfile] photo upload error:', uploadError.message);

@@ -13,6 +13,7 @@ import {
 import { useApp } from '../hooks/useApp';
 import { useTypography, FontRole } from '../theme/fonts';
 import { FriendshipRpcStatus } from '../hooks/useFriends';
+import { UserModMenuButton } from './UserModMenuButton';
 import { colors } from '../theme/tokens';
 
 const SWIPE_THRESHOLD = 50;
@@ -63,6 +64,10 @@ const DogCard = ({
   const styles = useMemo(() => makeStyles(font), [font]);
   const inner = (
     <>
+      <UserModMenuButton
+        user={{ userId: dog.userId, displayName: dog.ownerName, dogName: dog.dogName, dogAvatar: dog.avatar }}
+        style={styles.cardMenu}
+      />
       <View style={styles.avatarWrap}>
         <View style={styles.avatar}>
           <Text style={styles.avatarEmoji}>{dog.avatar}</Text>
@@ -291,6 +296,8 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
     width: 80,
     alignItems: 'center',
   },
+  // «⋯» в верхнем левом углу карточки (справа — зелёная точка «онлайн»).
+  cardMenu: { position: 'absolute', top: -2, left: -2, zIndex: 2 },
   avatarWrap: {
     position: 'relative',
     marginBottom: 6,

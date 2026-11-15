@@ -9,6 +9,11 @@
 --   RLS-политики — policies/*.sql, функции — functions/*.sql, триггеры — triggers.sql.
 -- Не покрыто здесь: отдельные (не-constraint) индексы, comment'ы, grants, RLS.
 -- FK на auth.users(id) — на чужую (auth) схему Supabase.
+--
+-- Гранты (не в области файла, но для справки): fix/security-1 2026-11-14 отозвал
+-- TRUNCATE у anon/authenticated на ВСЕХ таблицах public и закрыл rpc_rate_limit
+-- целиком (таблица + EXECUTE функции) у клиентских ролей. Полный скрипт —
+-- migrations/2026-11-14_security_hardening.sql.
 
 -- ============================================================
 -- profiles  (id = auth.users.id)
@@ -55,7 +60,9 @@ CREATE TABLE public.dogs (
 -- ============================================================
 CREATE TABLE public.markers (
   id             uuid        NOT NULL DEFAULT gen_random_uuid(),
-  user_id        uuid        NOT NULL,
+  -- DEFAULT auth.uid() добавлен 2026-11-14 (markers_privacy_step1): user_id ставит
+  -- сервер, клиент его больше не шлёт. WITH CHECK (auth.uid()=user_id) по-прежнему держит.
+  user_id        uuid        NOT NULL DEFAULT auth.uid(),
   type           text        NOT NULL,
   lat            double precision NOT NULL,
   lng            double precision NOT NULL,
@@ -211,3 +218,76 @@ CREATE TABLE public.park_checkins (
 --   UNIQUE INDEX park_checkins_one_open_per_user ON (user_id) WHERE ended_at IS NULL
 --     — не больше одного открытого чек-ина на пользователя;
 --   INDEX park_checkins_open_by_marker ON (marker_id) WHERE ended_at IS NULL.
+
+-- ============================================================
+-- blocks  (добавлена 2026-11-04, feat/moderation)
+-- ============================================================
+-- Взаимная блокировка пользователей (UGC-требование Google Play). Запись —
+-- ТОЛЬКО через SECURITY DEFINER RPC block_user/unblock_user (чтобы блок атомарно
+-- рвал дружбу); клиент имеет лишь SELECT своих строк (policies/blocks.sql).
+-- Сокрытие в обе стороны считает public.is_blocked (functions/is_blocked.sql).
+CREATE TABLE public.blocks (
+  blocker_id     uuid        NOT NULL,
+  blocked_id     uuid        NOT NULL,
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  -- Снимок имени/иконки на момент блокировки (markers_privacy_step1, 2026-11-14):
+  -- заполняется block_user ТОЛЬКО если человек был виден мне через get_user_previews,
+  -- иначе NULL → get_my_blocks/клиент показывают нейтральное «Пользователь».
+  blocked_name   text        NULL,
+  blocked_avatar text        NULL,
+  CONSTRAINT blocks_pkey PRIMARY KEY (blocker_id, blocked_id),
+  CONSTRAINT blocks_not_self CHECK (blocker_id <> blocked_id),
+  CONSTRAINT blocks_blocker_id_fkey FOREIGN KEY (blocker_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  CONSTRAINT blocks_blocked_id_fkey FOREIGN KEY (blocked_id) REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+-- ============================================================
+-- reports  (добавлена 2026-11-04, feat/moderation)
+-- ============================================================
+-- Жалобы на контент/людей (UGC-требование Google Play). Клиент: INSERT от своего
+-- имени + SELECT только своих (policies/reports.sql). Триаж — через Dashboard
+-- (supabase/queries/open-reports.sql). target_id — markers.id или profiles.id
+-- в зависимости от target_type; FK на них НЕ ставим (две разные цели в одной
+-- колонке), целостность — на уровне приложения.
+CREATE TABLE public.reports (
+  id           uuid        NOT NULL DEFAULT gen_random_uuid(),
+  reporter_id  uuid        NOT NULL,
+  target_type  text        NOT NULL,
+  target_id    uuid        NOT NULL,
+  reason       text        NOT NULL,
+  comment      text        NULL,
+  status       text        NOT NULL DEFAULT 'open',
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT reports_pkey PRIMARY KEY (id),
+  CONSTRAINT reports_reporter_id_fkey FOREIGN KEY (reporter_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+  CONSTRAINT reports_target_type_check CHECK (target_type = ANY (ARRAY['marker'::text, 'user'::text])),
+  CONSTRAINT reports_reason_check CHECK (reason = ANY (ARRAY['missing'::text, 'wrong_location'::text, 'wrong_type'::text, 'inappropriate'::text, 'spam'::text, 'harassment'::text, 'impersonation'::text, 'dangerous'::text, 'other'::text])),
+  CONSTRAINT reports_comment_check CHECK (comment IS NULL OR length(comment) <= 1000),
+  CONSTRAINT reports_status_check CHECK (status = ANY (ARRAY['open'::text, 'reviewed'::text, 'dismissed'::text]))
+);
+-- NB: частичный уникальный индекс (на нём держится защита от дублей):
+--   UNIQUE INDEX reports_one_open_per_target ON (reporter_id, target_type, target_id)
+--     WHERE status = 'open' — одна открытая жалоба на цель от юзера; повтор даёт
+--     23505, клиент показывает то же «спасибо».
+
+-- ============================================================
+-- app_pings  (feat/app-ping, применено 2026-11-14)
+-- Анонимный пинг открытия приложения: одна строка на устройство в день.
+-- Пишет только RPC log_app_open (SECURITY DEFINER); клиент прав не имеет.
+-- ============================================================
+CREATE TABLE public.app_pings (
+  device_id    uuid        NOT NULL,
+  day          date        NOT NULL,
+  platform     text        NOT NULL,
+  app_version  text        NOT NULL,
+  user_id      uuid        NULL,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT app_pings_pkey PRIMARY KEY (device_id, day),
+  CONSTRAINT app_pings_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL,
+  CONSTRAINT app_pings_platform_check CHECK (platform = ANY (ARRAY['ios'::text, 'android'::text])),
+  CONSTRAINT app_pings_app_version_check CHECK (char_length(app_version) >= 1 AND char_length(app_version) <= 20)
+);
+-- NB: отдельные индексы (вне области этого файла по правилу выше, но важны):
+--   CREATE INDEX app_pings_day_idx  ON (day);
+--   CREATE INDEX app_pings_user_idx ON (user_id) WHERE user_id IS NOT NULL;
+--   regex-валидация app_version ^[0-9A-Za-z.-]+$ — в функции log_app_open, не в таблице.

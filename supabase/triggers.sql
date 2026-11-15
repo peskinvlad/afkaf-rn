@@ -28,6 +28,13 @@ CREATE TRIGGER markers_guard_insert
   BEFORE INSERT ON public.markers
   FOR EACH ROW EXECUTE FUNCTION public.markers_guard_insert();
 
+-- Добавлен 2026-11-14 (fix/security-1). Сервер форсит status='open' и
+-- created_at=now() на вставке жалобы (функция — functions/reports_force_defaults.sql).
+DROP TRIGGER IF EXISTS reports_force_defaults ON public.reports;
+CREATE TRIGGER reports_force_defaults
+  BEFORE INSERT ON public.reports
+  FOR EACH ROW EXECUTE FUNCTION public.reports_force_defaults();
+
 -- auth.users — чужая схема, пересоздание может требовать прав supabase_admin.
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created

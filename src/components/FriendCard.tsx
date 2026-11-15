@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { Check, X } from 'lucide-react-native';
 import { FriendEntry } from '../hooks/useFriends';
+import { UserModMenuButton } from './UserModMenuButton';
 import { colors, radii, shadows, spacing } from '../theme/tokens';
 import { useTypography } from '../theme/fonts';
 
@@ -53,13 +54,25 @@ export function FriendCard({
     <View style={[styles.card, rtl && styles.rowReverse]}>
       <Avatar entry={entry} />
       <View style={styles.cardInfo}>
-        <Text style={styles.cardName} numberOfLines={1}>{entry.display_name ?? t('profile.anonymous')}</Text>
+        {/* Исходящую заявку адресат не раскрывает до принятия → имени нет.
+            Показываем нейтральный статус вместо «анонима». */}
+        <Text style={styles.cardName} numberOfLines={1}>
+          {entry.display_name ?? (tab === 'outgoing' ? t('friends.request_sent') : t('profile.anonymous'))}
+        </Text>
         {!!(entry.dog_name || entry.dog_breed) && (
           <Text style={styles.cardDog} numberOfLines={1}>{dogLine}</Text>
         )}
       </View>
 
       <View style={[styles.cardActions, rtl && styles.rowReverse]}>
+        <UserModMenuButton
+          user={{
+            userId: entry.other_user_id,
+            displayName: entry.display_name,
+            dogName: entry.dog_name,
+            dogAvatar: entry.dog_icon,
+          }}
+        />
         {tab === 'friends' && (
           <TouchableOpacity style={styles.btnGhost} onPress={onRemove} disabled={busy} activeOpacity={0.7}>
             <Text style={styles.btnGhostTxt}>{t('friends.btn_remove')}</Text>
