@@ -54,7 +54,11 @@ export function FriendCard({
     <View style={[styles.card, rtl && styles.rowReverse]}>
       <Avatar entry={entry} />
       <View style={styles.cardInfo}>
-        <Text style={styles.cardName} numberOfLines={1}>{entry.display_name ?? t('profile.anonymous')}</Text>
+        {/* Исходящую заявку адресат не раскрывает до принятия → имени нет.
+            Показываем нейтральный статус вместо «анонима». */}
+        <Text style={styles.cardName} numberOfLines={1}>
+          {entry.display_name ?? (tab === 'outgoing' ? t('friends.request_sent') : t('profile.anonymous'))}
+        </Text>
         {!!(entry.dog_name || entry.dog_breed) && (
           <Text style={styles.cardDog} numberOfLines={1}>{dogLine}</Text>
         )}
