@@ -73,13 +73,7 @@ async function loadEvents(t: TFn): Promise<EventEntry[]> {
     const typeById: Record<string, string> = {};
     for (const m of myMarkers ?? []) typeById[m.id] = m.type;
 
-    const { data: votes } = await supabase
-      .from('marker_votes')
-      .select('id, marker_id, created_at')
-      .in('marker_id', markerIds)
-      .eq('vote', 'still_there')
-      .order('created_at', { ascending: false })
-      .limit(EVENTS_LIMIT);
+    const { data: votes } = await supabase.rpc('get_my_marker_confirmations');
 
     for (const v of votes ?? []) {
       const type = typeById[v.marker_id];
