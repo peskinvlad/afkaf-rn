@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
@@ -265,9 +266,14 @@ export function AuthScreen({ navigation }: Props) {
 
       {/* ── Logo + branding ── */}
       <View style={styles.hero}>
-        <View style={styles.logoCircle}>
-          <Text style={styles.logoEmoji}>🐾</Text>
-        </View>
+        <Image
+          source={require('../../assets/images/logo.png')}
+          style={styles.logo}
+          resizeMode="contain"
+          accessible
+          accessibilityRole="image"
+          accessibilityLabel="afkaf"
+        />
         <Text style={styles.appName}>afkaf</Text>
         <Text style={styles.subtitle}>{t('auth.subtitle')}</Text>
       </View>
@@ -343,16 +349,14 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
     justifyContent: 'center',
     gap: 12,
   },
-  logoCircle: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: '#e8f0e6',
-    alignItems: 'center',
-    justifyContent: 'center',
+  // Логотип (logo.png — прозрачная зелёная лапа с «A», обрезанная по альфе из
+  // adaptive-icon). Высота — по пропорциям файла (490×549) через aspectRatio,
+  // чтобы лапа не искажалась. marginBottom 4 — как у прежнего logoCircle.
+  logo: {
+    width: 96,
+    aspectRatio: 490 / 549,
     marginBottom: 4,
   },
-  logoEmoji: { fontSize: 40 },
   appName: {
     fontSize: 32,
     fontFamily: font.display,
