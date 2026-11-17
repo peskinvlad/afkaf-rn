@@ -23,6 +23,7 @@ import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { AddFriendSheet } from '../components/AddFriendSheet';
 import { WalkRecoveryModal } from '../components/WalkRecoveryModal';
 import { ReportSheetProvider } from '../components/ReportSheet';
+import { ToastProvider } from '../components/Toast';
 import { useDeepLink } from '../hooks/useDeepLink';
 import { colors } from '../theme/tokens';
 import { supabase } from '../lib/supabase';
@@ -56,6 +57,7 @@ export function RootNavigator() {
 
   return (
     <View style={{ flex: 1 }}>
+      <ToastProvider>
       <ReportSheetProvider>
       <NavigationContainer ref={navigationRef}>
         <Stack.Navigator
@@ -93,6 +95,7 @@ export function RootNavigator() {
       />
       <WalkRecoveryModal />
       </ReportSheetProvider>
+      </ToastProvider>
     </View>
   );
 }

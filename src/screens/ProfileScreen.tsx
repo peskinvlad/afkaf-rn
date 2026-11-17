@@ -20,6 +20,7 @@ import { BADGES } from '../constants/badges';
 import { supabase } from '../lib/supabase';
 import { resolveBreedLabel } from '../lib/breeds';
 import { clearLocalUserData } from '../lib/localReset';
+import { useToast } from '../components/Toast';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
 
@@ -204,6 +205,7 @@ export function ProfileScreen({ navigation }: Props) {
   const { t, lang, isGuest, isTrusted, confirmedCount, refreshTrustStatus } = useApp();
   const { earnedIds: earnedBadgeIds, refresh: refreshBadges } = useBadges();
   const { friends } = useFriends();
+  const { showToast } = useToast();
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
 
@@ -307,9 +309,12 @@ export function ProfileScreen({ navigation }: Props) {
           text: t('profile.logout'),
           style: 'destructive',
           onPress: async () => {
-            await supabase.auth.signOut();
+            const { error } = await supabase.auth.signOut();
             await clearLocalUserData(); // home zone / queued walks / dev overrides
             navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
+            // Тост только при успешном выходе; при ошибке поведение прежнее
+            // (всё равно чистим и уводим на Main, но без подтверждения).
+            if (!error) showToast(t('toastSignedOut'));
           },
         },
       ],
