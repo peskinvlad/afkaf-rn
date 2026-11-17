@@ -350,11 +350,12 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
     gap: 12,
   },
   // Логотип (logo.png — прозрачная зелёная лапа с «A», обрезанная по альфе из
-  // adaptive-icon). Высота — по пропорциям файла (490×549) через aspectRatio,
-  // чтобы лапа не искажалась. marginBottom 4 — как у прежнего logoCircle.
+  // adaptive-icon). Явные width+height в пропорции файла (490×549 → 96×108):
+  // aspectRatio без height на Fabric не держит размер — Image уходил в натуральный.
+  // marginBottom 4 — как у прежнего logoCircle.
   logo: {
     width: 96,
-    aspectRatio: 490 / 549,
+    height: 108,
     marginBottom: 4,
   },
   appName: {

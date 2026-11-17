@@ -66,7 +66,7 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   },
   logoImg: {
     width: 96,
-    aspectRatio: 490 / 549,
+    height: 108,
   },
   logoName: {
     fontSize: 32,

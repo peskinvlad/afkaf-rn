@@ -440,7 +440,7 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
   content: { paddingBottom: 48 },
   hero: { backgroundColor: PRIMARY, paddingTop: 28, paddingBottom: 36, alignItems: 'center' },
-  pawIcon: { width: 72, aspectRatio: 490 / 549, marginBottom: 8 },
+  pawIcon: { width: 72, height: 81, marginBottom: 8 },
   appName: { fontFamily: font.display, fontSize: 36, color: WHITE, letterSpacing: 1 },
   tagline: { fontFamily: font.body, fontSize: 15, color: 'rgba(255,255,255,0.8)', textAlign: 'center', marginTop: 6, lineHeight: 22 },
   section: { paddingHorizontal: 20, paddingVertical: 24 },

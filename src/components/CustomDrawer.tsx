@@ -185,8 +185,8 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
     gap: 8,
   },
   logoImg: {
+    width: 25,
     height: 28,
-    aspectRatio: 490 / 549,
   },
   logo: {
     fontSize: 22,
