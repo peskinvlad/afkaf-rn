@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   ScrollView,
   TouchableOpacity,
   Linking,
@@ -343,7 +344,14 @@ export default function AboutScreen({ navigation }: any) {
 
       <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.hero}>
-        <Text style={styles.pawIcon}>🐾</Text>
+        {/* Декоративный: рядом видимый текст «afkaf». Белый тинт на тёмно-зелёной шапке. */}
+        <Image
+          source={require('../../assets/images/logo.png')}
+          style={styles.pawIcon}
+          resizeMode="contain"
+          tintColor="#FFFFFF"
+          accessible={false}
+        />
         <Text style={styles.appName}>afkaf</Text>
         <Text style={[styles.tagline, isRTL && styles.textRight]}>{t.tagline}</Text>
       </View>
@@ -432,7 +440,7 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
   content: { paddingBottom: 48 },
   hero: { backgroundColor: PRIMARY, paddingTop: 28, paddingBottom: 36, alignItems: 'center' },
-  pawIcon: { fontSize: 40, marginBottom: 8 },
+  pawIcon: { width: 72, aspectRatio: 490 / 549, marginBottom: 8 },
   appName: { fontFamily: font.display, fontSize: 36, color: WHITE, letterSpacing: 1 },
   tagline: { fontFamily: font.body, fontSize: 15, color: 'rgba(255,255,255,0.8)', textAlign: 'center', marginTop: 6, lineHeight: 22 },
   section: { paddingHorizontal: 20, paddingVertical: 24 },

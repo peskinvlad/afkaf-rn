@@ -24,7 +24,13 @@ export function LangScreen({ navigation }: Props) {
   return (
     <View style={[styles.container, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 24 }]}>
       <View style={styles.logo}>
-        <Text style={styles.logoText}>🐾</Text>
+        {/* Декоративный: рядом видимый текст «afkaf». */}
+        <Image
+          source={require('../../assets/images/logo.png')}
+          style={styles.logoImg}
+          resizeMode="contain"
+          accessible={false}
+        />
         <Text style={styles.logoName}>afkaf</Text>
       </View>
 
@@ -58,8 +64,9 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  logoText: {
-    fontSize: 56,
+  logoImg: {
+    width: 96,
+    aspectRatio: 490 / 549,
   },
   logoName: {
     fontSize: 32,
