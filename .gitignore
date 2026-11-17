@@ -48,3 +48,8 @@ dev/
 
 # supabase CLI local state (project link, etc.)
 supabase/.temp/
+
+# local tool folders (per-machine, not shared)
+.agents/
+skills-lock.json
+__pycache__/
