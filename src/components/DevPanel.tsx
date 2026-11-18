@@ -27,8 +27,10 @@ import {
   DEV_STILL_WALKING_TEST_KEY,
   DEV_PROXIMITY_TEST_KEY,
   DEV_GPS_PROFILE_KEY,
+  DEV_CHIP_SEASON_KEY,
   emitDevSettingsChange,
 } from '../constants/dev';
+import { ChipSeasonPref } from '../lib/heat';
 import { getAutoFinishDiagnostics, AutoFinishDiagnostics } from '../lib/autoFinish';
 import { ParkCheckinState } from '../lib/parkCheckin';
 import { useParkCheckinState } from '../hooks/useParkPresence';
@@ -107,6 +109,7 @@ export function DevPanel({ visible, onClose }: Props) {
   const [stillWalkingTest, setStillWalkingTest] = useState(false);
   const [proximityTest, setProximityTest] = useState(false);
   const [gpsEco, setGpsEco] = useState(false); // профиль GPS: true = «Эконом»
+  const [chipSeasonPref, setChipSeasonPref] = useState<ChipSeasonPref>('auto'); // режим чипа температуры
   const [dogName, setDogName] = useState<string | null>(null); // для {dog} в «Показать сейчас»
   const parkState = useParkCheckinState();
   // Короткие подтверждения «сброшено/применено» по ключу строки
@@ -159,6 +162,7 @@ export function DevPanel({ visible, onClose }: Props) {
         DEV_STILL_WALKING_TEST_KEY,
         DEV_PROXIMITY_TEST_KEY,
         DEV_GPS_PROFILE_KEY,
+        DEV_CHIP_SEASON_KEY,
       ]);
       const map = Object.fromEntries(entries) as Record<string, string | null>;
       setVisibility(map[VISIBILITY_KEY]);
@@ -177,6 +181,11 @@ export function DevPanel({ visible, onClose }: Props) {
       setStillWalkingTest(map[DEV_STILL_WALKING_TEST_KEY] === 'true');
       setProximityTest(map[DEV_PROXIMITY_TEST_KEY] === 'true');
       setGpsEco(map[DEV_GPS_PROFILE_KEY] === 'eco');
+      setChipSeasonPref(
+        map[DEV_CHIP_SEASON_KEY] === 'winter' || map[DEV_CHIP_SEASON_KEY] === 'summer'
+          ? map[DEV_CHIP_SEASON_KEY]
+          : 'auto',
+      );
 
       // Та же функция, что использует гейт active_walks (privacyZone.ts)
       setHomeZone(await loadHomeZone());
@@ -313,6 +322,16 @@ export function DevPanel({ visible, onClose }: Props) {
     setGpsEco(next);
     if (next) await AsyncStorage.setItem(DEV_GPS_PROFILE_KEY, 'eco');
     else await AsyncStorage.removeItem(DEV_GPS_PROFILE_KEY);
+  }
+
+  // Режим чипа температуры: 'auto' (убираем ключ) / 'winter' / 'summer'.
+  // Действует сразу (emitDevSettingsChange → useChipSeason перечитывает).
+  // Только для DEV_USER_IDS; у обычного пользователя ключа нет и всегда 'auto'.
+  async function setChipSeason(next: ChipSeasonPref) {
+    setChipSeasonPref(next);
+    if (next === 'auto') await AsyncStorage.removeItem(DEV_CHIP_SEASON_KEY);
+    else await AsyncStorage.setItem(DEV_CHIP_SEASON_KEY, next);
+    emitDevSettingsChange();
   }
 
   // «Показать сейчас» — настоящие уведомления (реальные кнопки/тексты/обработчики)
@@ -563,6 +582,32 @@ export function DevPanel({ visible, onClose }: Props) {
               (Accuracy.High / 10 м). Применяется со следующей прогулки. В итогах
               прогулки для dev — строка «профиль · принято/получено точек». Только
               для DEV_USER_IDS.
+            </Text>
+          </View>
+
+          {/* ── Чип температуры ── */}
+          <Text style={styles.sectionTitle}>Чип температуры</Text>
+          <View style={styles.card}>
+            <View style={styles.tempRow}>
+              {(['auto', 'winter', 'summer'] as ChipSeasonPref[]).map((opt) => {
+                const active = chipSeasonPref === opt;
+                const label = opt === 'auto' ? 'Авто' : opt === 'winter' ? 'Зима' : 'Лето';
+                return (
+                  <TouchableOpacity
+                    key={opt}
+                    style={[active ? styles.btnPrimary : styles.btnGhost, { flex: 1 }]}
+                    onPress={() => setChipSeason(opt)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={active ? styles.btnPrimaryTxt : styles.btnGhostTxt}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={styles.note}>
+              Авто = по максимуму асфальта за 24 ч с гистерезисом. Зима = значок
+              погоды + температура воздуха, Лето = асфальт + статус опасности.
+              Действует сразу. Только для DEV_USER_IDS, не сохраняется для обычных.
             </Text>
           </View>
 
