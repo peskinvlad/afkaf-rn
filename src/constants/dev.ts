@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
+import { ChipSeasonPref } from '../lib/heat';
 
 // ── Скрытый dev-режим ────────────────────────────────────────────────────────
 // Гейт dev-панели (AboutScreen: 5 тапов по строке версии → DevPanel) и всех
@@ -72,6 +73,9 @@ export const DEV_PROXIMITY_TEST_KEY = 'dev_proximity_test';
 // Профиль GPS для эксперимента с батареей (DevPanel): 'eco' = Accuracy.High +
 // distanceInterval 10 вместо BestForNavigation + 5. Читается при старте прогулки.
 export const DEV_GPS_PROFILE_KEY = 'dev_gps_profile';
+// Режим чипа температуры (DevPanel): 'auto' (по умолчанию) / 'winter' / 'summer'.
+// Только для dev; у обычного пользователя всегда 'auto'. Читается useChipSeason.
+export const DEV_CHIP_SEASON_KEY = 'dev_chip_season';
 
 // ── Мини-шина событий ────────────────────────────────────────────────────────
 // DevPanel меняет ключи в AsyncStorage; подписчики (useAsphaltTemp) должны
@@ -197,5 +201,17 @@ export async function getDevGpsProfile(): Promise<GpsProfile> {
   } catch (e) {
     console.warn('[dev] getDevGpsProfile failed:', e);
     return 'current';
+  }
+}
+
+export async function getDevChipSeason(): Promise<ChipSeasonPref> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!isDevUser(session?.user?.id)) return 'auto';
+    const raw = await AsyncStorage.getItem(DEV_CHIP_SEASON_KEY);
+    return raw === 'winter' || raw === 'summer' ? raw : 'auto';
+  } catch (e) {
+    console.warn('[dev] getDevChipSeason failed:', e);
+    return 'auto';
   }
 }
