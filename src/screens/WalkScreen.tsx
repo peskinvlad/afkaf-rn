@@ -38,6 +38,7 @@ import { MapMarkerIcon } from '../components/MapMarkerIcon';
 import { FirstWalkTipCard } from '../components/FirstWalkTipCard';
 import { FirstWalkNotifCard } from '../components/FirstWalkNotifCard';
 import { LocateButton } from '../components/LocateButton';
+import { HeatChip, heatChipA11yLabel } from '../components/HeatChip';
 import NearbyDogsSheet from '../components/NearbyDogsSheet';
 import { ShareProfileSheet } from '../components/ShareProfileSheet';
 import { MapDebugOverlay } from '../components/MapDebugOverlay';
@@ -212,7 +213,7 @@ interface Props {
 export function WalkScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const {
-    t, rtl, heatData, isHeatLoading, isGuest, confirmedCount,
+    t, rtl, heatData, chipSeason, weatherIcon, isHeatLoading, isGuest, confirmedCount,
     radius, setRadius, activeCategories, toggleCategory, userLocation, setUserLocation,
   } = useApp();
   const { font } = useTypography();
@@ -1755,20 +1756,16 @@ export function WalkScreen({ navigation }: Props) {
           style={[styles.heatCard, shadows.sm]}
           onPress={() => navigation.navigate('PavementTemp')}
           activeOpacity={0.8}
+          accessibilityLabel={heatChipA11yLabel(isHeatLoading, chipSeason, heatData, weatherIcon, t)}
         >
-          {isHeatLoading ? (
-            <>
-              <Text style={[styles.heatTemp, { color: heatVis_.color }]}>—°</Text>
-              <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ {t('map.heatLabel')}</Text>
-            </>
-          ) : !heatData.has_data ? (
-            <Text style={styles.heatUnavailable} numberOfLines={2}>{t('map.heatUnavailable')}</Text>
-          ) : (
-            <>
-              <Text style={[styles.heatTemp, { color: heatVis_.color }]}>{heatData.surface_est_c}°</Text>
-              <Text style={[styles.heatLabel, { color: heatVis_.color }]}>⚠️ {t('map.heatLabel')}</Text>
-            </>
-          )}
+          <HeatChip
+            isLoading={isHeatLoading}
+            season={chipSeason}
+            heatData={heatData}
+            weatherIcon={weatherIcon}
+            summerColor={heatVis_.color}
+            t={t}
+          />
         </TouchableOpacity>
         {/* Right column: locate-me above the add-marker FAB — same shared
             LocateButton and layout as MapScreen. */}
@@ -1911,7 +1908,7 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
 
 
   // Fixed height so the plate doesn't change size between loading ("—°") /
-  // no-data / data states.
+  // no-data / data states. Содержимое рендерит общий HeatChip.
   heatCard: {
     backgroundColor: colors.card,
     borderRadius: radii.sm,
@@ -1919,21 +1916,6 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
     height: 54,
     justifyContent: 'center',
     minWidth: 64,
-  },
-  heatUnavailable: {
-    fontSize: 12,
-    fontFamily: font.heading,
-    color: colors.textSecondary,
-  },
-  heatTemp: {
-    fontSize: 18,
-    fontFamily: font.heading,
-    letterSpacing: -0.5,
-  },
-  heatLabel: {
-    fontSize: 11,
-    fontFamily: font.bodyBold,
-    marginTop: 1,
   },
 
   // Absolute, above the panel (zIndex 30 > panel's 20). `bottom` is set inline
