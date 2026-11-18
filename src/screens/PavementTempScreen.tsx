@@ -7,14 +7,11 @@ import {
   StyleSheet,
   I18nManager,
 } from 'react-native';
-import {
-  Sun, Moon, CloudSun, CloudMoon, Cloud, Cloudy,
-  CloudDrizzle, CloudRain, CloudLightning, Snowflake, CloudFog,
-} from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
 import { useTypography } from '../theme/fonts';
 import { pickBestWalkTime } from '../lib/heat';
+import { iconToLucide } from '../lib/weatherIcons';
 import { colors, radii, shadows, spacing, typography, heatVis } from '../theme/tokens';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -24,24 +21,6 @@ function fmtTime(epoch: number): string {
   const h = String(d.getHours()).padStart(2, '0');
   const m = String(d.getMinutes()).padStart(2, '0');
   return `${h}:${m}`;
-}
-
-type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
-
-const OWM_ICON_MAP: Record<string, LucideIcon> = {
-  '01d': Sun,    '01n': Moon,
-  '02d': CloudSun, '02n': CloudMoon,
-  '03d': Cloud,  '03n': Cloud,
-  '04d': Cloudy, '04n': Cloudy,
-  '09d': CloudDrizzle, '09n': CloudDrizzle,
-  '10d': CloudRain, '10n': CloudRain,
-  '11d': CloudLightning, '11n': CloudLightning,
-  '13d': Snowflake, '13n': Snowflake,
-  '50d': CloudFog, '50n': CloudFog,
-};
-
-function iconToLucide(icon: string): LucideIcon {
-  return OWM_ICON_MAP[icon] ?? Cloud;
 }
 
 // One size + one stroke for every weather icon. Icons that read optically
