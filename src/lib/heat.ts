@@ -31,6 +31,70 @@ export function statusFor(surfaceTempC: number): HeatStatus {
   return 'danger';
 }
 
+// ── Зимний режим чипа температуры ─────────────────────────────────────────────
+// Летом чип показывает температуру АСФАЛЬТА со статусом опасности; зимой в этом
+// нет смысла (асфальт холодный), поэтому чип переключается на «погоду сейчас»:
+// значок + температура ВОЗДУХА + подпись. Переключение — по максимуму асфальта
+// в ближайшие 24 ч с гистерезисом, чтобы чип не мигал туда-сюда у порога.
+
+export type ChipSeason = 'winter' | 'summer';
+// Dev-оверрайд режима чипа (DevPanel). 'auto' = обычная логика по температуре.
+export type ChipSeasonPref = 'auto' | ChipSeason;
+
+// Пороги гистерезиса по максимуму асфальта за ближайшие 24 ч.
+export const WINTER_BELOW_C = 33; // ниже — зима
+export const SUMMER_FROM_C = 37;  // от и выше — лето; между — прошлый режим
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Максимум температуры асфальта в окне ближайших 24 ч: текущее значение + все
+// слоты прогноза, попадающие в [now, now+24ч]. Окно скользящее, БЕЗ привязки к
+// календарной дате — иначе летним вечером (когда до полуночи остаётся пара
+// жарких часов, а «завтра» ещё не в выборке) максимум занижался бы и чип
+// уходил в зиму. null, если данных нет вовсе.
+export function next24hMaxSurface(
+  currentSurfaceTempC: number | null,
+  forecast: { timeEpoch: number; surfaceTempC: number }[],
+  nowMs: number,
+): number | null {
+  const horizon = nowMs + DAY_MS;
+  let max: number | null = currentSurfaceTempC;
+  for (const pt of forecast) {
+    const ms = pt.timeEpoch * 1000;
+    if (ms < nowMs || ms > horizon) continue;
+    if (max == null || pt.surfaceTempC > max) max = pt.surfaceTempC;
+  }
+  return max;
+}
+
+// Гистерезис: зима при max < WINTER_BELOW_C, лето при max ≥ SUMMER_FROM_C, между
+// — держим прошлый режим (prev). Нет данных (max == null) → летний вид (как
+// сейчас), либо прошлый режим, если он уже известен.
+export function resolveSeason(max: number | null, prev: ChipSeason | null): ChipSeason {
+  if (max == null) return prev ?? 'summer';
+  if (max < WINTER_BELOW_C) return 'winter';
+  if (max >= SUMMER_FROM_C) return 'summer';
+  return prev ?? 'summer';
+}
+
+export type WeatherKind = 'clear' | 'cloudy' | 'rain' | 'storm' | 'fog';
+
+// OWM icon → тип погоды для подписи зимнего чипа. Снег (13) и неизвестное — в
+// «облачно»: снег в Гуш-Дане не ожидается, отдельной подписи не заводим.
+export function weatherKind(icon: string | null | undefined): WeatherKind {
+  switch ((icon ?? '').slice(0, 2)) {
+    case '01': return 'clear';
+    case '02':
+    case '03':
+    case '04': return 'cloudy';
+    case '09':
+    case '10': return 'rain';
+    case '11': return 'storm';
+    case '50': return 'fog';
+    default:   return 'cloudy'; // 13 (снег) и всё неизвестное
+  }
+}
+
 // Синус высоты солнца над горизонтом в момент `date` для точки lat/lon.
 // Чистая астрономия (алгоритм NOAA): склонение и уравнение времени по дню года,
 // часовой угол по UTC-времени и долготе. Считает ТОЛЬКО по UTC — от часового
