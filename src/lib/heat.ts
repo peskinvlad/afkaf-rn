@@ -42,8 +42,12 @@ export type ChipSeason = 'winter' | 'summer';
 export type ChipSeasonPref = 'auto' | ChipSeason;
 
 // Пороги гистерезиса по максимуму асфальта за ближайшие 24 ч.
-export const WINTER_BELOW_C = 33; // ниже — зима
-export const SUMMER_FROM_C = 37;  // от и выше — лето; между — прошлый режим
+export const WINTER_BELOW_C = 32; // ниже — зима
+// Верхний порог = порог «осторожно» (HEAT_CAUTION_FROM_C): чип обязан выйти из
+// зимы ровно тогда, когда асфальт в ближайшие 24 ч дотягивает до уровня, на
+// котором показываем предупреждение. Иначе в полосе гистерезиса зимний вид
+// прятал бы «Осторожно» — ровно тот баг, из-за которого это и правилось.
+export const SUMMER_FROM_C = HEAT_CAUTION_FROM_C; // 35; между WINTER_BELOW_C и ним — прошлый режим
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -67,14 +71,24 @@ export function next24hMaxSurface(
   return max;
 }
 
-// Гистерезис: зима при max < WINTER_BELOW_C, лето при max ≥ SUMMER_FROM_C, между
-// — держим прошлый режим (prev). Нет данных (max == null) → летний вид (как
-// сейчас), либо прошлый режим, если он уже известен.
+// Гистерезис: зима при max < WINTER_BELOW_C (32), лето при max ≥ SUMMER_FROM_C
+// (35 = порог «осторожно»), между — держим прошлый режим (prev). Нет данных
+// (max == null) → летний вид (как сейчас), либо прошлый режим, если известен.
 export function resolveSeason(max: number | null, prev: ChipSeason | null): ChipSeason {
   if (max == null) return prev ?? 'summer';
   if (max < WINTER_BELOW_C) return 'winter';
   if (max >= SUMMER_FROM_C) return 'summer';
   return prev ?? 'summer';
+}
+
+// Жёсткий приоритет безопасности: если ТЕКУЩИЙ статус асфальта caution/danger —
+// чип ВСЕГДА летний (асфальт + статус), чем бы ни был сезон. Это перебивает и
+// гистерезис, и dev-оверрайд «Зима»: предупреждение об опасном асфальте нельзя
+// прятать за погодным видом. Единственная точка, где сезон превращается в то,
+// что реально рисует чип.
+export function effectiveChipSeason(season: ChipSeason, status: HeatStatus): ChipSeason {
+  if (status === 'caution' || status === 'danger') return 'summer';
+  return season;
 }
 
 export type WeatherKind = 'clear' | 'cloudy' | 'rain' | 'storm' | 'fog';

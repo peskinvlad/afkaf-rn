@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { useTypography, FontRole } from '../theme/fonts';
 import { colors } from '../theme/tokens';
 import { iconToLucide } from '../lib/weatherIcons';
-import { ChipSeason, HeatStatus, weatherKind } from '../lib/heat';
+import { ChipSeason, HeatStatus, effectiveChipSeason, weatherKind } from '../lib/heat';
 
 // Внутренность чипа температуры (без обёртки TouchableOpacity/позиционирования —
 // они живут в MapScreen/WalkScreen, у каждого свои ref/onLayout/расположение).
@@ -47,7 +47,8 @@ export function HeatChip({ isLoading, season, heatData, weatherIcon, summerColor
     return <Text style={styles.heatUnavailable} numberOfLines={2}>{t('map.heatUnavailable')}</Text>;
   }
 
-  if (season === 'winter') {
+  // Текущий статус caution/danger → всегда лето, даже если season='winter'.
+  if (effectiveChipSeason(season, heatData.status) === 'winter') {
     // Погода СЕЙЧАС: значок + температура воздуха + подпись по типу погоды.
     const Icon = iconToLucide(weatherIcon ?? '');
     return (
@@ -80,7 +81,8 @@ export function heatChipA11yLabel(
   weatherIcon: string | null,
   t: (key: string, vars?: Record<string, string | number>) => string,
 ): string | undefined {
-  if (isLoading || !heatData.has_data || season !== 'winter') return undefined;
+  if (isLoading || !heatData.has_data) return undefined;
+  if (effectiveChipSeason(season, heatData.status) !== 'winter') return undefined;
   return `${t(`weather.${weatherKind(weatherIcon)}`)}, ${heatData.air_temp_c}°`;
 }
 
