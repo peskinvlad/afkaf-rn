@@ -32,6 +32,8 @@ import { useApp } from '../hooks/useApp';
 import { useTypography } from '../theme/fonts';
 import { ParkPresenceBlock } from './ParkPresenceBlock';
 import { useReportSheet } from './ReportSheet';
+import { useReport106, useReport106Sent } from './Report106Sheet';
+import { canReportToCity } from '../lib/report106';
 
 type VoteValue = 'still_there' | 'gone';
 
@@ -201,6 +203,8 @@ function CalloutBubble({
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
   const { openReport } = useReportSheet();
+  const { startReport } = useReport106();
+  const reportedToCity = useReport106Sent(marker.id);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [myVote, setMyVote] = useState<VoteValue | null>(null);
   const [counts, setCounts] = useState<VoteCounts>({ still_there: 0, gone: 0 });
@@ -492,6 +496,27 @@ function CalloutBubble({
           </View>
         )}
 
+        {/* «Сообщить в мэрию» — вторичная кнопка, слабее кнопок голосования.
+            Для гостей тоже (логин не нужен). Не для forbidden. */}
+        {canReportToCity(marker.type) && (
+          <View style={styles.cityWrap}>
+            {reportedToCity && (
+              <Text style={styles.citySent} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+                ✓ {t('report106.sent')}
+              </Text>
+            )}
+            <TouchableOpacity
+              style={styles.cityBtn}
+              onPress={() => startReport(marker)}
+              activeOpacity={0.6}
+            >
+              <Text style={styles.cityBtnTxt} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                🏛 {t('report106.button')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Жалоба на метку — для всех типов (вкл. OSM-инфраструктуру), кроме своей
             метки и гостя (reports требует auth). Вода (water_sources) сюда не
             попадает — у неё нативный callout, не этот компонент. */}
@@ -679,6 +704,29 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
     fontFamily: ty.font.bodyBold,
     color: colors.textMuted,
     textDecorationLine: 'underline',
+  },
+
+  // «Сообщить в мэрию»: тонкая контурная кнопка ниже голосования, без заливки.
+  cityWrap: { gap: 4 },
+  citySent: {
+    ...ty.variants.xs,
+    fontFamily: ty.font.bodyBold,
+    color: colors.primaryDark,
+    textAlign: 'center',
+  },
+  cityBtn: {
+    height: 34,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  cityBtnTxt: {
+    fontSize: 13,
+    fontFamily: ty.font.bodyBold,
+    color: colors.textSecondary,
   },
 
   voteRow: {
