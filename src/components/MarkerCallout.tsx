@@ -33,7 +33,7 @@ import { useTypography } from '../theme/fonts';
 import { ParkPresenceBlock } from './ParkPresenceBlock';
 import { useReportSheet } from './ReportSheet';
 import { useReport106, useReport106Sent } from './Report106Sheet';
-import { canReportToCity } from '../lib/report106';
+import { shouldShowReport106 } from '../lib/report106';
 
 type VoteValue = 'still_there' | 'gone';
 
@@ -205,6 +205,10 @@ function CalloutBubble({
   const { openReport } = useReportSheet();
   const { startReport } = useReport106();
   const reportedToCity = useReport106Sent(marker.id);
+  const showCityBtn = useMemo(
+    () => shouldShowReport106(marker),
+    [marker.type, marker.lat, marker.lng],
+  );
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [myVote, setMyVote] = useState<VoteValue | null>(null);
   const [counts, setCounts] = useState<VoteCounts>({ still_there: 0, gone: 0 });
@@ -498,7 +502,7 @@ function CalloutBubble({
 
         {/* «Сообщить в мэрию» — вторичная кнопка, слабее кнопок голосования.
             Для гостей тоже (логин не нужен). Не для forbidden. */}
-        {canReportToCity(marker.type) && (
+        {showCityBtn && (
           <View style={styles.cityWrap}>
             {reportedToCity && (
               <Text style={styles.citySent} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
