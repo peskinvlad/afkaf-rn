@@ -61,9 +61,8 @@ interface OverpassRelation {
 async function queryOverpass(): Promise<OverpassRelation[]> {
   // Дефис/макаф/тире в именах могут быть разными — в регулярке любой символ (.).
   const names = CITIES.map((c) => c.he.replace(/-/g, '.')).join('|');
-  const ql = `[out:json][timeout:180];
-area["ISO3166-1"="IL"][admin_level=2]->.il;
-relation["boundary"="administrative"]["admin_level"="8"]["name"~"^(${names})$"](area.il);
+  const ql = `[out:json][timeout:90];
+relation["boundary"="administrative"]["admin_level"="8"]["name"~"^(${names})$"](31.88,34.68,32.22,34.92);
 out geom;`;
   let lastErr: unknown = null;
   for (const url of ENDPOINTS) {
