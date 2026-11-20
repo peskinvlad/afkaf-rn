@@ -18,6 +18,8 @@ import { toByteArray } from 'base64-js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Pencil } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
+import { useTermsConsent } from '../hooks/useTermsConsent';
+import { containsProfanity } from '../lib/profanity';
 import { supabase } from '../lib/supabase';
 import { isDevUser } from '../constants/dev';
 import { useTypography } from '../theme/fonts';
@@ -41,6 +43,7 @@ interface Props {
 export function DogProfileScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { t, lang } = useApp();
+  const { ensureAccepted } = useTermsConsent();
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
 
@@ -68,6 +71,12 @@ export function DogProfileScreen({ navigation, route }: Props) {
   const [birthDate, setBirthDate]     = useState<string | null>(null);
   const [birthApprox, setBirthApprox] = useState(false);
   const [weight, setWeight]       = useState('');
+  // Поля с недопустимыми словами (Apple 1.2) — ошибка под полем, без сохранения.
+  const [profane, setProfane] = useState<{ name?: boolean; breed?: boolean; weight?: boolean }>({});
+  // Прокрутка к первому полю с ошибкой: y подписи поля внутри контента ScrollView
+  // (подписи — прямые дети контента, так что onLayout даёт нужную координату).
+  const scrollRef = useRef<ScrollView>(null);
+  const fieldY = useRef<{ name?: number; breed?: number; weight?: number }>({});
   const [gender, setGender]       = useState<Gender>('male');
   const [neutered, setNeutered]   = useState(false);
   const [sociability, setSociability] = useState<'friendly' | 'neutral' | 'reactive'>('friendly');
@@ -149,6 +158,22 @@ export function DogProfileScreen({ navigation, route }: Props) {
   // ── Save ───────────────────────────────────────────────────────────────────
   async function handleSave() {
     if (saving) return;
+    // Apple 1.2: недопустимые слова не сохраняем. breed — это ключ породы из
+    // списка или свободный текст «Другая» (его же проверяет BreedPickerModal).
+    const bad = {
+      name: containsProfanity(dogName),
+      breed: containsProfanity(breed),
+      weight: containsProfanity(weight),
+    };
+    if (bad.name || bad.breed || bad.weight) {
+      setProfane(bad);
+      const first = bad.name ? 'name' : bad.breed ? 'breed' : 'weight';
+      const y = fieldY.current[first];
+      if (y !== undefined) scrollRef.current?.scrollTo({ y: Math.max(0, y - 16), animated: true });
+      return;
+    }
+    // Страховка Apple 1.2: без согласия с условиями профиль собаки не сохраняем.
+    if (!(await ensureAccepted())) return;
     setSaving(true);
     // Declared out here so the catch can gate the dev-only error detail on it.
     let userId: string | undefined;
@@ -317,6 +342,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
@@ -372,18 +398,23 @@ export function DogProfileScreen({ navigation, route }: Props) {
         )}
 
         {/* ── Dog's name ── */}
-        <Text style={styles.sectionLabel}>{t('dogProfile.dogName')}</Text>
+        <Text style={styles.sectionLabel} onLayout={(e) => { fieldY.current.name = e.nativeEvent.layout.y; }}>
+          {t('dogProfile.dogName')}
+        </Text>
         <TextInput
           style={styles.input}
           placeholder={t('dogProfile.dogNamePlaceholder')}
           placeholderTextColor={colors.textSoft}
           value={dogName}
-          onChangeText={setDogName}
+          onChangeText={(v) => { setDogName(v); setProfane((p) => ({ ...p, name: false })); }}
           maxLength={50}
         />
+        {profane.name && <Text style={styles.fieldError}>{t('common.profanityError')}</Text>}
 
         {/* ── Breed (opens the searchable picker) ── */}
-        <Text style={styles.sectionLabel}>{t('dogProfile.breed')}</Text>
+        <Text style={styles.sectionLabel} onLayout={(e) => { fieldY.current.breed = e.nativeEvent.layout.y; }}>
+          {t('dogProfile.breed')}
+        </Text>
         <TouchableOpacity
           style={styles.input}
           onPress={() => setBreedPickerOpen(true)}
@@ -393,6 +424,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
             {resolveBreedLabel(breed, lang) ?? t('dogProfile.breedSelect')}
           </Text>
         </TouchableOpacity>
+        {profane.breed && <Text style={styles.fieldError}>{t('common.profanityError')}</Text>}
 
         {/* ── Birth date (opens the JS date picker) ── */}
         <Text style={styles.sectionLabel}>{t('dogProfile.birthDate')}</Text>
@@ -408,15 +440,18 @@ export function DogProfileScreen({ navigation, route }: Props) {
         <Text style={styles.hint}>{t('dogProfile.birthDateHint')}</Text>
 
         {/* ── Weight ── */}
-        <Text style={styles.sectionLabel}>{t('dogProfile.weight')}</Text>
+        <Text style={styles.sectionLabel} onLayout={(e) => { fieldY.current.weight = e.nativeEvent.layout.y; }}>
+          {t('dogProfile.weight')}
+        </Text>
         <TextInput
           style={styles.input}
           placeholder={t('dogProfile.weightPlaceholder')}
           placeholderTextColor={colors.textSoft}
           value={weight}
-          onChangeText={setWeight}
+          onChangeText={(v) => { setWeight(v); setProfane((p) => ({ ...p, weight: false })); }}
           keyboardType="numeric"
         />
+        {profane.weight && <Text style={styles.fieldError}>{t('common.profanityError')}</Text>}
 
         {/* ── Gender ── */}
         <Text style={styles.sectionLabel}>{t('dogProfile.gender')}</Text>
@@ -491,7 +526,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
       <BreedPickerModal
         visible={breedPickerOpen}
         value={breed || null}
-        onChange={setBreed}
+        onChange={(v) => { setBreed(v); setProfane((p) => ({ ...p, breed: false })); }}
         onClose={() => setBreedPickerOpen(false)}
       />
 
@@ -649,6 +684,14 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
     fontSize: 12,
     fontFamily: ty.font.body,
     color: colors.textMuted,
+    marginTop: 4,
+  },
+
+  // Ошибка под полем (фильтр недопустимых слов)
+  fieldError: {
+    fontSize: 12,
+    fontFamily: ty.font.body,
+    color: colors.danger,
     marginTop: 4,
   },
 

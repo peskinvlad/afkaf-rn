@@ -1773,7 +1773,9 @@ export function WalkScreen({ navigation }: Props) {
           <LocateButton onPress={handleCenterOnMe} />
           <TouchableOpacity
             style={[styles.fab, shadows.lg]}
-            onPress={() => navigation.navigate('MarkerCreate')}
+            // Гость метку сохранить не может (нужна сессия) — как на MapScreen,
+            // сразу ведём на вход, а не на экран метки с ошибкой в конце.
+            onPress={() => navigation.navigate(isGuest ? 'RegisterPrompt' : 'MarkerCreate')}
             activeOpacity={0.85}
           >
             <MapPinPlusInside size={24} color={colors.white} />

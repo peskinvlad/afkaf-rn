@@ -20,6 +20,11 @@
   to = "/delete-account.html"
   status = 200
 
+[[redirects]]
+  from = "/support"
+  to = "/support.html"
+  status = 200
+
 # Security headers for all pages. CSP is Report-Only for now (observe, don't block).
 # fonts.googleapis.com (stylesheet) + fonts.gstatic.com (woff2) are allowed because
 # index.html loads Google Fonts (Nunito); no other external scripts/iframes/forms exist.

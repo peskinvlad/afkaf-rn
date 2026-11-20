@@ -17,6 +17,8 @@ import MapView, { Marker, Circle, PROVIDER_DEFAULT, Region } from 'react-native-
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
+import { useTermsConsent } from '../hooks/useTermsConsent';
+import { containsProfanity } from '../lib/profanity';
 import { supabase } from '../lib/supabase';
 import { ensureLocationPermission } from '../lib/locationPermission';
 import { LocationRequiredCard } from '../components/LocationRequiredCard';
@@ -64,6 +66,7 @@ interface Props {
 export function AddMarkerScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useApp();
+  const { ensureAccepted } = useTermsConsent();
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
 
@@ -91,6 +94,7 @@ export function AddMarkerScreen({ navigation }: Props) {
 
   const [selectedType, setSelectedType] = useState<MarkerType>('hazard');
   const [description, setDescription]   = useState('');
+  const [descProfane, setDescProfane]   = useState(false);
   const [saving, setSaving]             = useState(false);
 
   const mountedRef = useRef(true);
@@ -249,6 +253,13 @@ export function AddMarkerScreen({ navigation }: Props) {
       Alert.alert(t('common.save_error'));
       return;
     }
+    // Apple 1.2: недопустимые слова не сохраняем — ошибка под полем.
+    if (containsProfanity(description)) {
+      setDescProfane(true);
+      return;
+    }
+    // Страховка Apple 1.2: без согласия с условиями метку не публикуем.
+    if (!(await ensureAccepted())) return;
     setSaving(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -427,12 +438,13 @@ export function AddMarkerScreen({ navigation }: Props) {
           placeholder={t('addMarker.commentPlaceholder')}
           placeholderTextColor={colors.textSoft}
           value={description}
-          onChangeText={setDescription}
+          onChangeText={(v) => { setDescription(v); setDescProfane(false); }}
           multiline
           numberOfLines={3}
           maxLength={500}
           textAlignVertical="top"
         />
+        {descProfane && <Text style={styles.fieldError}>{t('common.profanityError')}</Text>}
       </View>
 
       {/* Pushes the submit button to the bottom */}
@@ -649,6 +661,14 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
     color: colors.ink,
     minHeight: 80,
     ...shadows.sm,
+  },
+
+  // Ошибка под полем (фильтр недопустимых слов)
+  fieldError: {
+    fontSize: 12,
+    fontFamily: ty.font.body,
+    color: colors.danger,
+    marginTop: 4,
   },
 
   // Add button — pinned to bottom

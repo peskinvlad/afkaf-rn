@@ -7,11 +7,27 @@
 --   адресат (чтобы решить). Инициатор исходящей pending-заявки превью адресата
 --   НЕ получает до принятия. accepted — в обе стороны, как раньше.
 -- Гранты: REVOKE PUBLIC/anon, GRANT authenticated.
+-- 2026-11-20 (first_name_strangers_v2): незнакомым — только первое слово display_name;
+--   полное имя — себе и принятым друзьям.
 CREATE OR REPLACE FUNCTION public.get_user_previews(ids uuid[])
  RETURNS TABLE(id uuid, display_name text, dog_name text, dog_avatar text)
- LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
 AS $function$
-  select p.id, p.display_name, d.name as dog_name, d.icon as dog_avatar
+  select
+    p.id,
+    case
+      when exists (
+        select 1 from friendships fa
+        where fa.status = 'accepted'
+          and ((fa.requester_id = auth.uid() and fa.addressee_id = p.id)
+            or (fa.addressee_id = auth.uid() and fa.requester_id = p.id))
+      ) then p.display_name
+      else coalesce(substring(p.display_name from '\S+'), p.display_name)
+    end as display_name,
+    d.name as dog_name,
+    d.icon as dog_avatar
   from profiles p
   left join lateral (
     select dg.name, dg.icon from dogs dg

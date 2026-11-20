@@ -50,6 +50,7 @@ import { isAccurateFix, createGlitchFilter } from '../lib/gpsQuality';
 import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PrivacyChoiceSheet } from '../components/PrivacyChoiceSheet';
+import { useTermsConsent } from '../hooks/useTermsConsent';
 import type { Visibility } from './SettingsScreen';
 
 // Стартовая позиция карты — Бат-Ям (см. START_COORD/START_DELTA в lib/geo).
@@ -93,6 +94,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     t, rtl, heatData, chipSeason, weatherIcon, isHeatLoading, setIsWalking, isGuest, isWalking, isTrusted,
     radius, setRadius, activeCategories, toggleCategory, userLocation, setUserLocation,
   } = useApp();
+  const { ensureAccepted } = useTermsConsent();
   const { font } = useTypography();
   const styles = useMemo(() => makeStyles(font), [font]);
 
@@ -445,6 +447,8 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     // одновременно) и только залогиненному (гостям не показываем). Пока ключа
     // нет — открываем шторку и ждём выбора; старт продолжит handlePrivacyChoose.
     if (!isGuest) {
+      // Страховка Apple 1.2: прогулку видят другие — сначала согласие с условиями.
+      if (!(await ensureAccepted())) return;
       const stored = await AsyncStorage.getItem('privacy_visibility');
       if (!stored) {
         setPrivacySheetVisible(true);
