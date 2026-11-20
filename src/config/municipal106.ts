@@ -18,7 +18,7 @@ export const MUNICIPAL_106: Record<CityId, Municipal106Contact> = {
   givatayim: { whatsapp: '972542524913', phone: '037336600', verifiedAt: '2026-11-20' },
   ramat_hasharon: { whatsapp: '972525559106', phone: '035483800', verifiedAt: '2026-11-20' },
   herzliya: { whatsapp: '972536106106', phone: '099591520', verifiedAt: '2026-11-20' },
-  bat_yam: { whatsapp: '', phone: '' },
+  bat_yam: { whatsapp: '972544810000', phone: '', verifiedAt: '2026-11-20' }, // городской центр 107; WhatsApp вс–чт 08–20, пт 08–12
   bnei_brak: { whatsapp: '', phone: '037712900' },
   ramat_gan: { whatsapp: '', phone: '' },
 };
