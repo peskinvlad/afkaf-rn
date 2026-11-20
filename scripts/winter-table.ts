@@ -12,11 +12,11 @@ const NOW = (hh: number, mm = 0) => Date.UTC(2026, 11, 10, hh - 2, mm, 0);
 const slots = (...a: ReturnType<typeof slot>[]) => a;
 
 const CASES = [
-  { n: 1, name: 'сухо весь день', now: NOW(9), nowRaining: false, f: slots(slot(12, 0), slot(15, 0.1), slot(18, 0.2), slot(21, 0)), expect: 'dryAll' },
+  { n: 1, name: 'сухо в ближайшие сутки', now: NOW(9), nowRaining: false, f: slots(slot(12, 0), slot(15, 0.1), slot(18, 0.2), slot(21, 0)), expect: 'dryAll' },
   { n: 2, name: 'дождь позже (pop 0.6 в 18)', now: NOW(9), nowRaining: false, f: slots(slot(12, 0), slot(15, 0.1), slot(18, 0.6), slot(21, 0.7)), expect: 'dryUntil 18:00' },
   { n: 3, name: 'дождь по иконке 10d при pop 0', now: NOW(9), nowRaining: false, f: slots(slot(12, 0), slot(15, 0, '10d'), slot(18, 0)), expect: 'dryUntil 15:00' },
   { n: 4, name: 'дождь сейчас, суше с 15', now: NOW(10), nowRaining: true, f: slots(slot(12, 0.8, '10d'), slot(15, 0.2), slot(18, 0.1)), expect: 'rainUntil 15:00' },
-  { n: 5, name: 'ближайший слот дождливый (now сухо)', now: NOW(10), nowRaining: false, f: slots(slot(12, 0.5), slot(15, 0.3), slot(18, 0)), expect: 'rainUntil 15:00' },
+  { n: 5, name: 'сухо сейчас, ближайший слот дождливый', now: NOW(10), nowRaining: false, f: slots(slot(12, 0.5), slot(15, 0.3), slot(18, 0)), expect: 'dryUntil 12:00' },
   { n: 6, name: 'pop ровно 0.4 — граница', now: NOW(9), nowRaining: false, f: slots(slot(12, 0.39), slot(15, 0.4)), expect: 'dryUntil 15:00' },
   { n: 7, name: 'дождь весь период', now: NOW(10), nowRaining: true, f: slots(slot(12, 0.9, '11d'), slot(15, 0.7), slot(18, 0.5)), expect: 'rainAll' },
   { n: 8, name: 'ночь: ночные слоты не в окне, утро завтра сухо', now: NOW(22, 30), nowRaining: false, f: slots(slot(1, 0.9, '10n', 11), slot(4, 0.9, '10n', 11), slot(7, 0.1, '01d', 11), slot(10, 0, '01d', 11)), expect: 'dryAllTomorrow' },

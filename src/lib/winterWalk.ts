@@ -7,7 +7,7 @@ import { WALK_WINDOW_START_H, WALK_WINDOW_END_H, weatherKind } from './heat';
 export const RAIN_LIKELY_POP = 0.4;
 
 export type DryWindow =
-  | { kind: 'dryAll' }                                       // сухо весь день
+  | { kind: 'dryAll' }                                       // сухо в ближайшие сутки
   | { kind: 'dryAllTomorrow' }                               // ближайшие часы в окне — уже завтра, сухо
   | { kind: 'dryUntil' | 'dryUntilTomorrow'; timeEpoch: number }   // сухо до HH:00, потом вероятен дождь
   | { kind: 'rainUntil' | 'rainUntilTomorrow'; timeEpoch: number } // дождь вероятен до HH:00, потом суше
@@ -47,7 +47,9 @@ export function pickDryWindow(forecast: Slot[], nowMs: number, nowRaining = fals
   if (slots.length === 0) return { kind: 'none' };
 
   const isToday = (pt: Slot) => sameDay(now, new Date(pt.timeEpoch * 1000));
-  const rainyNow = (nowRaining && inWalkWindow(now)) || isRainLikely(slots[0]);
+  // Внутри окна «сейчас» решает только текущая погода; вне окна (ночь) —
+  // ближайший слот окна.
+  const rainyNow = inWalkWindow(now) ? nowRaining : isRainLikely(slots[0]);
 
   if (rainyNow) {
     const dry = slots.find((pt) => !isRainLikely(pt));
