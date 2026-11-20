@@ -10,7 +10,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
 import { useTypography } from '../theme/fonts';
-import { pickBestWalkTime } from '../lib/heat';
+import { pickBestWalkTime, effectiveChipSeason, weatherKind } from '../lib/heat';
+import { pickDryWindow } from '../lib/winterWalk';
 import { iconToLucide } from '../lib/weatherIcons';
 import { colors, radii, shadows, spacing, typography, heatVis } from '../theme/tokens';
 
@@ -62,7 +63,7 @@ const TIPS_KEYS = ['heat.tips.0', 'heat.tips.1', 'heat.tips.2'] as const;
 
 export function PavementTempScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
-  const { t, heatData, feelsLikeC, weatherDescription, weatherIcon, hourlyForecast, isFallbackLocation } = useApp();
+  const { t, heatData, chipSeason, feelsLikeC, weatherDescription, weatherIcon, hourlyForecast, isFallbackLocation } = useApp();
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
 
@@ -90,8 +91,121 @@ export function PavementTempScreen({ navigation }: any) {
     [hourlyForecast, status],
   );
 
+  // Зимний вид — тот же источник правды, что у чипа на карте: chipSeason из
+  // useApp (авто-логика + dev-оверрайд «Зима») через effectiveChipSeason, так что
+  // caution/danger по асфальту всегда даёт летний экран. Без данных — летний.
+  const isWinter = heatData.has_data && effectiveChipSeason(chipSeason, status) === 'winter';
+
+  const nowKind = weatherKind(weatherIcon);
+  const dryWindow = useMemo(
+    () => pickDryWindow(hourlyForecast, Date.now(), nowKind === 'rain' || nowKind === 'storm'),
+    [hourlyForecast, nowKind],
+  );
+
   const sliderPct = scalePos(heatData.surface_est_c) * 100;
   const nowStr = fmtTime(Date.now() / 1000);
+
+  if (isWinter) {
+    const NowIcon = iconToLucide(weatherIcon ?? '');
+    return (
+      <View style={[styles.root, { paddingTop: insets.top }]}>
+        <View style={[styles.header, rtl && styles.rowReverse]}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backBtn}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Text style={styles.backArrow}>{rtl ? '→' : '←'}</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>{t('winter.screen.title')}</Text>
+          <View style={styles.backBtn} />
+        </View>
+
+        <ScrollView
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 32 }]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* ── 1. Погода сейчас ── */}
+          <View style={[styles.statusCard, { backgroundColor: colors.winterBg }, shadows.md]}>
+            <NowIcon size={44} color={colors.winter} strokeWidth={WEATHER_ICON_STROKE} />
+            <Text style={[styles.tempValue, { color: colors.winter }]}>{heatData.air_temp_c}°</Text>
+            <Text style={[styles.zoneName, { color: colors.winter }]}>{t(`weather.${nowKind}`)}</Text>
+            {feelsLikeC != null && (
+              <Text style={[styles.advice, { color: colors.winter }]}>
+                {t('winter.feels_like', { n: feelsLikeC })}
+              </Text>
+            )}
+          </View>
+
+          {isFallbackLocation && (
+            <Text style={styles.fallbackLocationCaption}>{t('heat.fallback_location.caption')}</Text>
+          )}
+
+          {/* ── 2. Ближайшие 24 часа: время, значок, воздух, вероятность дождя ── */}
+          {hourlyForecast.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>{t('heat.forecast.title')}</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.forecastRow}
+                nestedScrollEnabled
+                style={styles.forecastScroll}
+              >
+                {hourlyForecast.map((pt, i) => {
+                  const isCurrent = i === currentIdx;
+                  const WeatherIcon = iconToLucide(pt.icon);
+                  const popPct = Math.round(pt.pop * 100);
+                  return (
+                    <View
+                      key={pt.timeEpoch}
+                      style={[
+                        styles.forecastCard,
+                        isCurrent && { borderWidth: 2, borderColor: colors.winter },
+                      ]}
+                    >
+                      <Text style={[styles.forecastTime, isCurrent && styles.forecastTimeBold]}>
+                        {fmtTime(pt.timeEpoch)}
+                      </Text>
+                      <View style={styles.forecastIconBox}>
+                        <WeatherIcon size={weatherIconSize(pt.icon)} color={colors.winter} strokeWidth={WEATHER_ICON_STROKE} />
+                      </View>
+                      <Text style={[styles.forecastSurface, { color: colors.ink }]}>{pt.airTempC}°</Text>
+                      {/* Фиксированная высота строки: карточки без дождя не «прыгают». */}
+                      <View style={styles.popRow}>
+                        {popPct > 0 && <Text style={styles.popText}>{popPct}%</Text>}
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* ── 3. Лучшее время: когда сухо ── */}
+          {dryWindow.kind !== 'none' && (
+            <View style={[styles.bestTimeCard, { backgroundColor: colors.winterBg }, shadows.sm]}>
+              <View style={[styles.rowReverse, { alignItems: 'center', gap: spacing.sm }]}>
+                <Text style={styles.bestTimeIcon}>🕐</Text>
+                <Text style={[styles.bestTimeTitle, { color: colors.winter }]}>
+                  {t('heat.best_time.title')}
+                </Text>
+              </View>
+              <Text style={styles.bestTimeBody}>
+                {t(
+                  `winter.window.${dryWindow.kind}`,
+                  'timeEpoch' in dryWindow ? { time: fmtTime(dryWindow.timeEpoch) } : undefined,
+                )}
+              </Text>
+            </View>
+          )}
+
+          {/* ── 4. Асфальт — одной мелкой строкой ── */}
+          <Text style={styles.sunnySideNote}>{t('winter.asphalt_note', { temp: heatData.surface_est_c })}</Text>
+        </ScrollView>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -460,6 +574,17 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   forecastSurface: {
     ...ty.variants.sm,
     fontFamily: ty.font.heading,
+  },
+
+  // Winter forecast: строка вероятности дождя
+  popRow: {
+    height: 16,
+    justifyContent: 'center',
+  },
+  popText: {
+    ...ty.variants.xs,
+    fontFamily: ty.font.bodyBold,
+    color: colors.winter,
   },
 
   // E. Best time
