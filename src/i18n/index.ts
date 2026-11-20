@@ -463,6 +463,19 @@ const strings: Record<Lang, Record<string, string>> = {
     'auth.error.title': 'ההתחברות נכשלה',
     'auth.error.body': 'משהו השתבש. נסו שוב בעוד רגע.',
 
+    // Экран согласия с условиями (TermsConsentScreen, Apple 1.2)
+    'terms.title': 'לפני שמתחילים',
+    'terms.body1': 'ב-afkaf אנשים אחרים רואים את הסימונים שלכם, את פרופיל הכלב, ואם תבחרו — גם את הטיולים שלכם.',
+    'terms.body2': 'אין לנו שום סובלנות לתוכן או להתנהגות פוגעניים, מסוכנים או לא הולמים. תוכן כזה יוסר, וחשבונות שמפרסמים אותו ייחסמו.',
+    'terms.body3': 'תמיד אפשר לדווח על סימון או על משתמש ולחסום כל משתמש.',
+    'terms.agreePrefix': 'בלחיצה על «מאשרים» אתם מסכימים ל',
+    'terms.termsLink': 'תנאי השימוש',
+    'terms.and': ' ול',
+    'terms.privacyLink': 'מדיניות הפרטיות',
+    'terms.agreeSuffix': '.',
+    'terms.accept': 'מאשרים',
+    'terms.signOut': 'התנתקות',
+
     'addMarker.title': 'סימון חדש',
     'addMarker.typeLabel': 'סוג הסימון',
     'addMarker.type.hazard': 'מפגע',
@@ -1046,6 +1059,19 @@ const strings: Record<Lang, Record<string, string>> = {
     'auth.error.title': 'Sign-in failed',
     'auth.error.body': 'Something went wrong. Please try again.',
 
+    // Terms consent screen (TermsConsentScreen, Apple 1.2)
+    'terms.title': 'Before you start',
+    'terms.body1': 'In afkaf, other people see your markers, your dog\'s profile and — if you choose — your walks.',
+    'terms.body2': 'We have zero tolerance for objectionable, abusive or dangerous content and behavior. Such content is removed, and accounts that post it are blocked.',
+    'terms.body3': 'You can report any marker or person and block any user at any time.',
+    'terms.agreePrefix': 'By tapping “I agree” you accept the ',
+    'terms.termsLink': 'Terms of Use',
+    'terms.and': ' and the ',
+    'terms.privacyLink': 'Privacy Policy',
+    'terms.agreeSuffix': '.',
+    'terms.accept': 'I agree',
+    'terms.signOut': 'Sign out',
+
     'addMarker.title': 'New marker',
     'addMarker.typeLabel': 'Marker type',
     'addMarker.type.hazard': 'Hazard',
@@ -1628,6 +1654,19 @@ const strings: Record<Lang, Record<string, string>> = {
     'auth.privacy': 'Политикой конфиденциальности',
     'auth.error.title': 'Не удалось войти',
     'auth.error.body': 'Что-то пошло не так. Попробуй ещё раз.',
+
+    // Экран согласия с условиями (TermsConsentScreen, Apple 1.2)
+    'terms.title': 'Прежде чем начать',
+    'terms.body1': 'В afkaf ваши метки, профиль собаки и — если вы так выберете — прогулки видят другие люди.',
+    'terms.body2': 'Мы не терпим оскорбительный, опасный или неприемлемый контент и такое же поведение. Такой контент удаляется, а аккаунты, которые его публикуют, блокируются.',
+    'terms.body3': 'На любую метку или человека можно пожаловаться, а любого пользователя — заблокировать.',
+    'terms.agreePrefix': 'Нажимая «Принимаю», вы соглашаетесь с ',
+    'terms.termsLink': 'Условиями использования',
+    'terms.and': ' и ',
+    'terms.privacyLink': 'Политикой конфиденциальности',
+    'terms.agreeSuffix': '.',
+    'terms.accept': 'Принимаю',
+    'terms.signOut': 'Выйти',
 
     'addMarker.title': 'Новая метка',
     'addMarker.typeLabel': 'Тип метки',

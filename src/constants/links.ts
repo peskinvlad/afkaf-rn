@@ -12,3 +12,8 @@ export const LINKS = {
   terms: `${SITE}/terms`,
   deleteAccount: `${SITE}/delete-account`,
 } as const;
+
+// Версия условий использования, которую человек принимает на TermsConsentScreen
+// (пишется в profiles.terms_version через RPC accept_terms, ≤ 20 символов).
+// Существенно изменили /terms → поднять версию: все примут условия заново.
+export const TERMS_VERSION = '2026-11';
