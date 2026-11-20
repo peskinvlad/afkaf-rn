@@ -814,7 +814,7 @@ export function DevPanel({ visible, onClose }: Props) {
 function runMunicipalityTest() {
   const points: { name: string; lat: number; lng: number; expect: string }[] = [
     { name: 'Центр Бат-Яма', lat: 32.0167, lng: 34.75, expect: 'sure bat_yam' },
-    { name: 'Граница Бат-Ям/Холон', lat: 32.0135, lng: 34.765, expect: 'unsure' },
+    { name: 'Граница Бат-Ям/Холон', lat: 32.0135, lng: 34.762, expect: 'unsure' },
     { name: 'Море', lat: 32.02, lng: 34.7, expect: 'unsure, все 9 городов' },
   ];
   const n = municipalityDataCount();
