@@ -4,7 +4,7 @@ import { Alert, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { MapMarker } from './markerConfig';
 import { MUNICIPAL_106 } from '../config/municipal106';
-import type { CityId } from './municipality';
+import { resolveMunicipality, type CityId } from './municipality';
 
 // Типы, для которых показываем кнопку. forbidden — нет (это не мэрийный вопрос).
 // food в MARKER_CONFIG пока нет; когда появится — добавить сюда.
@@ -50,6 +50,14 @@ export function channelFor(cityId: CityId): ChannelKind {
   return 'none';
 }
 
+// Кнопку в пузыре не показываем, если город известен точно, но контакта у него нет
+// (иначе тупик). При 'unsure' — показываем: пользователь выберет город сам.
+export function shouldShowReport106(m: Pick<MapMarker, 'type' | 'lat' | 'lng'>): boolean {
+  if (!canReportToCity(m.type)) return false;
+  const res = resolveMunicipality(m.lat, m.lng);
+  return !(res.status === 'sure' && channelFor(res.cityId) === 'none');
+}
+
 type TFn = (key: string, vars?: Record<string, string | number>) => string;
 
 // Открывает канал города. true — канал реально открыт (или пользователь
@@ -86,7 +94,8 @@ export async function openCityChannel(
     return true;
   } catch (e) {
     console.warn('[report106] openURL failed:', e);
-    Alert.alert(t('report106.error.title'), t('report106.error.body'));
+    if (kind === 'phone') Alert.alert(t('report106.error.phone'));
+    else Alert.alert(t('report106.error.title'), t('report106.error.body'));
     return false;
   }
 }

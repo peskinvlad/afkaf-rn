@@ -556,7 +556,7 @@ const strings: Record<Lang, Record<string, string>> = {
 
     // ── מודרציה (feat/moderation): דיווח + חסימה ──
     // ── Сообщить в мэрию (feat/report-106) ──
-    'report106.button': 'דיווח לעירייה',
+    'report106.button': 'פנייה למוקד העירוני',
     'report106.sent': 'דיווחתם לעירייה',
     'report106.sheet.title': 'איפה נמצא הסימון?',
     'report106.sheet.otherCity': 'עיר אחרת',
@@ -570,6 +570,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'report106.call': 'התקשרו',
     'report106.error.title': 'לא הצלחנו לפתוח את הדיווח',
     'report106.error.body': 'בדקו שוואטסאפ מותקן ונסו שוב.',
+    'report106.error.phone': 'לא הצלחנו לפתוח את השיחה',
     'report106.city.tel_aviv_yafo': 'תל אביב-יפו',
     'report106.city.bat_yam': 'בת ים',
     'report106.city.holon': 'חולון',
@@ -1163,7 +1164,7 @@ const strings: Record<Lang, Record<string, string>> = {
 
     // ── moderation (feat/moderation): report + block ──
     // ── Сообщить в мэрию (feat/report-106) ──
-    'report106.button': 'Report to the city',
+    'report106.button': 'Send to city hotline',
     'report106.sent': 'You reported this to the city',
     'report106.sheet.title': 'Where is this pin?',
     'report106.sheet.otherCity': 'Another city',
@@ -1177,6 +1178,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'report106.call': 'Call',
     'report106.error.title': 'Couldn\'t open the report',
     'report106.error.body': 'Make sure WhatsApp is installed and try again.',
+    'report106.error.phone': 'Couldn\'t start the call',
     'report106.city.tel_aviv_yafo': 'Tel Aviv-Yafo',
     'report106.city.bat_yam': 'Bat Yam',
     'report106.city.holon': 'Holon',
@@ -1784,6 +1786,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'report106.call': 'Позвонить',
     'report106.error.title': 'Не получилось открыть сообщение',
     'report106.error.body': 'Проверь, что WhatsApp установлен, и попробуй ещё раз.',
+    'report106.error.phone': 'Не получилось открыть звонок',
     'report106.city.tel_aviv_yafo': 'Тель-Авив-Яффо',
     'report106.city.bat_yam': 'Бат-Ям',
     'report106.city.holon': 'Холон',
