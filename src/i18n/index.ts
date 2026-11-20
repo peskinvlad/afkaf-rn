@@ -30,6 +30,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'common.confirm': 'אישור',
     'common.save_error': 'לא הצלחנו לשמור. נסו שוב.',
     'common.rate_limit': 'יותר מדי סימונים, המתן קצת.',
+    'common.profanityError': 'בטקסט יש מילים לא ראויות. נסו לנסח אחרת.',
 
     'map.search': 'חיפוש פארקים, אנשים, מקומות',
     'map.startWalk': 'התחל טיול',
@@ -627,6 +628,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'common.confirm': 'Confirm',
     'common.save_error': "Couldn't save. Please try again.",
     'common.rate_limit': 'Too many markers, please wait a bit.',
+    'common.profanityError': 'The text contains inappropriate words. Please rephrase.',
 
     'map.search': 'Search parks, people, places',
     'map.startWalk': 'Start a walk',
@@ -1223,6 +1225,7 @@ const strings: Record<Lang, Record<string, string>> = {
     'common.confirm': 'Подтвердить',
     'common.save_error': 'Не удалось сохранить. Попробуй ещё раз.',
     'common.rate_limit': 'Слишком много отметок, подожди немного.',
+    'common.profanityError': 'В тексте есть недопустимые слова. Переформулируйте, пожалуйста.',
 
     'map.search': 'Поиск парков, людей, мест',
     'map.startWalk': 'Начать прогулку',
