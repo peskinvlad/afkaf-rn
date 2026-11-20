@@ -55,6 +55,8 @@ export function channelFor(cityId: CityId): ChannelKind {
 export function shouldShowReport106(m: Pick<MapMarker, 'type' | 'lat' | 'lng'>): boolean {
   if (!canReportToCity(m.type)) return false;
   const res = resolveMunicipality(m.lat, m.lng);
+  // danger/hazard: кнопка остаётся — шторка покажет подсказку про полицию (100).
+  if (needsPoliceHint(m.type)) return true;
   return !(res.status === 'sure' && channelFor(res.cityId) === 'none');
 }
 

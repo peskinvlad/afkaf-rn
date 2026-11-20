@@ -86,8 +86,16 @@ export function Report106Provider({ children }: { children: React.ReactNode }) {
       if (res.status === 'sure') {
         if (!police) {
           // Прямой путь без шторки — подсказку про фото даём тостом.
-          if (channelFor(res.cityId) === 'whatsapp') showToast(t('report106.hint.photo'));
-          openChannel(res.cityId, marker);
+          if (busy.current) return;
+          busy.current = true;
+          const release = () => { busy.current = false; };
+          if (channelFor(res.cityId) === 'whatsapp') {
+            showToast(t('report106.hint.photo'));
+            // Даём тосту показаться до ухода в WhatsApp.
+            setTimeout(() => { openChannel(res.cityId, marker).finally(release); }, 1300);
+          } else {
+            openChannel(res.cityId, marker).finally(release);
+          }
           return;
         }
         setState({ marker, candidates: [res.cityId], sureCity: res.cityId });
