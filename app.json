@@ -53,8 +53,9 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "afkaf shows nearby dogs, walks and hazards on the map and records your walk route.",
-          "locationAlwaysAndWhenInUsePermission": "afkaf keeps recording your walk route and shows nearby activity even while the app is in the background.",
+          "locationWhenInUsePermission": "afkaf shows hazards, water and dog parks near you. During a walk you start, it records your route even with the screen locked and can share your walk with friends or people nearby, as you choose.",
+          "locationAlwaysAndWhenInUsePermission": "Background location is used only during a walk you started: to record the route, finish the walk at home and check you in at dog parks. It stops when the walk ends.",
+          "locationAlwaysPermission": "Background location is used only during a walk you started: to record the route, finish the walk at home and check you in at dog parks. It stops when the walk ends.",
           "isIosBackgroundLocationEnabled": true
         }
       ],
