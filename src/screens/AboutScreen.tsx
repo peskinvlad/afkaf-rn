@@ -102,7 +102,7 @@ const STRINGS = {
         title: 'Прогулки', icon: '🐾',
         items: [
           { q: 'Зачем начинать прогулку в приложении?', a: 'Когда ты на прогулке, другие пользователи видят что рядом есть собака. Это помогает планировать маршрут и избегать нежелательных встреч.' },
-          { q: 'Как работает запись маршрута?', a: 'Приложение записывает трек прогулки — расстояние, время, маршрут. После прогулки ты видишь статистику. Маршруты хранятся только на твоём устройстве.' },
+          { q: 'Как работает запись маршрута?', a: 'Приложение записывает прогулку — расстояние, время, шаги и маршрут. После прогулки ты видишь статистику. Маршрут хранится на сервере в твоём аккаунте, виден только тебе и удаляется вместе с аккаунтом. Во время прогулки другие могут видеть только твоё текущее положение — по настройке видимости.' },
         ],
       },
     ],
@@ -161,7 +161,7 @@ const STRINGS = {
         title: 'Walks', icon: '🐾',
         items: [
           { q: 'Why start a walk in the app?', a: 'When you\'re on a walk, other users can see there\'s a dog nearby. This helps plan routes and avoid unwanted encounters.' },
-          { q: 'How does route recording work?', a: 'The app records your walk track — distance, time, route. After the walk you can see your stats. Routes are stored only on your device.' },
+          { q: 'How does route recording work?', a: 'The app records your walk — distance, time, steps and route. After the walk you can see your stats. The route is stored on our server in your account, is visible only to you and is deleted together with your account. During a walk, others can see only your current position, according to your visibility setting.' },
         ],
       },
     ],
@@ -220,7 +220,7 @@ const STRINGS = {
         title: 'טיולים', icon: '🐾',
         items: [
           { q: 'למה להתחיל טיול באפליקציה?', a: 'כשאתה בטיול, משתמשים אחרים רואים שיש כלב בקרבת מקום. זה עוזר לתכנן מסלול ולהימנע ממפגשים לא רצויים.' },
-          { q: 'איך עובד תיעוד המסלול?', a: 'האפליקציה מתעדת את מסלול הטיול — מרחק, זמן, מסלול. אחרי הטיול ניתן לראות סטטיסטיקות. המסלולים נשמרים רק במכשיר שלך.' },
+          { q: 'איך עובד תיעוד המסלול?', a: 'האפליקציה מתעדת את הטיול — מרחק, זמן, צעדים ומסלול. אחרי הטיול אפשר לראות סטטיסטיקות. המסלול נשמר בשרת בחשבון שלכם, גלוי רק לכם ונמחק יחד עם החשבון. בזמן הטיול אחרים יכולים לראות רק את המיקום הנוכחי שלכם, לפי הגדרת הנראות.' },
         ],
       },
     ],
