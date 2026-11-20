@@ -25,7 +25,7 @@ import { DevPanel } from '../components/DevPanel';
 const APP_VERSION =
   Constants.expoConfig?.version ?? Application.nativeApplicationVersion ?? '';
 
-// Beta feedback shortcut. Fill in the number in international format — digits
+// Feedback shortcut. Fill in the number in international format — digits
 // only, no "+" or spaces, e.g. 972501234567.
 const DEV_WHATSAPP_PHONE = '972542887955';
 const DEV_EMAIL = 'peskin.vlad@gmail.com';
@@ -33,19 +33,19 @@ const DEV_EMAIL = 'peskin.vlad@gmail.com';
 // Prefilled diagnostic line so bug reports arrive with the build already
 // stamped. expo-device is not installed, so this carries the app version (and
 // build, when the native runtime provides one) only — no device model / OS.
-function betaMessage(): string {
+function feedbackMessage(): string {
   const version = Constants.nativeAppVersion ?? Constants.expoConfig?.version ?? APP_VERSION;
   const build = Constants.nativeBuildVersion;
-  const head = `afkaf beta ${version}${build ? ` (${build})` : ''}`;
+  const head = `afkaf ${version}${build ? ` (${build})` : ''}`;
   return `${head}\n\n`; // blank line for the user to type under
 }
 
 // Open WhatsApp with the number and prefilled text; if WhatsApp is not
 // installed the whatsapp:// scheme fails to open and we fall back to email.
 async function contactDeveloper(): Promise<void> {
-  const body = encodeURIComponent(betaMessage());
+  const body = encodeURIComponent(feedbackMessage());
   const wa = `whatsapp://send?phone=${DEV_WHATSAPP_PHONE}&text=${body}`;
-  const mail = `mailto:${DEV_EMAIL}?subject=${encodeURIComponent('afkaf beta')}&body=${body}`;
+  const mail = `mailto:${DEV_EMAIL}?subject=${encodeURIComponent('afkaf')}&body=${body}`;
   try {
     await Linking.openURL(wa);
   } catch {
@@ -409,7 +409,7 @@ export default function AboutScreen({ navigation }: any) {
         </TouchableOpacity>
         <Text style={styles.footerText}>{t.madeWith}</Text>
         <Text style={styles.versionText} onPress={handleVersionTap} suppressHighlighting>
-          v{APP_VERSION} · beta
+          v{APP_VERSION}
         </Text>
       </View>
 
