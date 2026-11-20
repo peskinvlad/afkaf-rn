@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { initialWindowMetrics } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
 import { useTypography } from '../theme/fonts';
 import { LINKS } from '../constants/links';
@@ -29,7 +29,10 @@ interface Props {
 }
 
 export function TermsConsentScreen({ busy, onAccept, onSignOut }: Props) {
-  const insets = useSafeAreaInsets();
+  // Экран рисуется вне NavigationContainer, корневого SafeAreaProvider нет —
+  // useSafeAreaInsets() бросил бы «No safe area value available» (краш на старте).
+  // Как в Toast: статический снимок отступов с запуска (ориентация только портрет).
+  const insets = initialWindowMetrics?.insets ?? { top: 0, bottom: 0, left: 0, right: 0 };
   const { t, rtl } = useApp();
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
