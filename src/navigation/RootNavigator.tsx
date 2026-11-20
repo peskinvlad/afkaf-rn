@@ -23,6 +23,7 @@ import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { AddFriendSheet } from '../components/AddFriendSheet';
 import { WalkRecoveryModal } from '../components/WalkRecoveryModal';
 import { ReportSheetProvider } from '../components/ReportSheet';
+import { Report106Provider } from '../components/Report106Sheet';
 import { ToastProvider } from '../components/Toast';
 import { TermsConsentProvider } from '../hooks/useTermsConsent';
 import { useDeepLink } from '../hooks/useDeepLink';
@@ -60,6 +61,7 @@ export function RootNavigator() {
     <View style={{ flex: 1 }}>
       <ToastProvider>
       <ReportSheetProvider>
+      <Report106Provider>
       {/* Согласие с условиями (Apple 1.2): рисует экран поверх навигатора. */}
       <TermsConsentProvider>
       <NavigationContainer ref={navigationRef}>
@@ -98,6 +100,7 @@ export function RootNavigator() {
         onClose={clearPendingFriend}
       />
       <WalkRecoveryModal />
+      </Report106Provider>
       </ReportSheetProvider>
       </ToastProvider>
     </View>

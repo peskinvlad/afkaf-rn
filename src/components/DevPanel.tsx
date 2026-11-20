@@ -8,6 +8,7 @@ import {
   Modal,
   ScrollView,
   Switch,
+  Alert,
   AppState,
   AppStateStatus,
 } from 'react-native';
@@ -35,6 +36,7 @@ import { getAutoFinishDiagnostics, AutoFinishDiagnostics } from '../lib/autoFini
 import { ParkCheckinState } from '../lib/parkCheckin';
 import { useParkCheckinState } from '../hooks/useParkPresence';
 import { mapDebug } from '../lib/mapDebug';
+import { resolveMunicipality, municipalityDataCount } from '../lib/municipality';
 import { useApp } from '../hooks/useApp';
 import {
   getTrackDiagnostics,
@@ -823,6 +825,18 @@ export function DevPanel({ visible, onClose }: Props) {
             </Text>
           </View>
 
+          {/* ── Тест мэрии ── */}
+          <Text style={styles.sectionTitle}>Тест мэрии</Text>
+          <View style={styles.card}>
+            <TouchableOpacity style={styles.btnPrimary} onPress={runMunicipalityTest} activeOpacity={0.8}>
+              <Text style={styles.btnPrimaryTxt}>Прогнать resolveMunicipality (3 точки)</Text>
+            </TouchableOpacity>
+            <Text style={styles.note}>
+              Бат-Ям центр, граница Бат-Ям/Холон, море. Показывает и число городов в
+              municipalities.json (0 = полигоны ещё не сгенерированы).
+            </Text>
+          </View>
+
           {/* ── Отладка карты ── */}
           <Text style={styles.sectionTitle}>Отладка карты</Text>
           <View style={styles.card}>
@@ -842,6 +856,27 @@ export function DevPanel({ visible, onClose }: Props) {
         </ScrollView>
       </View>
     </Modal>
+  );
+}
+
+// Прогон resolveMunicipality на трёх фиксированных точках → Alert.
+function runMunicipalityTest() {
+  const points: { name: string; lat: number; lng: number; expect: string }[] = [
+    { name: 'Центр Бат-Яма', lat: 32.0167, lng: 34.75, expect: 'sure bat_yam' },
+    { name: 'Граница Бат-Ям/Холон', lat: 32.0135, lng: 34.762, expect: 'unsure' },
+    { name: 'Море', lat: 32.02, lng: 34.7, expect: 'unsure, все 9 городов' },
+  ];
+  const n = municipalityDataCount();
+  const lines = points.map((p) => {
+    const r = resolveMunicipality(p.lat, p.lng);
+    const got =
+      r.status === 'sure' ? `sure ${r.cityId}` : `unsure [${r.candidates.length}] ${r.candidates.join(', ')}`;
+    return `${p.name}\nждём: ${p.expect}\nполучили: ${got}`;
+  });
+  Alert.alert(
+    `Тест мэрии · городов в данных: ${n}`,
+    (n === 0 ? 'municipalities.json пуст — запусти scripts/fetch-municipalities.ts\n\n' : '') +
+      lines.join('\n\n'),
   );
 }
 
