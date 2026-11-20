@@ -18,6 +18,7 @@ import { toByteArray } from 'base64-js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Pencil } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
+import { useTermsConsent } from '../hooks/useTermsConsent';
 import { supabase } from '../lib/supabase';
 import { isDevUser } from '../constants/dev';
 import { useTypography } from '../theme/fonts';
@@ -41,6 +42,7 @@ interface Props {
 export function DogProfileScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { t, lang } = useApp();
+  const { ensureAccepted } = useTermsConsent();
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
 
@@ -149,6 +151,8 @@ export function DogProfileScreen({ navigation, route }: Props) {
   // ── Save ───────────────────────────────────────────────────────────────────
   async function handleSave() {
     if (saving) return;
+    // Страховка Apple 1.2: без согласия с условиями профиль собаки не сохраняем.
+    if (!(await ensureAccepted())) return;
     setSaving(true);
     // Declared out here so the catch can gate the dev-only error detail on it.
     let userId: string | undefined;

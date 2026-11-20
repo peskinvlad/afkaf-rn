@@ -17,6 +17,7 @@ import MapView, { Marker, Circle, PROVIDER_DEFAULT, Region } from 'react-native-
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
+import { useTermsConsent } from '../hooks/useTermsConsent';
 import { supabase } from '../lib/supabase';
 import { ensureLocationPermission } from '../lib/locationPermission';
 import { LocationRequiredCard } from '../components/LocationRequiredCard';
@@ -64,6 +65,7 @@ interface Props {
 export function AddMarkerScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useApp();
+  const { ensureAccepted } = useTermsConsent();
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
 
@@ -249,6 +251,8 @@ export function AddMarkerScreen({ navigation }: Props) {
       Alert.alert(t('common.save_error'));
       return;
     }
+    // Страховка Apple 1.2: без согласия с условиями метку не публикуем.
+    if (!(await ensureAccepted())) return;
     setSaving(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
