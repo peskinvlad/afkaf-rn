@@ -167,8 +167,8 @@ export function surfaceFromWeather(
 // Окно «человеческих» часов в местном времени (десятичные часы): 05:30…23:00.
 // Ночные слоты прогноза (00:00, 03:00) сюда не попадают — раньше именно они
 // давали совет «гулять в 3 ночи».
-const WALK_WINDOW_START_H = 5.5;
-const WALK_WINDOW_END_H = 23;
+export const WALK_WINDOW_START_H = 5.5;
+export const WALK_WINDOW_END_H = 23;
 
 export type BestWalkTime =
   | { kind: 'now' } // прямо сейчас уже прохладно
