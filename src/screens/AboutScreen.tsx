@@ -116,6 +116,7 @@ const STRINGS = {
     contactDev: 'Написать разработчику',
     privacy: 'Политика конфиденциальности',
     terms: 'Условия использования',
+    support: 'Поддержка',
     madeWith: 'Сделано с ❤️ для Шерлока и всех собак Гуш-Дана',
   },
   en: {
@@ -175,6 +176,7 @@ const STRINGS = {
     contactDev: 'Message the developer',
     privacy: 'Privacy Policy',
     terms: 'Terms of Use',
+    support: 'Support',
     madeWith: 'Made with ❤️ for Sherlock and all the dogs of Gush Dan',
   },
   he: {
@@ -234,6 +236,7 @@ const STRINGS = {
     contactDev: 'כתוב למפתח',
     privacy: 'מדיניות פרטיות',
     terms: 'תנאי שימוש',
+    support: 'תמיכה',
     madeWith: '❤️ נעשה מתוך אהבה לשרלוק ולכל כלבי גוש דן',
   },
 };
@@ -406,6 +409,9 @@ export default function AboutScreen({ navigation }: any) {
         </TouchableOpacity>
         <TouchableOpacity onPress={() => Linking.openURL(LINKS.terms)} activeOpacity={0.7}>
           <Text style={styles.privacyLink}>{t.terms}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => Linking.openURL(LINKS.support)} activeOpacity={0.7}>
+          <Text style={styles.privacyLink}>{t.support}</Text>
         </TouchableOpacity>
         <Text style={styles.footerText}>{t.madeWith}</Text>
         <Text style={styles.versionText} onPress={handleVersionTap} suppressHighlighting>

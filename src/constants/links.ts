@@ -11,6 +11,8 @@ export const LINKS = {
   privacy: `${SITE}/privacy`,
   terms: `${SITE}/terms`,
   deleteAccount: `${SITE}/delete-account`,
+  // Support URL для App Store Connect: контакты + ссылки на документы (web/support.html).
+  support: `${SITE}/support`,
 } as const;
 
 // Версия условий использования, которую человек принимает на TermsConsentScreen
