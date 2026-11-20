@@ -1,5 +1,5 @@
 import React, {
-  createContext, useCallback, useContext, useEffect, useMemo, useState,
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from 'react';
 import {
   Modal,
@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useApp } from '../hooks/useApp';
+import { useToast } from './Toast';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows, spacing } from '../theme/tokens';
 import type { MapMarker } from '../lib/markerConfig';
@@ -62,7 +63,12 @@ interface SheetState {
 
 export function Report106Provider({ children }: { children: React.ReactNode }) {
   const { t } = useApp();
+  const { showToast } = useToast();
   const [state, setState] = useState<SheetState | null>(null);
+  // Защита от двойного тапа по городу и от закрытия чужой (уже другой) шторки.
+  const busy = useRef(false);
+  const currentId = useRef<string | null>(null);
+  currentId.current = state?.marker.id ?? null;
 
   const openChannel = useCallback(
     async (cityId: CityId, marker: ReportMarker) => {
@@ -79,6 +85,8 @@ export function Report106Provider({ children }: { children: React.ReactNode }) {
       const police = needsPoliceHint(marker.type);
       if (res.status === 'sure') {
         if (!police) {
+          // Прямой путь без шторки — подсказку про фото даём тостом.
+          if (channelFor(res.cityId) === 'whatsapp') showToast(t('report106.hint.photo'));
           openChannel(res.cityId, marker);
           return;
         }
@@ -87,17 +95,22 @@ export function Report106Provider({ children }: { children: React.ReactNode }) {
       }
       setState({ marker, candidates: res.candidates, sureCity: null });
     },
-    [openChannel],
+    [openChannel, showToast, t],
   );
 
   const value = useMemo(() => ({ startReport }), [startReport]);
 
   const onPick = useCallback(
     async (cityId: CityId) => {
-      if (!state) return;
+      if (!state || busy.current) return;
       const marker = state.marker;
-      const ok = await openChannel(cityId, marker);
-      if (ok) setState(null);
+      busy.current = true;
+      try {
+        const ok = await openChannel(cityId, marker);
+        if (ok && currentId.current === marker.id) setState(null);
+      } finally {
+        busy.current = false;
+      }
     },
     [state, openChannel],
   );
@@ -165,6 +178,7 @@ function Report106Sheet({
                     ch === 'none' && styles.rowDim,
                   ]}
                   onPress={() => onPick(cityId)}
+                  disabled={ch === 'none'}
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.cityTxt, rtl && styles.txtRight]} numberOfLines={1}>
@@ -174,7 +188,7 @@ function Report106Sheet({
                 </TouchableOpacity>
               );
             })}
-            {state?.sureCity ? (
+            {state && state.candidates.length < ALL_CITIES.length ? (
               <TouchableOpacity style={styles.other} onPress={onShowAll} activeOpacity={0.6}>
                 <Text style={styles.otherTxt}>{t('report106.sheet.otherCity')}</Text>
               </TouchableOpacity>
