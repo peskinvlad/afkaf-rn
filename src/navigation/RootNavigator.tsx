@@ -23,6 +23,7 @@ import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { AddFriendSheet } from '../components/AddFriendSheet';
 import { WalkRecoveryModal } from '../components/WalkRecoveryModal';
 import { ReportSheetProvider } from '../components/ReportSheet';
+import { Report106Provider } from '../components/Report106Sheet';
 import { ToastProvider } from '../components/Toast';
 import { useDeepLink } from '../hooks/useDeepLink';
 import { colors } from '../theme/tokens';
@@ -59,6 +60,7 @@ export function RootNavigator() {
     <View style={{ flex: 1 }}>
       <ToastProvider>
       <ReportSheetProvider>
+      <Report106Provider>
       <NavigationContainer ref={navigationRef}>
         <Stack.Navigator
           screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
@@ -94,6 +96,7 @@ export function RootNavigator() {
         onClose={clearPendingFriend}
       />
       <WalkRecoveryModal />
+      </Report106Provider>
       </ReportSheetProvider>
       </ToastProvider>
     </View>
