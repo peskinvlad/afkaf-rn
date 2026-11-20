@@ -1,3 +1,4 @@
+import { AppState } from 'react-native';
 import { useEffect, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 import { LatLng } from '../lib/geo';
@@ -26,7 +27,11 @@ export type HourlyPoint = {
 const FLORENTIN_FALLBACK: LatLng = { latitude: 32.0559, longitude: 34.7722 };
 
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes, same cadence as the PWA
-const RETRY_DELAY_MS = 15 * 1000; // one retry per failed update, so a single network blip doesn't leave the widget stale for 30 min
+const RETRY_DELAY_MS = 15 * 1000;
+// On return to the app: refresh if the last good data is older than this. iOS
+// freezes JS timers in the background, so after a night the chip (and its
+// winter/summer mode) could show yesterday's value until the 30-min tick.
+const STALE_ON_FOREGROUND_MS = 15 * 60 * 1000; // one retry per failed update, so a single network blip doesn't leave the widget stale for 30 min
 
 interface AsphaltTempResult {
   surfaceTempC: number | null;
@@ -125,6 +130,7 @@ export function useAsphaltTemp(lang: Lang): AsphaltTempResult {
   useEffect(() => {
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastOkAt = 0;
 
     // Never throws — a failed update keeps the last successful data on screen
     // and reports success so the caller can schedule the single retry.
@@ -163,6 +169,7 @@ export function useAsphaltTemp(lang: Lang): AsphaltTempResult {
         const current = await currentPromise;
         if (cancelled) return true;
         if (current !== null) {
+          lastOkAt = Date.now();
           setAirTempC(Math.round(current.temp));
           setSurfaceTempC(
             surfaceFromWeather(current.temp, current.clouds, Date.now(), qLat, qLon),
@@ -195,8 +202,14 @@ export function useAsphaltTemp(lang: Lang): AsphaltTempResult {
 
     updateWithRetry();
     timerRef.current = setInterval(updateWithRetry, REFRESH_INTERVAL_MS);
+    const appStateSub = AppState.addEventListener('change', (next) => {
+      if (next === 'active' && Date.now() - lastOkAt > STALE_ON_FOREGROUND_MS) {
+        updateWithRetry();
+      }
+    });
     return () => {
       cancelled = true;
+      appStateSub.remove();
       if (retryTimer) clearTimeout(retryTimer);
       if (timerRef.current) clearInterval(timerRef.current);
     };
