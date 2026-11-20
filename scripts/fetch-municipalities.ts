@@ -24,8 +24,8 @@ import { fileURLToPath } from 'node:url';
 
 type Pt = [number, number]; // [lng, lat]
 
-const CITIES: { id: string; he: string }[] = [
-  { id: 'tel_aviv_yafo', he: 'תל אביב-יפו' },
+const CITIES: { id: string; he: string; wikidata?: string }[] = [
+  { id: 'tel_aviv_yafo', he: 'תל אביב-יפו', wikidata: 'Q33935' },
   { id: 'bat_yam', he: 'בת ים' },
   { id: 'holon', he: 'חולון' },
   { id: 'rishon_lezion', he: 'ראשון לציון' },
@@ -45,7 +45,8 @@ const ENDPOINTS = [
 ];
 
 // Дефисы в OSM бывают разные (-, ‐, –, ־) — приводим к одному виду.
-const norm = (s: string) => s.replace(/[‐-―־]/g, '-').trim();
+// Сравниваем без пробелов и любых дефисов: «תל־אביב–יפו» == «תל אביב-יפו».
+const norm = (s: string) => s.replace(/[\s\-‐-―־]/g, '');
 
 interface OverpassMember {
   type: string;
@@ -60,9 +61,15 @@ interface OverpassRelation {
 
 async function queryOverpass(): Promise<OverpassRelation[]> {
   // Дефис/макаф/тире в именах могут быть разными — в регулярке любой символ (.).
-  const names = CITIES.map((c) => c.he.replace(/-/g, '.')).join('|');
+  // Пробел/дефис/макаф между словами — 1–3 любых символа.
+  const names = CITIES.map((c) => c.he.replace(/[ -]+/g, '.{1,3}')).join('|');
+  const wd = CITIES.filter((c) => c.wikidata).map((c) => c.wikidata).join('|');
+  const bbox = '(31.88,34.68,32.22,34.92)';
   const ql = `[out:json][timeout:90];
-relation["boundary"="administrative"]["admin_level"="8"]["name"~"^(${names})$"](31.88,34.68,32.22,34.92);
+(
+  relation["boundary"="administrative"]["admin_level"="8"]["name"~"^(${names})$"]${bbox};
+  relation["boundary"="administrative"]["wikidata"~"^(${wd})$"]${bbox};
+);
 out geom;`;
   let lastErr: unknown = null;
   for (const url of ENDPOINTS) {
@@ -173,7 +180,11 @@ async function main() {
   const missing: string[] = [];
 
   for (const city of CITIES) {
-    const candidates = rels.filter((r) => norm(r.tags?.name ?? '') === norm(city.he));
+    const candidates = rels.filter(
+      (r) =>
+        norm(r.tags?.name ?? '') === norm(city.he) ||
+        (!!city.wikidata && r.tags?.wikidata === city.wikidata),
+    );
     if (!candidates.length) {
       missing.push(`${city.id} (${city.he})`);
       continue;
