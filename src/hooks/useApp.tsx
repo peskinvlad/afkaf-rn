@@ -6,6 +6,8 @@ import { supabase } from '../lib/supabase';
 import { LatLng } from '../lib/geo';
 import { RadiusFilter } from '../components/MarkerFilterSheet';
 import { useAsphaltTemp, HeatStatus, HourlyPoint } from './useAsphaltTemp';
+import { useChipSeason } from './useChipSeason';
+import { ChipSeason } from '../lib/heat';
 import { checkAndAwardBadges } from '../lib/badges';
 import { flushPendingWalkHistory } from '../lib/walkHistory';
 import { loadAutoFinished, clearAutoFinished, finalizeAutoFinished } from '../lib/walkFinalize';
@@ -44,6 +46,8 @@ export interface AppState {
   setLang: (lang: Lang) => void;
   t: (key: string, vars?: Record<string, string | number>) => string;
   heatData: HeatData;
+  // Режим чипа температуры: 'summer' = асфальт+опасность, 'winter' = погода сейчас.
+  chipSeason: ChipSeason;
   isHeatLoading: boolean;
   isWalking: boolean;
   setIsWalking: (v: boolean) => void;
@@ -194,6 +198,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     air_temp_c: airTempC ?? 0,
     has_data: surfaceTempC != null,
   };
+  // Зима/лето для чипа температуры: по максимуму асфальта за 24 ч с гистерезисом
+  // (+ dev-оверрайд внутри хука). Кормим эффективной температурой — той же, что
+  // видит остальной UI (с учётом dev-оверрайда асфальта).
+  const chipSeason = useChipSeason(surfaceTempC, hourlyForecast);
 
   // ── Marker filter (shared between MapScreen and WalkScreen) ────────────────
   const [radius, setRadius] = useState<RadiusFilter>('all');
@@ -303,6 +311,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setLang,
         t: tFn,
         heatData,
+        chipSeason,
         isHeatLoading,
         isWalking,
         setIsWalking,

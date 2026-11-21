@@ -23,6 +23,10 @@ CREATE TABLE public.profiles (
   created_at    timestamptz NOT NULL DEFAULT now(),
   display_name  text        NOT NULL,
   language      text        NOT NULL DEFAULT 'he'::text,
+  -- terms_* добавлены 2026-11-20 (feat/terms-consent): согласие с условиями (Apple 1.2).
+  -- Пишет только RPC accept_terms (время сервера). NULL = ещё не принимал.
+  terms_accepted_at timestamptz NULL,
+  terms_version     text        NULL,
   CONSTRAINT profiles_pkey PRIMARY KEY (id),
   CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE,
   CONSTRAINT profiles_display_name_len CHECK (display_name IS NULL OR length(display_name) <= 50)

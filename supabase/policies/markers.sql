@@ -1,20 +1,19 @@
--- Снимок RLS от 15.07.2026. markers_select_auth требует
--- GRANT EXECUTE ON FUNCTION get_shadow_status TO authenticated.
+-- Снимок RLS от 16.11.2026 (markers privacy ШАГ 3, applied 2026-11-16).
+-- Прямой доступ anon закрыт: карта читается через get_map_markers (SECURITY
+-- DEFINER, shadow-фильтр внутри). authenticated видит прямым SELECT ТОЛЬКО свои
+-- строки; чужие метки для карты отдаёт get_map_markers.
 -- UPDATE-политики нет by design (метки не редактируются).
 ALTER TABLE public.markers ENABLE ROW LEVEL SECURITY;
 
+-- anon: ни политики SELECT, ни табличных грантов (сняты в ШАГЕ 3).
+REVOKE ALL ON public.markers FROM anon;
+
 DROP POLICY IF EXISTS markers_select_anon ON public.markers;
-CREATE POLICY markers_select_anon ON public.markers
-  FOR SELECT TO anon
-  USING (true);
 
 DROP POLICY IF EXISTS markers_select_auth ON public.markers;
 CREATE POLICY markers_select_auth ON public.markers
   FOR SELECT TO authenticated
-  USING (
-    user_id = auth.uid()
-    OR NOT (SELECT is_shadow_banned FROM get_shadow_status(markers.user_id))
-  );
+  USING (user_id = auth.uid());
 
 DROP POLICY IF EXISTS "markers: auth insert" ON public.markers;
 CREATE POLICY "markers: auth insert" ON public.markers

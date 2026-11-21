@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   ScrollView,
   TouchableOpacity,
   Linking,
@@ -24,7 +25,7 @@ import { DevPanel } from '../components/DevPanel';
 const APP_VERSION =
   Constants.expoConfig?.version ?? Application.nativeApplicationVersion ?? '';
 
-// Beta feedback shortcut. Fill in the number in international format — digits
+// Feedback shortcut. Fill in the number in international format — digits
 // only, no "+" or spaces, e.g. 972501234567.
 const DEV_WHATSAPP_PHONE = '972542887955';
 const DEV_EMAIL = 'peskin.vlad@gmail.com';
@@ -32,19 +33,19 @@ const DEV_EMAIL = 'peskin.vlad@gmail.com';
 // Prefilled diagnostic line so bug reports arrive with the build already
 // stamped. expo-device is not installed, so this carries the app version (and
 // build, when the native runtime provides one) only — no device model / OS.
-function betaMessage(): string {
+function feedbackMessage(): string {
   const version = Constants.nativeAppVersion ?? Constants.expoConfig?.version ?? APP_VERSION;
   const build = Constants.nativeBuildVersion;
-  const head = `afkaf beta ${version}${build ? ` (${build})` : ''}`;
+  const head = `afkaf ${version}${build ? ` (${build})` : ''}`;
   return `${head}\n\n`; // blank line for the user to type under
 }
 
 // Open WhatsApp with the number and prefilled text; if WhatsApp is not
 // installed the whatsapp:// scheme fails to open and we fall back to email.
 async function contactDeveloper(): Promise<void> {
-  const body = encodeURIComponent(betaMessage());
+  const body = encodeURIComponent(feedbackMessage());
   const wa = `whatsapp://send?phone=${DEV_WHATSAPP_PHONE}&text=${body}`;
-  const mail = `mailto:${DEV_EMAIL}?subject=${encodeURIComponent('afkaf beta')}&body=${body}`;
+  const mail = `mailto:${DEV_EMAIL}?subject=${encodeURIComponent('afkaf')}&body=${body}`;
   try {
     await Linking.openURL(wa);
   } catch {
@@ -101,7 +102,7 @@ const STRINGS = {
         title: 'Прогулки', icon: '🐾',
         items: [
           { q: 'Зачем начинать прогулку в приложении?', a: 'Когда ты на прогулке, другие пользователи видят что рядом есть собака. Это помогает планировать маршрут и избегать нежелательных встреч.' },
-          { q: 'Как работает запись маршрута?', a: 'Приложение записывает трек прогулки — расстояние, время, маршрут. После прогулки ты видишь статистику. Маршруты хранятся только на твоём устройстве.' },
+          { q: 'Как работает запись маршрута?', a: 'Приложение записывает прогулку — расстояние, время, шаги и маршрут. После прогулки ты видишь статистику. Маршрут хранится на сервере в твоём аккаунте, виден только тебе и удаляется вместе с аккаунтом. Во время прогулки другие могут видеть только твоё текущее положение — по настройке видимости.' },
         ],
       },
     ],
@@ -114,6 +115,8 @@ const STRINGS = {
     contactEmail: 'peskin.vlad@gmail.com',
     contactDev: 'Написать разработчику',
     privacy: 'Политика конфиденциальности',
+    terms: 'Условия использования',
+    support: 'Поддержка',
     madeWith: 'Сделано с ❤️ для Шерлока и всех собак Гуш-Дана',
   },
   en: {
@@ -159,7 +162,7 @@ const STRINGS = {
         title: 'Walks', icon: '🐾',
         items: [
           { q: 'Why start a walk in the app?', a: 'When you\'re on a walk, other users can see there\'s a dog nearby. This helps plan routes and avoid unwanted encounters.' },
-          { q: 'How does route recording work?', a: 'The app records your walk track — distance, time, route. After the walk you can see your stats. Routes are stored only on your device.' },
+          { q: 'How does route recording work?', a: 'The app records your walk — distance, time, steps and route. After the walk you can see your stats. The route is stored on our server in your account, is visible only to you and is deleted together with your account. During a walk, others can see only your current position, according to your visibility setting.' },
         ],
       },
     ],
@@ -172,6 +175,8 @@ const STRINGS = {
     contactEmail: 'peskin.vlad@gmail.com',
     contactDev: 'Message the developer',
     privacy: 'Privacy Policy',
+    terms: 'Terms of Use',
+    support: 'Support',
     madeWith: 'Made with ❤️ for Sherlock and all the dogs of Gush Dan',
   },
   he: {
@@ -217,7 +222,7 @@ const STRINGS = {
         title: 'טיולים', icon: '🐾',
         items: [
           { q: 'למה להתחיל טיול באפליקציה?', a: 'כשאתה בטיול, משתמשים אחרים רואים שיש כלב בקרבת מקום. זה עוזר לתכנן מסלול ולהימנע ממפגשים לא רצויים.' },
-          { q: 'איך עובד תיעוד המסלול?', a: 'האפליקציה מתעדת את מסלול הטיול — מרחק, זמן, מסלול. אחרי הטיול ניתן לראות סטטיסטיקות. המסלולים נשמרים רק במכשיר שלך.' },
+          { q: 'איך עובד תיעוד המסלול?', a: 'האפליקציה מתעדת את הטיול — מרחק, זמן, צעדים ומסלול. אחרי הטיול אפשר לראות סטטיסטיקות. המסלול נשמר בשרת בחשבון שלכם, גלוי רק לכם ונמחק יחד עם החשבון. בזמן הטיול אחרים יכולים לראות רק את המיקום הנוכחי שלכם, לפי הגדרת הנראות.' },
         ],
       },
     ],
@@ -230,6 +235,8 @@ const STRINGS = {
     contactEmail: 'peskin.vlad@gmail.com',
     contactDev: 'כתוב למפתח',
     privacy: 'מדיניות פרטיות',
+    terms: 'תנאי שימוש',
+    support: 'תמיכה',
     madeWith: '❤️ נעשה מתוך אהבה לשרלוק ולכל כלבי גוש דן',
   },
 };
@@ -343,7 +350,14 @@ export default function AboutScreen({ navigation }: any) {
 
       <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.hero}>
-        <Text style={styles.pawIcon}>🐾</Text>
+        {/* Декоративный: рядом видимый текст «afkaf». Белый тинт на тёмно-зелёной шапке. */}
+        <Image
+          source={require('../../assets/images/logo.png')}
+          style={styles.pawIcon}
+          resizeMode="contain"
+          tintColor="#FFFFFF"
+          accessible={false}
+        />
         <Text style={styles.appName}>afkaf</Text>
         <Text style={[styles.tagline, isRTL && styles.textRight]}>{t.tagline}</Text>
       </View>
@@ -393,9 +407,15 @@ export default function AboutScreen({ navigation }: any) {
         <TouchableOpacity onPress={() => Linking.openURL(LINKS.privacy)} activeOpacity={0.7}>
           <Text style={styles.privacyLink}>{t.privacy}</Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={() => Linking.openURL(LINKS.terms)} activeOpacity={0.7}>
+          <Text style={styles.privacyLink}>{t.terms}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => Linking.openURL(LINKS.support)} activeOpacity={0.7}>
+          <Text style={styles.privacyLink}>{t.support}</Text>
+        </TouchableOpacity>
         <Text style={styles.footerText}>{t.madeWith}</Text>
         <Text style={styles.versionText} onPress={handleVersionTap} suppressHighlighting>
-          v{APP_VERSION} · beta
+          v{APP_VERSION}
         </Text>
       </View>
 
@@ -432,7 +452,7 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
   content: { paddingBottom: 48 },
   hero: { backgroundColor: PRIMARY, paddingTop: 28, paddingBottom: 36, alignItems: 'center' },
-  pawIcon: { fontSize: 40, marginBottom: 8 },
+  pawIcon: { width: 72, height: 81, marginBottom: 8 },
   appName: { fontFamily: font.display, fontSize: 36, color: WHITE, letterSpacing: 1 },
   tagline: { fontFamily: font.body, fontSize: 15, color: 'rgba(255,255,255,0.8)', textAlign: 'center', marginTop: 6, lineHeight: 22 },
   section: { paddingHorizontal: 20, paddingVertical: 24 },

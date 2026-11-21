@@ -8,6 +8,7 @@ import {
   Modal,
   ScrollView,
   Switch,
+  Alert,
   AppState,
   AppStateStatus,
 } from 'react-native';
@@ -27,12 +28,15 @@ import {
   DEV_STILL_WALKING_TEST_KEY,
   DEV_PROXIMITY_TEST_KEY,
   DEV_GPS_PROFILE_KEY,
+  DEV_CHIP_SEASON_KEY,
   emitDevSettingsChange,
 } from '../constants/dev';
+import { ChipSeasonPref } from '../lib/heat';
 import { getAutoFinishDiagnostics, AutoFinishDiagnostics } from '../lib/autoFinish';
 import { ParkCheckinState } from '../lib/parkCheckin';
 import { useParkCheckinState } from '../hooks/useParkPresence';
 import { mapDebug } from '../lib/mapDebug';
+import { resolveMunicipality, municipalityDataCount } from '../lib/municipality';
 import { useApp } from '../hooks/useApp';
 import {
   getTrackDiagnostics,
@@ -107,6 +111,7 @@ export function DevPanel({ visible, onClose }: Props) {
   const [stillWalkingTest, setStillWalkingTest] = useState(false);
   const [proximityTest, setProximityTest] = useState(false);
   const [gpsEco, setGpsEco] = useState(false); // профиль GPS: true = «Эконом»
+  const [chipSeasonPref, setChipSeasonPref] = useState<ChipSeasonPref>('auto'); // режим чипа температуры
   const [dogName, setDogName] = useState<string | null>(null); // для {dog} в «Показать сейчас»
   const parkState = useParkCheckinState();
   // Короткие подтверждения «сброшено/применено» по ключу строки
@@ -159,6 +164,7 @@ export function DevPanel({ visible, onClose }: Props) {
         DEV_STILL_WALKING_TEST_KEY,
         DEV_PROXIMITY_TEST_KEY,
         DEV_GPS_PROFILE_KEY,
+        DEV_CHIP_SEASON_KEY,
       ]);
       const map = Object.fromEntries(entries) as Record<string, string | null>;
       setVisibility(map[VISIBILITY_KEY]);
@@ -177,6 +183,11 @@ export function DevPanel({ visible, onClose }: Props) {
       setStillWalkingTest(map[DEV_STILL_WALKING_TEST_KEY] === 'true');
       setProximityTest(map[DEV_PROXIMITY_TEST_KEY] === 'true');
       setGpsEco(map[DEV_GPS_PROFILE_KEY] === 'eco');
+      setChipSeasonPref(
+        map[DEV_CHIP_SEASON_KEY] === 'winter' || map[DEV_CHIP_SEASON_KEY] === 'summer'
+          ? map[DEV_CHIP_SEASON_KEY]
+          : 'auto',
+      );
 
       // Та же функция, что использует гейт active_walks (privacyZone.ts)
       setHomeZone(await loadHomeZone());
@@ -313,6 +324,16 @@ export function DevPanel({ visible, onClose }: Props) {
     setGpsEco(next);
     if (next) await AsyncStorage.setItem(DEV_GPS_PROFILE_KEY, 'eco');
     else await AsyncStorage.removeItem(DEV_GPS_PROFILE_KEY);
+  }
+
+  // Режим чипа температуры: 'auto' (убираем ключ) / 'winter' / 'summer'.
+  // Действует сразу (emitDevSettingsChange → useChipSeason перечитывает).
+  // Только для DEV_USER_IDS; у обычного пользователя ключа нет и всегда 'auto'.
+  async function setChipSeason(next: ChipSeasonPref) {
+    setChipSeasonPref(next);
+    if (next === 'auto') await AsyncStorage.removeItem(DEV_CHIP_SEASON_KEY);
+    else await AsyncStorage.setItem(DEV_CHIP_SEASON_KEY, next);
+    emitDevSettingsChange();
   }
 
   // «Показать сейчас» — настоящие уведомления (реальные кнопки/тексты/обработчики)
@@ -566,6 +587,36 @@ export function DevPanel({ visible, onClose }: Props) {
             </Text>
           </View>
 
+          {/* ── Чип температуры ── */}
+          <Text style={styles.sectionTitle}>Чип температуры</Text>
+          <View style={styles.card}>
+            <View style={styles.tempRow}>
+              {(['auto', 'winter', 'summer'] as ChipSeasonPref[]).map((opt) => {
+                const active = chipSeasonPref === opt;
+                const label = opt === 'auto' ? 'Авто' : opt === 'winter' ? 'Зима' : 'Лето';
+                return (
+                  <TouchableOpacity
+                    key={opt}
+                    style={[active ? styles.btnPrimary : styles.btnGhost, { flex: 1 }]}
+                    onPress={() => setChipSeason(opt)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={active ? styles.btnPrimaryTxt : styles.btnGhostTxt}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={styles.note}>
+              Авто = по максимуму асфальта за 24 ч с гистерезисом. Зима = значок
+              погоды + температура воздуха, Лето = асфальт + статус опасности.
+              Действует сразу. Только для DEV_USER_IDS, не сохраняется для обычных.
+            </Text>
+            <Text style={styles.note}>
+              Опасность важнее: при текущем статусе «Осторожно»/«Опасно» чип всегда
+              летний — оверрайд «Зима» этого не перебивает.
+            </Text>
+          </View>
+
           {/* ── Автозавершение прогулки ── */}
           <Text style={styles.sectionTitle}>Автозавершение прогулки</Text>
           <View style={styles.card}>
@@ -774,6 +825,18 @@ export function DevPanel({ visible, onClose }: Props) {
             </Text>
           </View>
 
+          {/* ── Тест мэрии ── */}
+          <Text style={styles.sectionTitle}>Тест мэрии</Text>
+          <View style={styles.card}>
+            <TouchableOpacity style={styles.btnPrimary} onPress={runMunicipalityTest} activeOpacity={0.8}>
+              <Text style={styles.btnPrimaryTxt}>Прогнать resolveMunicipality (3 точки)</Text>
+            </TouchableOpacity>
+            <Text style={styles.note}>
+              Бат-Ям центр, граница Бат-Ям/Холон, море. Показывает и число городов в
+              municipalities.json (0 = полигоны ещё не сгенерированы).
+            </Text>
+          </View>
+
           {/* ── Отладка карты ── */}
           <Text style={styles.sectionTitle}>Отладка карты</Text>
           <View style={styles.card}>
@@ -793,6 +856,27 @@ export function DevPanel({ visible, onClose }: Props) {
         </ScrollView>
       </View>
     </Modal>
+  );
+}
+
+// Прогон resolveMunicipality на трёх фиксированных точках → Alert.
+function runMunicipalityTest() {
+  const points: { name: string; lat: number; lng: number; expect: string }[] = [
+    { name: 'Центр Бат-Яма', lat: 32.0167, lng: 34.75, expect: 'sure bat_yam' },
+    { name: 'Граница Бат-Ям/Холон', lat: 32.0135, lng: 34.762, expect: 'unsure' },
+    { name: 'Море', lat: 32.02, lng: 34.7, expect: 'unsure, все 9 городов' },
+  ];
+  const n = municipalityDataCount();
+  const lines = points.map((p) => {
+    const r = resolveMunicipality(p.lat, p.lng);
+    const got =
+      r.status === 'sure' ? `sure ${r.cityId}` : `unsure [${r.candidates.length}] ${r.candidates.join(', ')}`;
+    return `${p.name}\nждём: ${p.expect}\nполучили: ${got}`;
+  });
+  Alert.alert(
+    `Тест мэрии · городов в данных: ${n}`,
+    (n === 0 ? 'municipalities.json пуст — запусти scripts/fetch-municipalities.ts\n\n' : '') +
+      lines.join('\n\n'),
   );
 }
 

@@ -133,6 +133,13 @@
   `DEV_USER_IDS`) → «Отладка карты» → тумблер **Map debug overlay** (действует
   сразу, без перезапуска).
 
+## UI
+
+- **Картинки (`<Image>`): всегда явные `width` И `height` числами в `style`
+  самого Image, без `aspectRatio` — на RN 0.81 / Fabric `width`+`aspectRatio`
+  без `height` откатывается на натуральный размер файла (баг 17.11.2026 с
+  `logo.png`).**
+
 ## Модерация (жалобы и блокировка)
 
 - **Метки при блоке НЕ прячем.** Блокировка скрывает только людей, не метки:
@@ -170,6 +177,16 @@
   дождаться ответа «выполнил», после этого обновить снапшот схемы в
   `supabase/` (нужную категорию и/или `supabase/tables.sql`) **тем же
   коммитом**.
+- **Хук `.claude/hooks/sql-guard.py` автоматически применяет это правило.** Это
+  `PreToolUse`-страж для `mcp__supabase__execute_sql`: читает `tool_input.query` и
+  возвращает решение — **read-only** (`select`/`with`/`explain`, функции из белого
+  списка) → **allow** (пропуск); любое **изменение БД** (`insert`/`update`/`delete`/
+  `drop`/`create`/`alter`/`grant`/`revoke`/… ) → **deny** (запрет — SQL надо выдать
+  Владу в чат на ручной прогон); **неясное** (пустой/нечитаемый запрос, кавычки/
+  спецсимволы, неизвестная функция, не-SELECT оператор) → **ask** (вопрос, никогда
+  не allow по ошибке). Тесты: `.claude/hooks/test_sql_guard.py`. Привязка хука
+  лежит в `.claude/settings.local.json`, который **НЕ коммитится** (локальная
+  настройка каждой машины) — сам `sql-guard.py` в репозитории есть.
 - **`markers`: строки не удаляются, только фильтруются по `expires_at`** —
   история нужна для сводки района.
 - **Типы меток (`markers_type_check`):** `park`, `water`, `danger`, `hazard`,
@@ -200,11 +217,6 @@
   режется на клиенте (`src/hooks/useNearbyDogs.ts`). Владельцы `everyone`-прогулок
   отдают точные live-координаты всем. Дефолт — `friends`, так что риск opt-in.
   Квантовать/rate-limit'ить `everyone`-ветку.
-- **`marker_votes` SELECT `USING(true)`** (`supabase/policies/marker_votes.sql`)
-  раскрывает `user_id` голосовавших. Сузить видимость.
-- **`get_trust_status` с произвольным `p_user_id`**
-  (`supabase/functions/get_trust_status.sql`, не SECURITY DEFINER) — можно
-  посчитать чужой confirmed-count. Низкая чувствительность.
 - **Убрать `EXPO_PUBLIC_MAPBOX_TOKEN` из `.env`** — в коде не используется
   (в бандл не инлайнится), но токен лежит в локальном `.env`.
 

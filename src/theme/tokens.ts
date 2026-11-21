@@ -30,6 +30,11 @@ export const colors = {
   safe: '#3A7D32',
   safeBg: '#EBF4E6',
 
+  // Зимний чип погоды — спокойный синий, нарочно вне семантики опасности
+  // (ok/caution/danger), чтобы зимний вид не читался как статус.
+  winter: '#2E6F95',
+  winterBg: '#E8F1F6',
+
   // Misc
   white: '#FFFFFF',
   cream: '#FBF6EC',

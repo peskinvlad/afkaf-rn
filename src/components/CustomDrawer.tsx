@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
+  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -97,7 +98,18 @@ export function CustomDrawer({ open, onClose, onNavigate, activeScreen }: Props)
         ]}
       >
         <View style={styles.header}>
-          <Text style={styles.logo}>🐾 afkaf</Text>
+          {/* Лого + слово — единый знак, порядок НЕ зеркалим (лапа слева, текст
+              справа всегда). В иврите саму строку прижимаем к правому краю, как
+              остальное меню. Картинка декоративная (рядом видимое «afkaf»), без
+              a11y-лейбла, чтобы скринридер не читал «afkaf» дважды. */}
+          <View style={[styles.logoRow, { justifyContent: rtl ? 'flex-end' : 'flex-start' }]}>
+            <Image
+              source={require('../../assets/images/logo.png')}
+              style={styles.logoImg}
+              resizeMode="contain"
+            />
+            <Text style={styles.logo}>afkaf</Text>
+          </View>
           <Text style={styles.tagline}>{t('drawer.subtitle')}</Text>
         </View>
 
@@ -166,6 +178,15 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     marginBottom: 8,
+  },
+  logoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  logoImg: {
+    width: 25,
+    height: 28,
   },
   logo: {
     fontSize: 22,

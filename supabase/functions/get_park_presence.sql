@@ -26,6 +26,8 @@
 -- Рейт-лимит 20/мин (bucket 'get_park_presence'): карточка опрашивает раз в 30 с,
 -- плюс открытия/закрытия. При превышении — PT429 (клиент оставляет прошлые данные).
 -- Гранты: REVOKE PUBLIC/anon, GRANT authenticated.
+-- 2026-11-20 (first_name_strangers_v2): незнакомым — только первое слово display_name;
+--   полное имя — себе и принятым друзьям.
 CREATE OR REPLACE FUNCTION public.get_park_presence(p_marker_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -70,8 +72,7 @@ BEGIN
       AND c.expires_at > now()
       AND aw.updated_at > now() - interval '30 minutes'
       AND aw.visibility <> 'nobody'
-      AND NOT public.is_blocked(c.user_id)   -- 2026-11-04 (feat/moderation): блок в обе
-                                             -- стороны; исключаем ДО k-анонимности и счётчиков
+      AND NOT public.is_blocked(c.user_id)
   ),
   classified AS (
     SELECT
@@ -89,7 +90,10 @@ BEGIN
       jsonb_agg(
         jsonb_build_object(
           'user_id',      cl.user_id,
-          'display_name', pr.display_name,
+          'display_name', CASE
+                            WHEN cl.is_me OR cl.is_friend THEN pr.display_name
+                            ELSE COALESCE(substring(pr.display_name FROM '\S+'), pr.display_name)
+                          END,
           'dog_name',     d.name,
           'dog_avatar',   d.icon,
           'is_friend',    cl.is_friend,
@@ -114,7 +118,7 @@ BEGIN
     LIMIT 1
   ) d ON true;
 
-  -- k-анонимность (k=2): одиночный аноним не раскрывается даже счётчиком.
+  -- k-анонимность (k=2) — после исключения заблокированных.
   IF v_anon < 2 THEN
     v_anon := 0;
   END IF;

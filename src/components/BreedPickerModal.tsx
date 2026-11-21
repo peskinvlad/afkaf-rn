@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
+import { containsProfanity } from '../lib/profanity';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
 import { searchBreeds, isBreedKey } from '../lib/breeds';
@@ -41,6 +42,7 @@ export function BreedPickerModal({ visible, value, onChange, onClose }: Props) {
   const [query, setQuery] = useState('');
   const [otherMode, setOtherMode] = useState(false);
   const [otherText, setOtherText] = useState('');
+  const [otherProfane, setOtherProfane] = useState(false); // Apple 1.2
 
   // On open, seed from the current value: a non-key value (legacy or previously
   // typed "Other") opens straight into the free-text field; a key or empty
@@ -54,6 +56,7 @@ export function BreedPickerModal({ visible, value, onChange, onClose }: Props) {
     } else {
       setOtherMode(false);
       setOtherText('');
+      setOtherProfane(false);
     }
   }, [visible, value]);
 
@@ -66,6 +69,11 @@ export function BreedPickerModal({ visible, value, onChange, onClose }: Props) {
   }
 
   function confirmOther() {
+    // Недопустимые слова — не закрываем, ошибка под полем.
+    if (containsProfanity(otherText)) {
+      setOtherProfane(true);
+      return;
+    }
     Keyboard.dismiss();
     onChange(otherText.trim());
     onClose();
@@ -94,12 +102,13 @@ export function BreedPickerModal({ visible, value, onChange, onClose }: Props) {
                   placeholder={t('dogProfile.breedOtherPlaceholder')}
                   placeholderTextColor={colors.textSoft}
                   value={otherText}
-                  onChangeText={setOtherText}
+                  onChangeText={(v) => { setOtherText(v); setOtherProfane(false); }}
                   maxLength={50}
                   autoFocus
                   returnKeyType="done"
                   onSubmitEditing={confirmOther}
                 />
+                {otherProfane && <Text style={styles.fieldError}>{t('common.profanityError')}</Text>}
                 <View style={styles.otherActions}>
                   <TouchableOpacity
                     style={[styles.actionBtn, styles.actionGhost]}
@@ -211,6 +220,14 @@ const makeStyles = (ty: ReturnType<typeof useTypography>, rtl: boolean) =>
       writingDirection: rtl ? 'rtl' : 'ltr',
     },
     search: { marginBottom: 6 },
+    fieldError: {
+      fontSize: 12,
+      fontFamily: ty.font.body,
+      color: colors.danger,
+      marginTop: 4,
+      textAlign: rtl ? 'right' : 'left',
+      writingDirection: rtl ? 'rtl' : 'ltr',
+    },
 
     list: { maxHeight: 360 },
     row: {
