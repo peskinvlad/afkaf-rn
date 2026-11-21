@@ -170,7 +170,7 @@ function ReportSheet({ target, onClose }: { target: ReportTarget | null; onClose
 
 const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.4)' },
   kav: { justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.card,

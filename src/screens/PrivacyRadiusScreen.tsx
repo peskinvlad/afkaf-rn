@@ -136,7 +136,7 @@ export function PrivacyRadiusScreen({ navigation }: any) {
         {loaded && (
         <MapView
           ref={mapRef}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           initialRegion={{
             latitude: center.latitude,
             longitude: center.longitude,
@@ -164,7 +164,7 @@ export function PrivacyRadiusScreen({ navigation }: any) {
           {/* Pin wrapper sized to the circle — centred by flex overlay */}
           <View style={{ width: circlePx * 2, height: circlePx * 2, alignItems: 'center', justifyContent: 'center' }}>
             {/* Privacy circle fills the wrapper */}
-            <View style={[StyleSheet.absoluteFillObject, styles.privacyCircle, { borderRadius: circlePx }]} />
+            <View style={[StyleSheet.absoluteFill, styles.privacyCircle, { borderRadius: circlePx }]} />
             {/* Centre dot — centred by flex */}
             <View style={styles.centreDot} />
           </View>

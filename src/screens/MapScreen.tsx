@@ -599,6 +599,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
             filter can never unmount/remount this node — that churn is what made
             the arrow vanish (symptom a). Before the first GPS fix userCoord sits
             at 0,0, so hide it with opacity 0 instead of unmounting. */}
+        {/* @ts-expect-error ЭКСПЕРИМЕНТ SDK58: типы react-native-maps 1.29 не знают children у MarkerAnimated (только типы, в рантайме работает) */}
         <MarkerAnimated
           key="me"
           coordinate={userCoord}

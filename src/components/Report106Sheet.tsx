@@ -221,7 +221,7 @@ function Report106Sheet({
 
 const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {
     backgroundColor: colors.card,
     borderTopLeftRadius: radii.xl,

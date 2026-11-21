@@ -117,7 +117,7 @@ export function TermsConsentScreen({ busy, onAccept, onSignOut }: Props) {
 const makeStyles = ({ font, variants }: ReturnType<typeof useTypography>) =>
   StyleSheet.create({
     root: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       zIndex: 1000,
       elevation: 1000,
       backgroundColor: colors.surface,

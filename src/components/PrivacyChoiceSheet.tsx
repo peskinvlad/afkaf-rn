@@ -159,8 +159,8 @@ export function PrivacyChoiceSheet({ visible, onChoose, onClose }: Props) {
 
 const makeStyles = (ty: ReturnType<typeof useTypography>) =>
   StyleSheet.create({
-    overlay: { ...StyleSheet.absoluteFillObject, zIndex: 30, justifyContent: 'flex-end' },
-    backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
+    overlay: { ...StyleSheet.absoluteFill, zIndex: 30, justifyContent: 'flex-end' },
+    backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.4)' },
     sheet: {
       backgroundColor: colors.card,
       borderTopLeftRadius: radii.xl,

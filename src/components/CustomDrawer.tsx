@@ -161,7 +161,7 @@ export function CustomDrawer({ open, onClose, onNavigate, activeScreen }: Props)
 
 const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
   drawer: {

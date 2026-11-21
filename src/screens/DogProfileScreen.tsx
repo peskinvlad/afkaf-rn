@@ -75,7 +75,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
   const [profane, setProfane] = useState<{ name?: boolean; breed?: boolean; weight?: boolean }>({});
   // Прокрутка к первому полю с ошибкой: y подписи поля внутри контента ScrollView
   // (подписи — прямые дети контента, так что onLayout даёт нужную координату).
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
   const fieldY = useRef<{ name?: number; breed?: number; weight?: number }>({});
   const [gender, setGender]       = useState<Gender>('male');
   const [neutered, setNeutered]   = useState(false);

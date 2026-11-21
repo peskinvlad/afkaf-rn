@@ -122,7 +122,7 @@ export function DevPanel({ visible, onClose }: Props) {
   // Трек-диагностика: снимок обновляем по таймеру, пока панель открыта, чтобы
   // в поле видеть, как капают точки от задачи и от watchPosition.
   const [track, setTrack] = useState<TrackDiagnostics>(getTrackDiagnostics());
-  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
+  const [appState, setAppState] = useState<AppStateStatus>((AppState.currentState ?? "active") as AppStateStatus);
   const [nowTick, setNowTick] = useState(Date.now());
   // Риск-чек уведомлений: лог последних нажатий по тестовой кнопке.
   const [notifLog, setNotifLog] = useState<string[]>([]);
@@ -214,7 +214,7 @@ export function DevPanel({ visible, onClose }: Props) {
     if (!visible) return;
     setTrack(getTrackDiagnostics());
     setAutoDiag(getAutoFinishDiagnostics());
-    setAppState(AppState.currentState);
+    setAppState((AppState.currentState ?? "active") as AppStateStatus);
     const id = setInterval(() => {
       setTrack(getTrackDiagnostics());
       setAutoDiag(getAutoFinishDiagnostics());
