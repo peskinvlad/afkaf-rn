@@ -6,6 +6,7 @@ import { Lang } from '../i18n';
 import { pickBestWalkTime } from '../lib/heat';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
+import { logEvent } from '../lib/analytics';
 
 const DATE_LOCALE: Record<Lang, string> = { he: 'he-IL', en: 'en-US', ru: 'ru-RU' };
 
@@ -36,10 +37,13 @@ export function HeatWarningScreen({ navigation }: Props) {
       : null;
 
   function postpone() {
+    logEvent('heat_warning_choice', { choice: 'wait' });
     navigation.goBack();
   }
 
   function goAnyway() {
+    logEvent('heat_warning_choice', { choice: 'go' });
+    logEvent('walk_started', { heat: 'danger', after_warning: true });
     setIsWalking(true);
     navigation.replace('WalkActive');
   }
