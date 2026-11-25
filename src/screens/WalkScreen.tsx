@@ -52,6 +52,7 @@ import { sendFriendRequest } from '../lib/friendships';
 import { supabase } from '../lib/supabase';
 import { Visibility } from './SettingsScreen';
 import { toWalkPath } from '../lib/walkHistory';
+import { saveLiveWalk, clearLiveWalk, LIVE_WALK_SAVE_EVERY_MS } from '../lib/walkLiveSnapshot';
 import {
   finalizeWalk,
   finalizeAutoFinished,
@@ -689,6 +690,55 @@ export function WalkScreen({ navigation }: Props) {
     };
   }
 
+  // ── Живой снимок прогулки на телефоне (lib/walkLiveSnapshot) ─────────────────
+  // Раз в LIVE_WALK_SAVE_EVERY_MS кладём текущее состояние в AsyncStorage, чтобы
+  // оборванную прогулку (смахнули приложение, не нажав «Завершить») можно было
+  // восстановить на следующем запуске — с маршрутом и шагами, и без опоры на
+  // строку active_walks (её нет в домашней зоне, при видимости «никто» и у гостя).
+  // Обычное завершение и автозавершение снимок снимают.
+  const liveSnapshotUserId = useRef<string | null | undefined>(undefined); // undefined = ещё не узнали
+  const liveSnapshotSavedAt = useRef(0);
+  const liveSnapshotStopped = useRef(false);
+  const liveSnapshotRouteLen = useRef(0);
+  async function maybeSaveLiveSnapshot(nowMs: number) {
+    if (liveSnapshotStopped.current || finishingRef.current) return;
+    if (nowMs - liveSnapshotSavedAt.current < LIVE_WALK_SAVE_EVERY_MS) return;
+    // Пишем, только когда маршрут вырос. Дома (под крышей) точные фиксы почти не
+    // приходят — снимок замирает на последней точке, и «конец прогулки» не
+    // растягивается на время, пока телефон лежал на полке до смахивания.
+    if (routeRef.current.length === liveSnapshotRouteLen.current) return;
+    liveSnapshotSavedAt.current = nowMs;
+    liveSnapshotRouteLen.current = routeRef.current.length;
+    if (liveSnapshotUserId.current === undefined) {
+      const { data: { session } } = await supabase.auth.getSession();
+      liveSnapshotUserId.current = session?.user?.id ?? null;
+    }
+    // Гостевую прогулку в историю не сохраняем — и восстанавливать её некуда.
+    if (liveSnapshotUserId.current === null) return;
+    // Пока ждали сессию, прогулку могли завершить — завершённую не перезаписываем.
+    if (liveSnapshotStopped.current || finishingRef.current) return;
+    await saveLiveWalk({
+      userId: liveSnapshotUserId.current,
+      startedAt: walkStartedAt,
+      updatedAt: new Date(nowMs).toISOString(),
+      distanceKm: distanceKmRef.current,
+      steps: stepsRef.current > 0 ? stepsRef.current : null,
+      path: toWalkPath(routeRef.current),
+      dogResolved: activeWalkContextReady.current,
+      dogId: activeWalkDogId.current,
+    });
+    // Завершение успело пройти, пока шла запись, — убираем только что записанное.
+    if (liveSnapshotStopped.current) await clearLiveWalk();
+  }
+  // Прогулка закончена (кнопкой или автозавершением): снимок больше не пишем и
+  // убираем уже записанный.
+  async function stopLiveSnapshot() {
+    liveSnapshotStopped.current = true;
+    await clearLiveWalk();
+  }
+  const liveSnapshotRef = useRef(maybeSaveLiveSnapshot);
+  liveSnapshotRef.current = maybeSaveLiveSnapshot;
+
   // A walk only "counts" (walk_history + badges) past a minimum bar — see
   // lib/walkFinalize, shared with the recovery card.
   async function handleFinish() {
@@ -705,6 +755,9 @@ export function WalkScreen({ navigation }: Props) {
     // distance while the save below is in flight. finalizeWalk берёт снимок
     // route/distanceKm/seconds из замыкания, так что ожидание выше их не меняет.
     await stopWalkTracking();
+    // Завершена кнопкой — живой снимок больше не нужен (иначе на следующем запуске
+    // всплыла бы карточка «Незавершённая прогулка» для уже сохранённой).
+    await stopLiveSnapshot();
 
     // Температурный статус фиксируем ЗДЕСЬ, в момент завершения. heatData
     // приходит из единственного useAsphaltTemp через getEffectiveAsphaltTemp
@@ -1339,6 +1392,8 @@ export function WalkScreen({ navigation }: Props) {
       heatStatusAtFinish: heatData.status,
     };
     await saveAutoFinished(walk);
+    // Автозавершение записало свой снимок (обрезанный по T) — он главнее живого.
+    await stopLiveSnapshot();
     // Приложение не открыто (фон) — иначе человек не узнает, что прогулка
     // завершилась сама: отдельное уведомление без кнопок «Прогулка завершена».
     // Открыто → сразу покажем экран итогов, уведомление не нужно.
@@ -1441,6 +1496,8 @@ export function WalkScreen({ navigation }: Props) {
       // updated_at протухает: нас теряют в «гуляют рядом» и сервер режет
       // park-чек-ин (обе функции требуют свежую active_walks).
       if (latestPos.current) maybeSyncActiveWalk(latestPos.current, Date.now());
+      // Живой снимок на телефон — раз в пачку, со своим троттлом (30 с).
+      void liveSnapshotRef.current(Date.now());
     });
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
