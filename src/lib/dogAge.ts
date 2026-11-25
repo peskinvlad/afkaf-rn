@@ -47,33 +47,50 @@ function ageParts(birthDate: string): AgeParts | null {
   return { years: Math.floor(months / 12), months: months % 12 };
 }
 
-// Format whole years/months per language. Under a year → months only; the second
-// year → «1 год [и N месяцев]»; from two years → years only. Russian uses
-// declension helpers; HE/EN use the dictated i18n templates.
+// Hebrew counts with natural singular/dual forms: שנה / שנתיים / «N שנים»,
+// חודש / חודשיים / «N חודשים».
+function heYears(n: number): string {
+  if (n === 1) return 'שנה';
+  if (n === 2) return 'שנתיים';
+  return `${n} שנים`;
+}
+function heMonths(n: number): string {
+  if (n === 1) return 'חודש';
+  if (n === 2) return 'חודשיים';
+  return `${n} חודשים`;
+}
+
+// Format whole years/months per language. Under a year → months only; from one
+// year → years plus the remaining months («2 года 10 месяцев», "2 yrs 10 mo",
+// «שנתיים ו-10 חודשים»). `yearsOnly` (approximate birth date, from two years)
+// drops the months — «~2 года 10 месяцев» would be false precision.
 function formatAgeFromParts(
   { years, months }: AgeParts,
   lang: Lang,
   t: (k: string, vars?: Record<string, string | number>) => string,
+  yearsOnly = false,
 ): string {
   if (years === 0) {
     if (months === 0) {
       return lang === 'ru' ? 'меньше месяца' : t('profile.dog.ageUnderMonth');
     }
-    return lang === 'ru'
-      ? `${months} ${ruMonthWord(months)}`
-      : t('profile.dog.ageMonths', { n: months });
+    if (lang === 'ru') return `${months} ${ruMonthWord(months)}`;
+    if (lang === 'he') return heMonths(months);
+    return t('profile.dog.ageMonths', { n: months });
   }
-  if (years === 1) {
-    if (months === 0) {
-      return lang === 'ru' ? '1 год' : t('profile.dog.ageYear');
-    }
-    return lang === 'ru'
-      ? `1 год и ${months} ${ruMonthWord(months)}`
-      : t('profile.dog.ageYearMonths', { m: months });
+  const withMonths = months > 0 && !(yearsOnly && years >= 2);
+  if (lang === 'ru') {
+    const y = `${years} ${ruYearWord(years)}`;
+    return withMonths ? `${y} ${months} ${ruMonthWord(months)}` : y;
   }
-  return lang === 'ru'
-    ? `${years} ${ruYearWord(years)}`
-    : t('profile.dog.ageYears', { n: years });
+  if (lang === 'he') {
+    if (!withMonths) return heYears(years);
+    const mo = heMonths(months);
+    // «ו» слитно со словом, через дефис перед цифрой: «וחודש», «ו-10 חודשים».
+    return `${heYears(years)} ו${/^\d/.test(mo) ? '-' : ''}${mo}`;
+  }
+  const y = years === 1 ? t('profile.dog.ageYear') : t('profile.dog.ageYears', { n: years });
+  return withMonths ? `${y} ${t('profile.dog.ageMonths', { n: months })}` : y;
 }
 
 // Legacy free-text age (numeric string the owner typed), used only when a dog has
@@ -111,7 +128,7 @@ export function formatDogAgeDisplay(
   if (dog.birth_date) {
     const parts = ageParts(dog.birth_date);
     if (parts) {
-      const label = formatAgeFromParts(parts, lang, t);
+      const label = formatAgeFromParts(parts, lang, t, !!dog.birth_date_approx);
       return dog.birth_date_approx ? `~${label}` : label;
     }
   }
