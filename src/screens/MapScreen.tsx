@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import MapView, { PROVIDER_DEFAULT, MarkerAnimated, MapPressEvent } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { Menu, Bell, SlidersHorizontal, MapPinPlusInside } from 'lucide-react-native';
+import { Menu, Bell, SlidersHorizontal, MapPinPlusInside, Eye, EyeOff } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { useTypography, FontRole } from '../theme/fonts';
 import { colors, radii, shadows, heatVis } from '../theme/tokens';
@@ -55,7 +55,9 @@ import type { Visibility } from './SettingsScreen';
 import { logEvent } from '../lib/analytics';
 import { getMapbox } from '../lib/mapbox';
 import { useMapEngine } from '../lib/mapEngine';
-import { MapboxMainMap, MainMapHandle } from '../components/mapbox/MapboxMainMap';
+import { MapboxMainMap, MainMapHandle, AnimatedCoord } from '../components/mapbox/MapboxMainMap';
+import { loadHomeZone, HomeZone } from '../lib/privacyZone';
+import { onScreenshot } from '../lib/screenCapture';
 
 // Стартовая позиция карты — Бат-Ям (см. START_COORD/START_DELTA в lib/geo).
 // До первого GPS-фикса карта показывает этот регион; на первом фиксе один раз
@@ -76,6 +78,8 @@ const INITIAL_REGION = {
 // NearbyDogsSheet is open — kept in sync with its own spring/timing so both
 // move together instead of the sheet covering them.
 const WIDGETS_BASE_BOTTOM = 165;
+// Сколько домашняя зона остаётся на карте после нажатия «глаза».
+const HOME_ZONE_SHOW_MS = 6000;
 const SHEET_HEIGHT_FALLBACK = 220; // real NearbyDogsSheet content is ~200-220px; used until onLayout measures it
 
 // Chip (heatCard) left edge and its RESTING bottom (WIDGETS_BASE_BOTTOM — not
@@ -177,7 +181,9 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   // экран берёт у react-native-maps.
   const mapEngine = useMapEngine();
   const Mapbox = mapEngine === 'mapbox' ? getMapbox() : null;
+  const mapboxHandleRef = useRef<MainMapHandle | null>(null);
   const handleMapboxReady = useCallback((handle: MainMapHandle) => {
+    mapboxHandleRef.current = handle;
     mapRef.current = {
       pointForCoordinate: handle.pointFor,
       animateToRegion: (region: { latitude: number; longitude: number }, duration?: number) =>
@@ -197,8 +203,59 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     }
     mapReadyFiredRef.current = false;
     mapLaidOutRef.current = false;
+    mapboxHandleRef.current = null;
     setMapReady(false);
   }, [mapEngine]);
+
+  // ── Домашняя зона на главной карте (только Mapbox, решение 25.11.2026) ───────
+  // Зона не видна постоянно: кнопка-«глаз» показывает её на HOME_ZONE_SHOW_MS и
+  // она сама гаснет. Сделан скриншот, пока зона видна, — предупреждаем, что на
+  // снимке виден дом (сам снимок отменить нельзя).
+  const [homeZone, setHomeZone] = useState<HomeZone | null>(null);
+  const [homeZoneVisible, setHomeZoneVisible] = useState(false);
+  const homeZoneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hideHomeZone = useCallback(() => {
+    if (homeZoneTimer.current) clearTimeout(homeZoneTimer.current);
+    homeZoneTimer.current = null;
+    setHomeZoneVisible(false);
+  }, []);
+  // Зону могли настроить или убрать на экране настроек — перечитываем при
+  // каждом возврате на карту; уходя с карты, гасим.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      loadHomeZone()
+        .then((zone) => { if (!cancelled) setHomeZone(zone); })
+        .catch(() => { if (!cancelled) setHomeZone(null); });
+      return () => {
+        cancelled = true;
+        hideHomeZone();
+      };
+    }, [hideHomeZone])
+  );
+  async function toggleHomeZone() {
+    if (!homeZone) return;
+    if (homeZoneVisible) {
+      hideHomeZone();
+      return;
+    }
+    setDetailMarker(null);
+    setSelectedFriendId(null);
+    setHomeZoneVisible(true);
+    homeZoneTimer.current = setTimeout(hideHomeZone, HOME_ZONE_SHOW_MS);
+    // Зона за краем экрана — подвезти карту к ней, иначе «глаз» будто не сработал.
+    const handle = mapboxHandleRef.current;
+    if (handle && !(await handle.isOnScreen(homeZone).catch(() => true))) {
+      userMovedMapRef.current = true; // это осознанное движение — авто-центр не нужен
+      handle.centerOn(homeZone, 350);
+    }
+  }
+  useEffect(() => {
+    if (!homeZoneVisible) return;
+    return onScreenshot(() => {
+      Alert.alert(t('map.homeZone.screenshotTitle'), t('map.homeZone.screenshotBody'));
+    });
+  }, [homeZoneVisible, t]);
 
   // Первый GPS-фикс за открытие экрана → один раз плавно центрируемся на
   // пользователе. didAutoCenter гасит повтор; userMovedMap отменяет авто-центр,
@@ -589,7 +646,15 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           markers={filteredMarkers}
           waterSources={filteredWaterSources}
           friends={friendWalkers}
-          userLocation={userLocation}
+          // AnimatedRegion: в рантайме у него есть Animated-значения latitude/longitude,
+          // в типах react-native-maps они не объявлены.
+          userCoord={userCoord as unknown as AnimatedCoord}
+          hasUserFix={hasUserFix}
+          homeZone={homeZone}
+          homeZoneVisible={homeZoneVisible}
+          waterLabel={(amenity) =>
+            t(amenity === 'drinking_water' ? 'water.amenity.drinking_water' : 'water.amenity.default')
+          }
           headingAnim={headingAnim}
           accuracy={accuracy}
           // Логотип Mapbox и «i» — строкой прямо над чипом температуры, константами
@@ -782,6 +847,19 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
       {/* ── Right-hand map controls column: locate-me above add-marker FAB.
              Physical right — deliberately not mirrored in RTL, same as the FAB. ── */}
       <Animated.View style={{ position: 'absolute', zIndex: 50, bottom: widgetsBottom, right: 16, gap: 12 }}>
+        {/* «Глаз»: показать домашнюю зону на несколько секунд. Только на карте
+            Mapbox и только если зона настроена. */}
+        {Mapbox && homeZone && (
+          <TouchableOpacity
+            style={[styles.mapControlBtn, shadows.lg, homeZoneVisible && styles.mapControlBtnActive]}
+            onPress={toggleHomeZone}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={t(homeZoneVisible ? 'map.homeZone.hide' : 'map.homeZone.show')}
+          >
+            {homeZoneVisible ? <EyeOff size={24} color={colors.primary} /> : <Eye size={24} color={colors.white} />}
+          </TouchableOpacity>
+        )}
         <LocateButton onPress={handleCenterOnMe} />
         <TouchableOpacity
           style={[styles.mapControlBtn, shadows.lg]}
@@ -953,6 +1031,10 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // «Глаз» нажат (зона видна): инверсия — белая кнопка с зелёным значком.
+  mapControlBtnActive: {
+    backgroundColor: colors.white,
   },
   fabIcon: {
     fontSize: 28,
