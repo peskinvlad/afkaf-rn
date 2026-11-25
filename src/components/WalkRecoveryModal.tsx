@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { finalizeWalk, isValidWalk } from '../lib/walkFinalize';
 import { formatClock } from '../lib/autoFinish';
 import { closeParkCheckin } from '../lib/parkCheckin';
+import { clearLiveWalk } from '../lib/walkLiveSnapshot';
 import { colors, radii, shadows } from '../theme/tokens';
 import { useTypography } from '../theme/fonts';
 
@@ -18,7 +19,7 @@ export function WalkRecoveryModal() {
   }
   if (!abandonedWalk) return null;
 
-  const { distanceKm, startedAt, updatedAt } = abandonedWalk;
+  const { distanceKm, startedAt, updatedAt, steps, path, dogResolved, dogId } = abandonedWalk;
   const durationS = Math.max(
     0,
     Math.floor((new Date(updatedAt).getTime() - new Date(startedAt).getTime()) / 1000)
@@ -33,6 +34,7 @@ export function WalkRecoveryModal() {
       await supabase.from('active_walks').delete().eq('user_id', userId);
       closeParkCheckin('walk_end'); // a park check-in left open by that walk
     }
+    await clearLiveWalk(); // живой снимок этой прогулки больше не нужен
     clearAbandonedWalk();
   }
 
@@ -44,12 +46,16 @@ export function WalkRecoveryModal() {
         await finalizeWalk({
           startedAt,
           // updatedAt is the last ping of the abandoned walk — the closest
-          // real "end" we have. Steps/path weren't persisted → null.
+          // real "end" we have. Маршрут и шаги есть, только если прогулку
+          // восстановили из живого снимка на телефоне; по строке active_walks
+          // сервер их не хранит → null.
           endedAt: updatedAt,
           durationS,
           distanceKm,
-          steps: null,
-          path: null,
+          steps: steps ?? null,
+          path: path ?? null,
+          // Собака известна снимку → её и пишем; иначе finalizeWalk найдёт сам.
+          dogId: dogResolved ? (dogId ?? null) : undefined,
           confirmedCount,
           checkPersonalBest: false,
         });
@@ -57,6 +63,7 @@ export function WalkRecoveryModal() {
       await supabase.from('active_walks').delete().eq('user_id', userId);
       closeParkCheckin('walk_end'); // a park check-in left open by that walk
     }
+    await clearLiveWalk();
     clearAbandonedWalk();
   }
 
