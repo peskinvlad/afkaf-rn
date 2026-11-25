@@ -15,6 +15,8 @@ import { useApp } from '../hooks/useApp';
 import { useTypography } from '../theme/fonts';
 import { loadHomeZone } from '../lib/privacyZone';
 import { MAP_CAMERA_ZOOM_RANGE } from '../lib/mapConfig';
+import { usePreventScreenCapture } from '../lib/screenCapture';
+import { useIsFocused } from '@react-navigation/native';
 import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
 
 const FLORENTIN = { latitude: 32.0559, longitude: 34.7722 };
@@ -41,6 +43,9 @@ function clampStep(value: number): number {
 }
 
 export function PrivacyRadiusScreen({ navigation }: any) {
+  // На этом экране виден дом → скриншот и запись экрана запрещены, пока экран
+  // открыт (в сборках без expo-screen-capture — no-op).
+  usePreventScreenCapture('privacy-radius', useIsFocused());
   const insets = useSafeAreaInsets();
   const { t, userLocation } = useApp();
   const ty = useTypography();
