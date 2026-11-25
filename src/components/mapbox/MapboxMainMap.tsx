@@ -4,6 +4,7 @@ import type { Lang } from '../../i18n';
 import { LatLng, isValidCoord } from '../../lib/geo';
 import { MapboxModule, mapLabelLayers, MAPBOX_STYLE_URL } from '../../lib/mapbox';
 import { circlePolygon, toLngLat } from '../../lib/mapboxGeo';
+import { mapDebug } from '../../lib/mapDebug';
 import type { HomeZone } from '../../lib/privacyZone';
 import {
   INFRA_DOT_FILTER,
@@ -81,6 +82,9 @@ interface Props {
   // Нижний отступ логотипа и «i» от низа экрана (над чипом температуры).
   ornamentBottom: number;
   ornamentLeft: number;
+  // Сколько низа карты закрыто нижней панелью (константа экрана, не замер):
+  // «центр» карты считается по видимой части над панелью, как на старой карте.
+  bottomInset: number;
   onReady: (handle: MainMapHandle) => void;
   onMarkerPress: (marker: MapMarker) => void;
   onFriendPress: (userId: string) => void;
@@ -92,12 +96,18 @@ interface Props {
 
 export function MapboxMainMap({
   Mapbox, lang, startCenter, markers, waterSources, friends, userCoord, hasUserFix, homeZone,
-  homeZoneVisible, waterLabel, headingAnim, accuracy, ornamentBottom, ornamentLeft, onReady, onMarkerPress, onFriendPress, onMapPress, onCameraMove, onCameraIdle,
+  homeZoneVisible, waterLabel, headingAnim, accuracy, bottomInset, ornamentBottom, ornamentLeft, onReady, onMarkerPress, onFriendPress, onMapPress, onCameraMove, onCameraIdle,
 }: Props) {
   const { MapView, Camera, ShapeSource, SymbolLayer, CircleLayer, FillLayer, LineLayer, Images, MarkerView } = Mapbox;
   const mapRef = useRef<InstanceType<MapboxModule['MapView']> | null>(null);
   const cameraRef = useRef<React.ComponentRef<MapboxModule['Camera']> | null>(null);
-  const startRef = useRef({ centerCoordinate: toLngLat(startCenter), zoomLevel: START_ZOOM });
+  // Отступ камеры: один и тот же объект на всю жизнь карты (первое значение пропа).
+  const paddingRef = useRef({ paddingTop: 0, paddingLeft: 0, paddingRight: 0, paddingBottom: Math.max(0, bottomInset) });
+  const startRef = useRef({
+    centerCoordinate: toLngLat(startCenter),
+    zoomLevel: START_ZOOM,
+    padding: paddingRef.current,
+  });
   const lastMarkerTapRef = useRef(0);
 
   // Инфраструктура — в слой на видеокарте, опасные метки — отдельными View.
@@ -138,6 +148,7 @@ export function MapboxMainMap({
         cameraRef.current?.setCamera({
           centerCoordinate: toLngLat(target),
           zoomLevel: LOCATE_ZOOM,
+          padding: paddingRef.current,
           animationMode: 'easeTo',
           animationDuration: durationMs,
         });
@@ -169,10 +180,23 @@ export function MapboxMainMap({
 
   const handlers = useMemo(
     () => ({
-      onLoaded: () => cb.current.onReady(handle),
+      onLoaded: () => {
+        mapDebug.log('MB READY');
+        cb.current.onReady(handle);
+      },
       onCameraChanged: (state: { gestures?: { isGestureActive?: boolean } }) =>
         cb.current.onCameraMove(!!state?.gestures?.isGestureActive),
-      onMapIdle: () => cb.current.onCameraIdle(),
+      onMapIdle: (state: { properties?: { center?: number[]; zoom?: number }; gestures?: { isGestureActive?: boolean } }) => {
+        // Отладочный оверлей (DevPanel → «Отладка карты»): где встала камера.
+        if (mapDebug.enabled) {
+          const c = state?.properties?.center;
+          const z = state?.properties?.zoom;
+          mapDebug.log(
+            `MB IDLE ${c?.[1]?.toFixed(5)},${c?.[0]?.toFixed(5)},z=${z?.toFixed(2)},gesture=${!!state?.gestures?.isGestureActive}`,
+          );
+        }
+        cb.current.onCameraIdle();
+      },
       onMapPress: () => {
         if (Date.now() - lastMarkerTapRef.current < MARKER_TAP_GUARD_MS) return;
         setWaterBubble(null);

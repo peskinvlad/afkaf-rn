@@ -663,6 +663,9 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           // insets.bottom (без этого логотип висел на ~34 pt выше чипа).
           ornamentBottom={WIDGETS_BASE_BOTTOM + HEAT_CHIP_HEIGHT + 6 - insets.bottom}
           ornamentLeft={MAP_CHIP.left}
+          // Низ карты закрыт панелью — «центр на мне» ставит точку в середину видимой
+          // части (у Apple это делал mapPadding). Константа, не замер.
+          bottomInset={WIDGETS_BASE_BOTTOM}
           onReady={handleMapboxReady}
           onMarkerPress={(m) => { setSelectedFriendId(null); setDetailMarker(m); }}
           onFriendPress={(userId) => { setDetailMarker(null); setSelectedFriendId(userId); }}
