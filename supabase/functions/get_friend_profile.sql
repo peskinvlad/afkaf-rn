@@ -2,6 +2,8 @@
 -- SECURITY DEFINER: profiles/dogs под RLS owner-only. Гранты: REVOKE PUBLIC/anon, GRANT authenticated.
 -- Кому отдаёт: ТОЛЬКО принятому другу (friendships.status = 'accepted' в любую
 -- сторону) и только если нет блокировки ни в одну сторону. Всем остальным — NULL.
+-- Обновлено 25.11.2026 (вечер): добавлено поле traits (черты характера собаки) —
+-- страница друга показывает те же метки, что хозяин видит у себя.
 -- Что НЕ отдаёт: точную дату рождения (обрезана до месяца — хватает для возраста),
 -- вес, owner_name, любые координаты/прогулки.
 CREATE OR REPLACE FUNCTION public.get_friend_profile(p_user_id uuid)
@@ -23,6 +25,7 @@ AS $function$
         'gender', d.gender,
         'neutered', d.neutered,
         'sociability', d.sociability,
+        'traits', d.traits,
         'birth_date', to_char(d.birth_date, 'YYYY-MM-01'),
         'birth_date_approx', d.birth_date_approx,
         'age', d.age

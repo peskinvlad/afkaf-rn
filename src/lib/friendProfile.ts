@@ -16,6 +16,9 @@ export interface FriendDog {
   birth_date: string | null; // обрезана сервером до первого числа месяца
   birth_date_approx: boolean | null;
   age: string | null;
+  // Черты характера (dogs.traits). undefined — сервер ещё старой версии и поле
+  // не отдаёт; показывать нечего.
+  traits?: string[] | null;
 }
 
 export interface FriendProfile {

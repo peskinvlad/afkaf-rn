@@ -15,6 +15,7 @@ import { X } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { FriendEntry } from '../hooks/useFriends';
 import { fetchFriendProfile, FriendDog, FriendProfile } from '../lib/friendProfile';
+import { sanitizeDogTraits } from '../lib/dogTraits';
 import { resolveBreedLabel } from '../lib/breeds';
 import { formatDogAgeDisplay } from '../lib/dogAge';
 import { colors, radii, shadows, spacing } from '../theme/tokens';
@@ -109,6 +110,8 @@ export function FriendProfileSheet({ entry, onClose }: Props) {
                 .filter(Boolean)
                 .join(' · ');
               const hasFacts = dog.gender != null || dog.neutered != null || dog.sociability != null;
+              // Те же метки-черты, что хозяин видит в своей карточке (только выбранные).
+              const traitKeys = sanitizeDogTraits(dog.traits);
               return (
                 <View key={dog.id} style={styles.dogCard}>
                   <View style={[styles.dogTop, rtl && styles.rowReverse]}>
@@ -143,6 +146,15 @@ export function FriendProfileSheet({ entry, onClose }: Props) {
                         value={dog.sociability ? t('dogProfile.sociability.' + dog.sociability) : '—'}
                         styles={styles}
                       />
+                    </View>
+                  )}
+                  {traitKeys.length > 0 && (
+                    <View style={styles.tagsRow}>
+                      {traitKeys.map((k) => (
+                        <View key={k} style={styles.tag}>
+                          <Text style={styles.tagTxt} numberOfLines={1}>{t(`dogProfile.trait.${k}`)}</Text>
+                        </View>
+                      ))}
                     </View>
                   )}
                 </View>
@@ -220,4 +232,8 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   fact: { flex: 1, alignItems: 'center', gap: 3 },
   factLabel: { fontSize: 10, fontFamily: ty.font.heading, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
   factValue: { fontSize: 13, fontFamily: ty.font.bodyBold, color: colors.ink },
+  // Как dogTagsRow / dogTag в ProfileScreen — карточка друга и своя выглядят одинаково.
+  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12, justifyContent: 'center' },
+  tag: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: radii.full, backgroundColor: colors.primaryLight },
+  tagTxt: { fontSize: 12, fontFamily: ty.font.bodyBold, color: colors.primary },
 });

@@ -1,0 +1,3 @@
+-- Applied to the live DB on 2026-11-25 (Supabase migration get_friend_profile_traits).
+-- get_friend_profile now also returns dogs.traits. Access rules unchanged.
+-- Body: supabase/functions/get_friend_profile.sql
