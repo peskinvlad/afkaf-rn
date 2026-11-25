@@ -81,12 +81,41 @@ export function resolveSeason(max: number | null, prev: ChipSeason | null): Chip
   return prev ?? 'summer';
 }
 
+// ── Календарная зима ──────────────────────────────────────────────────────────
+// Декабрь–февраль (по местному времени устройства): экран и чип зимние по
+// календарю, без оглядки на гистерезис 32/35. В эти месяцы в Гуш-Дане асфальт
+// на солнце при обычных 18–20 °C даёт 35–37 °C — это формально «осторожно», но
+// для лап не опасно, а чип из-за этого каждый ясный полдень уходил бы в лето.
+// С 1 марта солнце уже высокое (22–24 °C воздуха → 44–46 °C асфальта), поэтому
+// март — снова обычная авто-логика.
+export function isCalendarWinter(nowMs: number): boolean {
+  const m = new Date(nowMs).getMonth(); // 0 = январь
+  return m === 11 || m === 0 || m === 1;
+}
+
+// Страховка календарной зимы: если асфальт СЕЙЧАС нагрелся до этого значения
+// (по-настоящему тёплый зимний день, воздух ~23 °C и ясно) — показываем летний
+// вид с температурой асфальта и статусом, даже в январе.
+export const WINTER_FORCE_SUMMER_FROM_C = 40;
+
 // Жёсткий приоритет безопасности: если ТЕКУЩИЙ статус асфальта caution/danger —
 // чип ВСЕГДА летний (асфальт + статус), чем бы ни был сезон. Это перебивает и
 // гистерезис, и dev-оверрайд «Зима»: предупреждение об опасном асфальте нельзя
 // прятать за погодным видом. Единственная точка, где сезон превращается в то,
 // что реально рисует чип.
-export function effectiveChipSeason(season: ChipSeason, status: HeatStatus): ChipSeason {
+// Исключение — календарная зима (декабрь–февраль): там порог выхода в лето не
+// «осторожно» (35), а WINTER_FORCE_SUMMER_FROM_C (40). Статус danger (>45) при
+// этом по-прежнему всегда даёт лето — 45 > 40. Нет числа (surfaceTempC == null)
+// → старое правило по статусу.
+export function effectiveChipSeason(
+  season: ChipSeason,
+  status: HeatStatus,
+  surfaceTempC?: number | null,
+  nowMs: number = Date.now(),
+): ChipSeason {
+  if (isCalendarWinter(nowMs) && surfaceTempC != null) {
+    return surfaceTempC >= WINTER_FORCE_SUMMER_FROM_C ? 'summer' : season;
+  }
   if (status === 'caution' || status === 'danger') return 'summer';
   return season;
 }
