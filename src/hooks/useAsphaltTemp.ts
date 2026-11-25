@@ -21,6 +21,8 @@ export type HourlyPoint = {
   surfaceTempC: number;
   status: HeatStatus;
   icon: string;
+  // Вероятность осадков слота, 0..1 (OWM /forecast `pop`); нет поля → 0.
+  pop: number;
 };
 
 // Florentin, Tel Aviv — used if location permission is denied/unavailable
@@ -92,6 +94,7 @@ async function fetchForecast(lat: number, lon: number, lang: Lang): Promise<Hour
       surfaceTempC,
       status: statusFor(surfaceTempC),
       icon: entry.weather?.[0]?.icon ?? '01d',
+      pop: typeof entry.pop === 'number' ? Math.min(Math.max(entry.pop, 0), 1) : 0,
     };
   });
 }
