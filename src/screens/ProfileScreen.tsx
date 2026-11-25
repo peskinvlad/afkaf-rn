@@ -23,6 +23,7 @@ import { clearLocalUserData } from '../lib/localReset';
 import { useToast } from '../components/Toast';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
+import { sanitizeDogTraits } from '../lib/dogTraits';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Profile {
@@ -47,6 +48,7 @@ interface Dog {
   photo_url: string | null;
   neutered: boolean | null;
   sociability: string | null;
+  traits: string[] | null;
 }
 
 interface Walk {
@@ -249,7 +251,7 @@ export function ProfileScreen({ navigation }: Props) {
     // Dogs
     const { data: dogsData } = await supabase
       .from('dogs')
-      .select('id, name, breed, age, birth_date, birth_date_approx, weight, gender, icon, photo_url, neutered, sociability')
+      .select('id, name, breed, age, birth_date, birth_date_approx, weight, gender, icon, photo_url, neutered, sociability, traits')
       .eq('owner_id', userId);
     setDogs((dogsData ?? []) as Dog[]);
 
@@ -591,6 +593,7 @@ function DogCard({ dog, onEdit, t, lang }: { dog: Dog; onEdit: () => void; t: (k
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
   const hasPhoto = !!dog.photo_url;
+  const traitKeys = sanitizeDogTraits(dog.traits);
   const details  = [
     resolveBreedLabel(dog.breed, lang),
     formatDogAgeDisplay(dog, lang, t),
@@ -621,6 +624,17 @@ function DogCard({ dog, onEdit, t, lang }: { dog: Dog; onEdit: () => void; t: (k
         <DogTrait label={t('profile.dog.neutered')}  value={dog.neutered == null ? '—' : dog.neutered ? t('common.yes') : t('common.no')} />
         <DogTrait label={t('profile.dog.character')} value={dog.sociability ? t('dogProfile.sociability.' + dog.sociability) : '—'} />
       </View>
+
+      {/* Trait tags (only when the owner picked some) */}
+      {traitKeys.length > 0 && (
+        <View style={styles.dogTagsRow}>
+          {traitKeys.map((k) => (
+            <View key={k} style={styles.dogTag}>
+              <Text style={styles.dogTagTxt} numberOfLines={1}>{t(`dogProfile.trait.${k}`)}</Text>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -802,6 +816,9 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   dogTrait: { flex: 1, alignItems: 'center', gap: 3 },
   dogTraitLabel: { fontSize: 10, fontFamily: ty.font.heading, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
   dogTraitValue: { fontSize: 13, fontFamily: ty.font.bodyBold, color: colors.ink },
+  dogTagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12, justifyContent: 'center' },
+  dogTag: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: radii.full, backgroundColor: colors.primaryLight },
+  dogTagTxt: { fontSize: 12, fontFamily: ty.font.bodyBold, color: colors.primary },
 
   // Achievements grid
   badgesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

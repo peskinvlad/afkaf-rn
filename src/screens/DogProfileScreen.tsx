@@ -29,6 +29,7 @@ import { resolveBreedLabel } from '../lib/breeds';
 import { BreedPickerModal } from '../components/BreedPickerModal';
 import { BirthDatePickerModal } from '../components/BirthDatePickerModal';
 import { approxDateFromAge, deriveLegacyAge, formatBirthField } from '../lib/birthDate';
+import { DOG_TRAITS, MAX_DOG_TRAITS, sanitizeDogTraits, toggleDogTrait, type DogTrait } from '../lib/dogTraits';
 import { logEvent } from '../lib/analytics';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -82,6 +83,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
   const [gender, setGender]       = useState<Gender>('male');
   const [neutered, setNeutered]   = useState(false);
   const [sociability, setSociability] = useState<'friendly' | 'neutral' | 'reactive'>('friendly');
+  const [traits, setTraits] = useState<DogTrait[]>([]);
 
   const [saving, setSaving]         = useState(false);
   const [loadingDog, setLoadingDog] = useState(!!dogId);
@@ -118,6 +120,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
         setGender((data.gender as Gender) ?? 'male');
         setNeutered(!!data.neutered);
         setSociability((data.sociability as 'friendly' | 'neutral' | 'reactive') ?? 'friendly');
+        setTraits(sanitizeDogTraits(data.traits));
         setIcon(data.icon ?? DOG_ICONS[0]);
         if (data.photo_url) setPhotoUri(data.photo_url);
       }
@@ -283,6 +286,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
         gender,
         neutered,
         sociability,
+        traits,
         icon:       selectedIcon,
         // Only overwrite photo_url if a new photo was chosen this session
         ...(photoUrl !== null ? { photo_url: photoUrl } : {}),
@@ -510,6 +514,31 @@ export function DogProfileScreen({ navigation, route }: Props) {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* ── Trait tags (multi-select, up to MAX_DOG_TRAITS) ── */}
+        <Text style={styles.sectionLabel}>{t('dogProfile.traits')}</Text>
+        <Text style={styles.traitsHint}>{t('dogProfile.traitsHint', { max: MAX_DOG_TRAITS })}</Text>
+        <View style={styles.traitWrap}>
+          {DOG_TRAITS.map((k) => {
+            const selected = traits.includes(k);
+            const full = !selected && traits.length >= MAX_DOG_TRAITS;
+            return (
+              <TouchableOpacity
+                key={k}
+                style={[styles.traitChip, selected && styles.pillSelected, full && styles.traitChipDimmed]}
+                onPress={() => setTraits((cur) => toggleDogTrait(cur, k))}
+                activeOpacity={0.75}
+                disabled={full}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: selected, disabled: full }}
+              >
+                <Text style={[styles.traitChipTxt, selected && styles.pillTxtSelected]} numberOfLines={1}>
+                  {t(`dogProfile.trait.${k}`)}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </ScrollView>
 
       {/* ── Save button — pinned to bottom ── */}
@@ -725,6 +754,33 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
     color: colors.textMuted,
   },
   pillTxtSelected: { color: colors.primary },
+
+  // Trait tags
+  traitsHint: {
+    fontSize: 12,
+    fontFamily: ty.font.body,
+    color: colors.textMuted,
+    marginTop: -6,
+  },
+  traitWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  traitChip: {
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: radii.full,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  traitChipDimmed: { opacity: 0.45 },
+  traitChipTxt: {
+    fontSize: 13,
+    fontFamily: ty.font.bodyBold,
+    color: colors.textMuted,
+  },
 
   // Footer
   footer: {
