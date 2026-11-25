@@ -165,16 +165,24 @@ function dispatchResponse(
       response.notification.request.identifier,
       response.notification.date,
       source,
+      false,
     );
     return;
   }
 
-  // Риск-чек тестовой категории (без kind) — пишем в лог.
+  // Без kind: либо тестовое уведомление риск-чека (DevPanel), либо обычная
+  // «записка» presentWalkNotice («Прогулка сохранена ✓» и т.п.). Alert «Тест
+  // уведомления» при открытии показываем ТОЛЬКО для тестовой категории — иначе
+  // его видел любой пользователь, тапнувший по записке об авто-завершении.
+  const isTest =
+    response.notification.request.content.categoryIdentifier === TEST_CATEGORY;
+  if (!isTest) return;
   void recordResponse(
     response.actionIdentifier,
     response.notification.request.identifier,
     response.notification.date,
     source,
+    true,
   );
 }
 
@@ -203,6 +211,7 @@ async function recordResponse(
   notificationId: string,
   notificationDate: number,
   source: ResponseSource,
+  alertOnOpen: boolean,
 ): Promise<void> {
   // Дедуп: слушатель и getLastNotificationResponse могут отдать один и тот же
   // ответ (живой слушатель + холодный старт) — пишем его один раз.
@@ -231,7 +240,8 @@ async function recordResponse(
   const log: string[] = raw ? JSON.parse(raw) : [];
   log.unshift(line);
   await AsyncStorage.setItem(LOG_KEY, JSON.stringify(log.slice(0, 10)));
-  await AsyncStorage.setItem(PENDING_KEY, line);
+  // Одноразовый Alert при открытии — только для тестовой категории (см. выше).
+  if (alertOnOpen) await AsyncStorage.setItem(PENDING_KEY, line);
 }
 
 export type PermissionResult = 'granted' | 'denied' | 'unavailable';
