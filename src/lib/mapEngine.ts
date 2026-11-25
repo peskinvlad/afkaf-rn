@@ -42,6 +42,14 @@ function hydrate(): void {
     .catch(() => {});
 }
 
+// Прочитать выбор из DevPanel заранее, при старте приложения (index.ts). Без
+// этого первый за сессию экран с картой успевал отрисовать старую карту и только
+// потом, дочитав хранилище, менял её на Mapbox — «мигание» карт. В сборке без
+// Mapbox читать нечего: движок всегда 'apple'.
+export function preloadMapEngine(): void {
+  if (canUseMapbox) hydrate();
+}
+
 export function getMapEngine(): MapEngine {
   if (!canUseMapbox) return 'apple';
   return override ?? DEFAULT_MAP_ENGINE;

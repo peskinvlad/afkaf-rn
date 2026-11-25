@@ -17,6 +17,9 @@ import { HeatStatus, HEAT_DANGER_ABOVE_C } from '../lib/heat';
 import { pickWalkVerdict, VERDICT_TITLE_KEY } from '../lib/walkVerdict';
 import { MAP_CAMERA_ZOOM_RANGE } from '../lib/mapConfig';
 import { AutoFinishReason, formatClock } from '../lib/autoFinish';
+import { getMapbox } from '../lib/mapbox';
+import { useMapEngine } from '../lib/mapEngine';
+import { MapboxTrackMap } from '../components/mapbox/MapboxTrackMap';
 
 interface RouteCoord { latitude: number; longitude: number; }
 
@@ -46,7 +49,11 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
   } = route.params ?? {};
   const newBadges = newBadgeIds.map((id: string) => BADGES.find((b) => b.id === id)).filter(Boolean) as typeof BADGES;
   const insets = useSafeAreaInsets();
-  const { t, isGuest, setIsWalking } = useApp();
+  const { t, lang, isGuest, setIsWalking } = useApp();
+  // Какая карта рисует трек: старая (Apple) или Mapbox — решает useMapEngine
+  // (lib/mapEngine.ts). Mapbox-версия живёт рядом, старая не тронута.
+  const mapEngine = useMapEngine();
+  const Mapbox = mapEngine === 'mapbox' ? getMapbox() : null;
   const { font } = useTypography();
   const styles = useMemo(() => makeStyles(font), [font]);
   const mapRef = useRef<MapView>(null);
@@ -96,6 +103,15 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
 
       {/* ── MAP (top half) ── */}
       <View style={styles.mapSection}>
+        {Mapbox ? (
+          <MapboxTrackMap
+            Mapbox={Mapbox}
+            lang={lang}
+            route={routeCoordinates}
+            fallbackCenter={center}
+            topInset={insets.top + 100}
+          />
+        ) : (
         <MapView
           ref={mapRef}
           style={StyleSheet.absoluteFill}
@@ -118,6 +134,7 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
             />
           )}
         </MapView>
+        )}
 
         {/* Complete chip — top center */}
         <View style={[styles.completeChip, { top: insets.top + 12 }]}>

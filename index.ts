@@ -8,6 +8,7 @@ import { stopWalkTracking } from './src/lib/walkTracking';
 // so a button tap is caught even if it arrives before any screen mounts.
 import { initNotifications } from './src/lib/notifications';
 import { initMapbox } from './src/lib/mapbox';
+import { preloadMapEngine } from './src/lib/mapEngine';
 
 // Before anything renders — see lockLayoutLTR for why this runs on every start.
 lockLayoutLTR();
@@ -16,6 +17,8 @@ lockLayoutLTR();
 initNotifications();
 // Mapbox: токен + телеметрия выключена. В сборке без нативного модуля — no-op.
 initMapbox();
+// Какая карта выбрана в DevPanel — читаем заранее, чтобы экраны не мигали.
+preloadMapEngine();
 
 // A walk never survives an app start (WalkScreen state isn't restored), so a
 // location session still running now was orphaned by a crash or a JS reload.

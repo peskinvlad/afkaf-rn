@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,10 @@ import { MAP_CAMERA_ZOOM_RANGE } from '../lib/mapConfig';
 import { usePreventScreenCapture } from '../lib/screenCapture';
 import { useIsFocused } from '@react-navigation/native';
 import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
+import { getMapbox } from '../lib/mapbox';
+import { useMapEngine } from '../lib/mapEngine';
+import { metersToPoints } from '../lib/mapboxGeo';
+import { MapboxZoneMap, ZoneCamera, ZONE_START_ZOOM } from '../components/mapbox/MapboxZoneMap';
 
 const FLORENTIN = { latitude: 32.0559, longitude: 34.7722 };
 const MIN_RADIUS = 50;
@@ -47,7 +51,7 @@ export function PrivacyRadiusScreen({ navigation }: any) {
   // открыт (в сборках без expo-screen-capture — no-op).
   usePreventScreenCapture('privacy-radius', useIsFocused());
   const insets = useSafeAreaInsets();
-  const { t, userLocation } = useApp();
+  const { t, lang, userLocation } = useApp();
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
 
@@ -55,6 +59,25 @@ export function PrivacyRadiusScreen({ navigation }: any) {
   const [zoneCenter, setZoneCenter] = useState<{ latitude: number; longitude: number } | null>(null);
   const [loaded, setLoaded] = useState(false);
   const mapRef = useRef<MapView>(null);
+
+  // Какая карта под кругом: старая (Apple) или Mapbox — решает useMapEngine.
+  const mapEngine = useMapEngine();
+  const Mapbox = mapEngine === 'mapbox' ? getMapbox() : null;
+  // Камера Mapbox: центр — в ref (нужен только при сохранении), зум и широта — в
+  // state (от них зависит размер круга на экране). State обновляем только при
+  // заметном изменении, иначе экран перерисовывался бы на каждый кадр жеста.
+  const mbCenterRef = useRef<{ latitude: number; longitude: number } | null>(null);
+  const [mbScale, setMbScale] = useState<{ zoom: number; latitude: number } | null>(null);
+  const handleMapboxCamera = useCallback((camera: ZoneCamera) => {
+    mbCenterRef.current = camera.center;
+    setMbScale((prev) =>
+      prev &&
+      Math.abs(prev.zoom - camera.zoom) < 0.01 &&
+      Math.abs(prev.latitude - camera.center.latitude) < 0.002
+        ? prev
+        : { zoom: camera.zoom, latitude: camera.center.latitude },
+    );
+  }, []);
 
   // Экран редактирует УЖЕ СУЩЕСТВУЮЩУЮ зону, поэтому обязан сначала её
   // прочитать. Раньше он этого не делал: слайдер всегда вставал на дефолт
@@ -109,18 +132,28 @@ export function PrivacyRadiusScreen({ navigation }: any) {
     }),
   ).current;
 
-  // Circle radius on screen (approximate, zoom 15)
-  const circlePx = metresToPx(radius);
+  // Радиус круга на экране. Старая карта: приближённо, для фиксированного «зума 15».
+  // Mapbox: по живой камере (зум + широта центра) — круг честный на любом зуме;
+  // до первого события камеры — по стартовому зуму.
+  const circlePx = Mapbox
+    ? metersToPoints(radius, mbScale?.latitude ?? center.latitude, mbScale?.zoom ?? ZONE_START_ZOOM)
+    : metresToPx(radius);
   const thumbLeft = ((radius - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS)) * SLIDER_WIDTH;
 
   async function handleSave() {
     // Use map center if user panned; fall back to userLocation / Florentin
     let lat = center.latitude;
     let lng = center.longitude;
-    try {
-      const cam = await mapRef.current?.getCamera();
-      if (cam?.center) { lat = cam.center.latitude; lng = cam.center.longitude; }
-    } catch {}
+    if (Mapbox) {
+      // Mapbox: последний центр, который сообщила карта (onCameraChanged/onMapIdle).
+      const c = mbCenterRef.current;
+      if (c) { lat = c.latitude; lng = c.longitude; }
+    } else {
+      try {
+        const cam = await mapRef.current?.getCamera();
+        if (cam?.center) { lat = cam.center.latitude; lng = cam.center.longitude; }
+      } catch {}
+    }
     await AsyncStorage.multiSet([
       ['privacy_home_lat', String(lat)],
       ['privacy_home_lng', String(lng)],
@@ -138,7 +171,14 @@ export function PrivacyRadiusScreen({ navigation }: any) {
           неуправляемый, и отрисуйся она раньше — осталась бы на дефолтном
           центре навсегда. */}
       <View style={{ height: MAP_HEIGHT }}>
-        {loaded && (
+        {loaded && (Mapbox ? (
+          <MapboxZoneMap
+            Mapbox={Mapbox}
+            lang={lang}
+            initialCenter={center}
+            onCamera={handleMapboxCamera}
+          />
+        ) : (
         <MapView
           ref={mapRef}
           style={StyleSheet.absoluteFillObject}
@@ -150,7 +190,7 @@ export function PrivacyRadiusScreen({ navigation }: any) {
           }}
           cameraZoomRange={MAP_CAMERA_ZOOM_RANGE}
         />
-        )}
+        ))}
 
         {/* Back button over map */}
         <TouchableOpacity

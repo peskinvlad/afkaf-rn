@@ -20,6 +20,9 @@ import { useApp } from '../hooks/useApp';
 import { useTermsConsent } from '../hooks/useTermsConsent';
 import { containsProfanity } from '../lib/profanity';
 import { MARKER_TEXT_MAX, containsContactInfo } from '../lib/markerText';
+import { getMapbox } from '../lib/mapbox';
+import { useMapEngine } from '../lib/mapEngine';
+import { MapboxAdjustMap } from '../components/mapbox/MapboxAdjustMap';
 import { supabase } from '../lib/supabase';
 import { ensureLocationPermission } from '../lib/locationPermission';
 import { LocationRequiredCard } from '../components/LocationRequiredCard';
@@ -70,7 +73,10 @@ interface Props {
 
 export function AddMarkerScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const { t } = useApp();
+  const { t, lang } = useApp();
+  // Какая карта под пином: старая (Apple) или Mapbox — решает useMapEngine.
+  const mapEngine = useMapEngine();
+  const Mapbox = mapEngine === 'mapbox' ? getMapbox() : null;
   const { ensureAccepted } = useTermsConsent();
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
@@ -374,6 +380,16 @@ export function AddMarkerScreen({ navigation }: Props) {
           </View>
         ) : (
           <>
+            {Mapbox ? (
+              <MapboxAdjustMap
+                Mapbox={Mapbox}
+                lang={lang}
+                anchor={coords}
+                radiusM={ADJUST_RADIUS_M}
+                adjustable={hasAccurateFix}
+                onPoint={setMarkerCoords}
+              />
+            ) : (
             <MapView
               ref={mapRef}
               style={StyleSheet.absoluteFill}
@@ -400,6 +416,7 @@ export function AddMarkerScreen({ navigation }: Props) {
                 <Marker coordinate={coords} pinColor="#ef4444" />
               )}
             </MapView>
+            )}
             {/* Fixed centre pin — the marker point is always the map centre */}
             {hasAccurateFix && (
               <View style={styles.centerPinOverlay} pointerEvents="none">
