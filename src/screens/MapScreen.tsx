@@ -85,15 +85,6 @@ const SHEET_HEIGHT_FALLBACK = 220; // real NearbyDogsSheet content is ~200-220px
 // reports.
 const MAP_CHIP = { left: 16, bottom: WIDGETS_BASE_BOTTOM };
 const HEAT_CHIP_HEIGHT = 54;
-// Mapbox: ширина чипа температуры зависит от текста («22° асфальт», «19° ☁») —
-// берём её из onLayout, но только в этих границах: в нативные пропы карты
-// измеренные значения без рамок не уходят (CLAUDE.md, раздел «Карта»).
-const HEAT_CHIP_WIDTH_FALLBACK = 78;
-const HEAT_CHIP_WIDTH_MIN = 56;
-const HEAT_CHIP_WIDTH_MAX = 150;
-// На сколько опустить логотип Mapbox от положения «сразу над чипом», чтобы он
-// встал по центру высоты чипа. Подобрано по скриншоту, крутить здесь.
-const MAPBOX_LOGO_DROP = 39;
 
 interface Props {
   navigation: any;
@@ -230,15 +221,6 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     bottom: WIDGETS_BASE_BOTTOM + HEAT_CHIP_HEIGHT + 4 - 8 - insets.bottom,
     left: MAP_CHIP.left - 4,
   }));
-  // Ширина чипа для логотипа Mapbox (он стоит справа от чипа). onLayout даёт
-  // размер самого элемента — не оконные координаты, анимация перехода на него не
-  // влияет; плюс жёсткие границы и обновление только при заметном изменении.
-  const [heatChipWidth, setHeatChipWidth] = useState(HEAT_CHIP_WIDTH_FALLBACK);
-  const handleHeatChipLayout = useCallback((width: number) => {
-    if (!Number.isFinite(width) || width <= 0) return;
-    const next = Math.round(Math.min(HEAT_CHIP_WIDTH_MAX, Math.max(HEAT_CHIP_WIDTH_MIN, width)));
-    setHeatChipWidth((prev) => (Math.abs(prev - next) < 2 ? prev : next));
-  }, []);
   const measureHeatChip = useCallback(() => {
     heatChipRef.current?.measureInWindow((x: number, y: number, w: number, h: number) => {
       if (!w) return; // not laid out yet
@@ -610,14 +592,12 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           userLocation={userLocation}
           headingAnim={headingAnim}
           accuracy={accuracy}
-          // Логотип Mapbox и «i» — СПРАВА от чипа температуры, на его высоте (решение
-          // Влада 25.11). По вертикали: значение «сразу над чипом» (проверено на
-          // телефоне: WIDGETS_BASE_BOTTOM + HEAT_CHIP_HEIGHT + 6 − insets.bottom)
-          // минус MAPBOX_LOGO_DROP — логотип опускается до середины чипа. По
-          // горизонтали: левый край чипа + его ширина (onLayout, в жёстких границах)
-          // + зазор.
-          ornamentBottom={WIDGETS_BASE_BOTTOM + HEAT_CHIP_HEIGHT + 6 - insets.bottom - MAPBOX_LOGO_DROP}
-          ornamentLeft={MAP_CHIP.left + heatChipWidth + 8}
+          // Логотип Mapbox и «i» — строкой прямо над чипом температуры, константами
+          // (у Apple это делал mapPadding с замером чипа). Mapbox отсчитывает
+          // отступ от безопасной зоны, а чип — от края экрана, поэтому вычитаем
+          // insets.bottom (без этого логотип висел на ~34 pt выше чипа).
+          ornamentBottom={WIDGETS_BASE_BOTTOM + HEAT_CHIP_HEIGHT + 6 - insets.bottom}
+          ornamentLeft={MAP_CHIP.left}
           onReady={handleMapboxReady}
           onMarkerPress={(m) => { setSelectedFriendId(null); setDetailMarker(m); }}
           onFriendPress={(userId) => { setDetailMarker(null); setSelectedFriendId(userId); }}
@@ -782,10 +762,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
       <Animated.View style={{ position: 'absolute', zIndex: 50, bottom: widgetsBottom, left: MAP_CHIP.left }}>
         <TouchableOpacity
           ref={heatChipRef}
-          onLayout={(e) => {
-            handleHeatChipLayout(e.nativeEvent.layout.width);
-            measureHeatChip();
-          }}
+          onLayout={measureHeatChip}
           style={[styles.heatCard, shadows.sm]}
           onPress={() => navigation.navigate('PavementTemp')}
           activeOpacity={0.8}
