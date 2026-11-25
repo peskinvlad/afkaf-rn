@@ -1,6 +1,6 @@
 // «Лучшее время» зимой: асфальт не греется, поэтому вместо «когда остынет»
 // отвечаем на вопрос «когда сухо». Чистая функция — без React и сети.
-import { WALK_WINDOW_START_H, WALK_WINDOW_END_H, weatherKind } from './heat';
+import { WALK_WINDOW_START_H, WALK_WINDOW_END_H, weatherKind, WeatherKind } from './heat';
 
 // Слот считаем «дождь вероятен», если вероятность осадков ≥ 40% или сама
 // погода слота — дождь/гроза.
@@ -60,4 +60,54 @@ export function pickDryWindow(forecast: Slot[], nowMs: number, nowRaining = fals
   const rain = slots.find(isRainLikely);
   if (!rain) return { kind: isToday(slots[0]) ? 'dryAll' : 'dryAllTomorrow' };
   return { kind: isToday(rain) ? 'dryUntil' : 'dryUntilTomorrow', timeEpoch: rain.timeEpoch };
+}
+
+// ── Советы под погоду ─────────────────────────────────────────────────────────
+// Ключи i18n `winter.tips.<key>`. Чистая функция: по погоде «сейчас» и окну
+// сухости выбирает до трёх советов, самый важный — первым.
+
+export type WinterTipKey = 'storm' | 'rainDry' | 'rainPuddles' | 'cold' | 'dryLong' | 'water';
+
+// «Холодно» для маленьких и короткошёрстных собак — по ощущаемой температуре.
+export const COLD_FEELS_LIKE_C = 12;
+export const MAX_WINTER_TIPS = 3;
+
+export function pickWinterTips(input: {
+  nowKind: WeatherKind;
+  dryWindow: DryWindow;
+  feelsLikeC: number | null;
+}): WinterTipKey[] {
+  const { nowKind, dryWindow, feelsLikeC } = input;
+  const storm = nowKind === 'storm';
+  // Мокро сейчас или дождь вероятен в ближайшие часы.
+  const wet = storm
+    || nowKind === 'rain'
+    || dryWindow.kind === 'rainUntil'
+    || dryWindow.kind === 'rainUntilTomorrow'
+    || dryWindow.kind === 'rainAll';
+  const cold = feelsLikeC != null && feelsLikeC <= COLD_FEELS_LIKE_C;
+
+  const tips: WinterTipKey[] = [];
+  if (storm) tips.push('storm');
+  if (wet) tips.push('rainDry', 'rainPuddles');
+  if (cold) tips.push('cold');
+  if (!wet && !cold) tips.push('dryLong');
+  tips.push('water');
+  return tips.slice(0, MAX_WINTER_TIPS);
+}
+
+// ── Закат ─────────────────────────────────────────────────────────────────────
+// 'dark'  — уже темно (значок текущей погоды OWM ночной, суффикс `n`);
+// 'sunset' — светло, закат сегодня ещё впереди;
+// 'none'  — данных о закате нет.
+export type DaylightInfo =
+  | { kind: 'dark' }
+  | { kind: 'sunset'; timeEpoch: number }
+  | { kind: 'none' };
+
+export function pickDaylight(icon: string | null | undefined, sunsetEpoch: number | null, nowMs: number): DaylightInfo {
+  if ((icon ?? '').endsWith('n')) return { kind: 'dark' };
+  if (sunsetEpoch == null) return { kind: 'none' };
+  if (sunsetEpoch * 1000 <= nowMs) return { kind: 'dark' };
+  return { kind: 'sunset', timeEpoch: sunsetEpoch };
 }

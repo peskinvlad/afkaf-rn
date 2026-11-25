@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
 import { useTypography } from '../theme/fonts';
 import { pickBestWalkTime, effectiveChipSeason, weatherKind } from '../lib/heat';
-import { pickDryWindow } from '../lib/winterWalk';
+import { pickDryWindow, pickWinterTips, pickDaylight } from '../lib/winterWalk';
 import { iconToLucide } from '../lib/weatherIcons';
 import { colors, radii, shadows, spacing, typography, heatVis } from '../theme/tokens';
 
@@ -63,7 +63,7 @@ const TIPS_KEYS = ['heat.tips.0', 'heat.tips.1', 'heat.tips.2'] as const;
 
 export function PavementTempScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
-  const { t, heatData, chipSeason, feelsLikeC, weatherDescription, weatherIcon, hourlyForecast, isFallbackLocation } = useApp();
+  const { t, heatData, chipSeason, feelsLikeC, weatherDescription, weatherIcon, hourlyForecast, sunsetEpoch, isFallbackLocation } = useApp();
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
 
@@ -100,6 +100,14 @@ export function PavementTempScreen({ navigation }: any) {
   const dryWindow = useMemo(
     () => pickDryWindow(hourlyForecast, Date.now(), nowKind === 'rain' || nowKind === 'storm'),
     [hourlyForecast, nowKind],
+  );
+  const winterTips = useMemo(
+    () => pickWinterTips({ nowKind, dryWindow, feelsLikeC }),
+    [nowKind, dryWindow, feelsLikeC],
+  );
+  const daylight = useMemo(
+    () => pickDaylight(weatherIcon, sunsetEpoch, Date.now()),
+    [weatherIcon, sunsetEpoch],
   );
 
   const sliderPct = scalePos(heatData.surface_est_c) * 100;
@@ -171,9 +179,9 @@ export function PavementTempScreen({ navigation }: any) {
                         <WeatherIcon size={weatherIconSize(pt.icon)} color={colors.winter} strokeWidth={WEATHER_ICON_STROKE} />
                       </View>
                       <Text style={[styles.forecastSurface, { color: colors.ink }]}>{pt.airTempC}°</Text>
-                      {/* Фиксированная высота строки: карточки без дождя не «прыгают». */}
+                      {/* Вероятность дождя — в каждой карточке; 0% приглушён. */}
                       <View style={styles.popRow}>
-                        {popPct > 0 && <Text style={styles.popText}>{popPct}%</Text>}
+                        <Text style={[styles.popText, popPct === 0 && styles.popTextZero]}>{popPct}%</Text>
                       </View>
                     </View>
                   );
@@ -202,6 +210,30 @@ export function PavementTempScreen({ navigation }: any) {
 
           {/* ── 4. Асфальт — одной мелкой строкой ── */}
           <Text style={styles.sunnySideNote}>{t('winter.asphalt_note', { temp: heatData.surface_est_c })}</Text>
+
+          {/* ── 5. Закат и темнота ── */}
+          {daylight.kind !== 'none' && (
+            <View style={[styles.rule7Card, shadows.sm]}>
+              <Text style={styles.rule7Header}>
+                {daylight.kind === 'dark' ? '🌙' : '🌇'}{'  '}
+                {daylight.kind === 'dark'
+                  ? t('winter.daylight.dark.title')
+                  : t('winter.daylight.sunset.title', { time: fmtTime(daylight.timeEpoch) })}
+              </Text>
+              <Text style={styles.rule7Body}>{t('winter.daylight.body')}</Text>
+            </View>
+          )}
+
+          {/* ── 6. Советы под погоду ── */}
+          <Text style={styles.tipsTitle}>{t('heat.screen.tips_title')}</Text>
+          <View style={[styles.tipsCard, shadows.sm]}>
+            {winterTips.map((key, i) => (
+              <View key={key} style={[styles.tipRow, i > 0 && styles.tipDivider]}>
+                <Text style={[styles.tipBullet, { color: colors.winter }]}>•</Text>
+                <Text style={styles.tipText}>{t(`winter.tips.${key}`)}</Text>
+              </View>
+            ))}
+          </View>
         </ScrollView>
       </View>
     );
@@ -585,6 +617,10 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
     ...ty.variants.xs,
     fontFamily: ty.font.bodyBold,
     color: colors.winter,
+  },
+  popTextZero: {
+    fontFamily: ty.font.body,
+    color: colors.textMuted,
   },
 
   // E. Best time

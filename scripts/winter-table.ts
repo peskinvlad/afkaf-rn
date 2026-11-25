@@ -38,3 +38,34 @@ for (const c of CASES) {
   console.log(pad(c.n, 3) + pad(c.name, 52) + pad(got, 26) + c.expect + (ok ? '' : '   <-- MISMATCH'));
 }
 console.log(bad ? `\n${bad} расхождений` : '\nВсе кейсы совпали');
+
+// ── pickWinterTips / pickDaylight ────────────────────────────────────────────
+import { pickWinterTips, pickDaylight } from '../src/lib/winterWalk';
+
+const TIP_CASES = [
+  { name: 'дождь сейчас, тепло', in: { nowKind: 'rain', dryWindow: { kind: 'rainUntil', timeEpoch: 0 }, feelsLikeC: 20 }, expect: 'rainDry,rainPuddles,water' },
+  { name: 'гроза, холодно', in: { nowKind: 'storm', dryWindow: { kind: 'rainAll' }, feelsLikeC: 9 }, expect: 'storm,rainDry,rainPuddles' },
+  { name: 'сухо сейчас, дождь вероятен скоро', in: { nowKind: 'cloudy', dryWindow: { kind: 'rainAll' }, feelsLikeC: 18 }, expect: 'rainDry,rainPuddles,water' },
+  { name: 'сухо и холодно', in: { nowKind: 'clear', dryWindow: { kind: 'dryAll' }, feelsLikeC: 12 }, expect: 'cold,water' },
+  { name: 'сухо и тепло', in: { nowKind: 'clear', dryWindow: { kind: 'dryUntil', timeEpoch: 0 }, feelsLikeC: 19 }, expect: 'dryLong,water' },
+  { name: 'нет «ощущается как»', in: { nowKind: 'cloudy', dryWindow: { kind: 'none' }, feelsLikeC: null }, expect: 'dryLong,water' },
+] as const;
+console.log('\nСоветы:');
+for (const c of TIP_CASES) {
+  const got = pickWinterTips(c.in as any).join(',');
+  if (got !== c.expect) bad++;
+  console.log(pad(c.name, 40) + pad(got, 34) + c.expect + (got === c.expect ? '' : '   <-- MISMATCH'));
+}
+
+const DAY_CASES = [
+  { name: 'день, закат впереди', got: pickDaylight('10d', NOW(16, 38) / 1000, NOW(9)).kind, expect: 'sunset' },
+  { name: 'ночной значок', got: pickDaylight('04n', NOW(16, 38) / 1000, NOW(20)).kind, expect: 'dark' },
+  { name: 'дневной значок, закат уже прошёл', got: pickDaylight('04d', NOW(16, 38) / 1000, NOW(16, 50)).kind, expect: 'dark' },
+  { name: 'нет данных о закате', got: pickDaylight('04d', null, NOW(9)).kind, expect: 'none' },
+];
+console.log('\nЗакат:');
+for (const c of DAY_CASES) {
+  if (c.got !== c.expect) bad++;
+  console.log(pad(c.name, 40) + pad(c.got, 34) + c.expect + (c.got === c.expect ? '' : '   <-- MISMATCH'));
+}
+console.log(bad ? `\nИтого расхождений: ${bad}` : '\nСоветы и закат: все кейсы совпали');
