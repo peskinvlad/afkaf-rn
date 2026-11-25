@@ -20,6 +20,7 @@ import { Pencil } from 'lucide-react-native';
 import { useApp } from '../hooks/useApp';
 import { useTermsConsent } from '../hooks/useTermsConsent';
 import { containsProfanity } from '../lib/profanity';
+import { syncBirthdayNotifications } from '../lib/birthdayNotif';
 import { supabase } from '../lib/supabase';
 import { isDevUser } from '../constants/dev';
 import { useTypography } from '../theme/fonts';
@@ -308,6 +309,8 @@ export function DogProfileScreen({ navigation, route }: Props) {
       if (photoUploadErrorMsg) {
         Alert.alert(t('dogProfile.photoUploadFailed', { error: photoUploadErrorMsg }));
       }
+      // Дата/кличка могли измениться — пересобрать «С днём рождения» (фоном).
+      void syncBirthdayNotifications(t);
       navigation.goBack();
     } catch (e) {
       // Keep the screen open so the entered form data isn't lost. Always log the
