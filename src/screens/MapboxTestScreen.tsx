@@ -38,6 +38,28 @@ const MARKER_IMAGES: Record<string, number> = Object.fromEntries(
 );
 
 const SOURCE_ID = 'afkaf-points';
+// Второй источник с теми же точками, но БЕЗ кластеризации — для режима «сжатие».
+// Кластеризацию у уже созданного источника менять нельзя, поэтому источников два,
+// оба смонтированы всегда, а режим переключает только видимость слоёв.
+const FLAT_SOURCE_ID = 'afkaf-points-flat';
+
+// Режим показа точек при отдалении (сравнение на тестовом экране):
+//   cluster — близкие точки слипаются в кружок с числом (как было);
+//   shrink  — идея Ани, «как в Google Maps»: издалека цветные точки, при
+//             приближении они вырастают в значки. Чисел нет.
+type ZoomMode = 'cluster' | 'shrink';
+
+const DOT_BLUE = '#3b82f6';
+
+// Границы «сжатия» по зуму. Точка → значок: перекрёстное затухание между
+// SHRINK_FADE_FROM и SHRINK_FADE_TO; значок дорастает до полного размера к
+// SHRINK_FULL_ZOOM. Числа подобраны на глаз — крутить здесь.
+const SHRINK_FADE_FROM = 13;
+const SHRINK_FADE_TO = 13.8;
+const SHRINK_FULL_ZOOM = 16.5;
+
+type LayerVisibility = 'visible' | 'none';
+const vis = (on: boolean): LayerVisibility => (on ? 'visible' : 'none');
 
 type PointProps = {
   kind: 'marker' | 'water';
@@ -90,6 +112,11 @@ function MapboxMap({ Mapbox }: { Mapbox: MapboxModule }) {
   const cameraRef = useRef<React.ComponentRef<MapboxModule['Camera']> | null>(null);
   const sourceRef = useRef<InstanceType<MapboxModule['ShapeSource']> | null>(null);
   const [mapStatus, setMapStatus] = useState('загрузка…');
+  const [zoomMode, setZoomMode] = useState<ZoomMode>('cluster');
+  // Текущий зум — только для подписи в плашке (помогает подбирать границы
+  // сжатия). Обновляется, когда карта остановилась, а не на каждом кадре.
+  const [zoom, setZoom] = useState<number>(START_ZOOM);
+  const clusterOn = zoomMode === 'cluster';
 
   // Постоянные метки (инфраструктура куратора) + точки воды из OSM — те же
   // данные и тот же хук, что на MapScreen.
@@ -214,6 +241,10 @@ function MapboxMap({ Mapbox }: { Mapbox: MapboxModule }) {
         pitchEnabled={false}
         onDidFinishLoadingMap={() => setMapStatus('карта загружена')}
         onMapLoadingError={() => setMapStatus('ошибка загрузки карты')}
+        onMapIdle={(state) => {
+          const z = state?.properties?.zoom;
+          if (typeof z === 'number') setZoom(z);
+        }}
       >
         <Camera ref={cameraRef} defaultSettings={CAMERA_DEFAULTS} />
 
@@ -242,6 +273,7 @@ function MapboxMap({ Mapbox }: { Mapbox: MapboxModule }) {
               circleRadius: ['step', ['get', 'point_count'], 16, 25, 20, 100, 25, 400, 31],
               circleStrokeColor: '#ffffff',
               circleStrokeWidth: 2,
+              visibility: vis(clusterOn),
             }}
           />
           <SymbolLayer
@@ -253,6 +285,7 @@ function MapboxMap({ Mapbox }: { Mapbox: MapboxModule }) {
               textColor: '#ffffff',
               textAllowOverlap: true,
               textIgnorePlacement: true,
+              visibility: vis(clusterOn),
             }}
           />
           <SymbolLayer
@@ -262,6 +295,37 @@ function MapboxMap({ Mapbox }: { Mapbox: MapboxModule }) {
               iconImage: ['get', 'icon'],
               iconAllowOverlap: true,
               iconIgnorePlacement: true,
+              visibility: vis(clusterOn),
+            }}
+          />
+        </ShapeSource>
+
+        {/* Режим «сжатие»: те же точки без кластеров. Издалека — цветная точка
+            (вода синяя, парки и площадки зелёные), при приближении она гаснет,
+            а на её месте проявляется и растёт значок. */}
+        <ShapeSource id={FLAT_SOURCE_ID} shape={shape} onPress={handlePointPress}>
+          <CircleLayer
+            id="afkaf-flat-dots"
+            style={{
+              circleColor: ['match', ['get', 'type'], 'water', DOT_BLUE, BRAND_GREEN],
+              circleRadius: ['interpolate', ['linear'], ['zoom'], 9, 1.5, 12, 3, SHRINK_FADE_FROM, 5],
+              circleStrokeColor: '#ffffff',
+              circleStrokeWidth: ['interpolate', ['linear'], ['zoom'], 9, 0, 12, 1, SHRINK_FADE_FROM, 1.5],
+              circleOpacity: ['interpolate', ['linear'], ['zoom'], SHRINK_FADE_FROM, 1, SHRINK_FADE_TO, 0],
+              circleStrokeOpacity: ['interpolate', ['linear'], ['zoom'], SHRINK_FADE_FROM, 1, SHRINK_FADE_TO, 0],
+              visibility: vis(!clusterOn),
+            }}
+          />
+          <SymbolLayer
+            id="afkaf-flat-icons"
+            minZoomLevel={SHRINK_FADE_FROM}
+            style={{
+              iconImage: ['get', 'icon'],
+              iconSize: ['interpolate', ['linear'], ['zoom'], SHRINK_FADE_FROM, 0.45, 15, 0.75, SHRINK_FULL_ZOOM, 1],
+              iconOpacity: ['interpolate', ['linear'], ['zoom'], SHRINK_FADE_FROM, 0, SHRINK_FADE_TO, 1],
+              iconAllowOverlap: true,
+              iconIgnorePlacement: true,
+              visibility: vis(!clusterOn),
             }}
           />
         </ShapeSource>
@@ -279,9 +343,21 @@ function MapboxMap({ Mapbox }: { Mapbox: MapboxModule }) {
           точек: {shape.features.length} · метки {permanent.length} · вода {waterSources.length}
         </Text>
         <Text style={styles.counterSub}>
-          {mapStatus} · язык {lang} · GPS {me ? 'есть' : 'нет'}
+          {mapStatus} · язык {lang} · GPS {me ? 'есть' : 'нет'} · зум {zoom.toFixed(1)}
         </Text>
       </View>
+
+      {/* Переключатель режима — сравнить кластеры и «сжатие» на одних данных. */}
+      <TouchableOpacity
+        style={[styles.modeBtn, shadows.sm, { top: insets.top + 64 }]}
+        onPress={() => setZoomMode((m) => (m === 'cluster' ? 'shrink' : 'cluster'))}
+        activeOpacity={0.8}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Text style={styles.modeTxt}>
+          {clusterOn ? 'Режим: кластеры' : 'Режим: сжатие'} · сменить
+        </Text>
+      </TouchableOpacity>
 
       <TouchableOpacity
         style={[styles.locateBtn, shadows.sm, { bottom: insets.bottom + 56 }]}
@@ -321,6 +397,16 @@ const styles = StyleSheet.create({
   },
   counterTxt: { ...typography.xs, color: colors.ink, fontFamily: 'Nunito_700Bold' },
   counterSub: { ...typography.xs, color: colors.textMuted },
+  modeBtn: {
+    position: 'absolute',
+    right: 14,
+    minHeight: 44,
+    justifyContent: 'center',
+    backgroundColor: BRAND_GREEN,
+    borderRadius: radii.sm,
+    paddingHorizontal: 14,
+  },
+  modeTxt: { ...typography.xs, color: colors.white, fontFamily: 'Nunito_700Bold' },
   locateBtn: {
     position: 'absolute',
     right: 16,
