@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
-import { I18nManager } from 'react-native';
+import { I18nManager, AppState as RNAppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Lang, t as translate, isRTL, loadSavedLang, saveLang } from '../i18n';
 import { supabase } from '../lib/supabase';
@@ -14,6 +14,7 @@ import { loadAutoFinished, clearAutoFinished, finalizeAutoFinished } from '../li
 import { closeParkCheckin } from '../lib/parkCheckin';
 import type { AutoFinishReason } from '../lib/autoFinish';
 import { emitDevSettingsChange } from '../constants/dev';
+import { syncBirthdayNotifications } from '../lib/birthdayNotif';
 
 export interface HeatData {
   status: HeatStatus;
@@ -293,6 +294,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     return () => data.subscription.unsubscribe();
   }, []);
+
+  // ── «С днём рождения» собаки ──────────────────────────────────────────────
+  // Пересобираем расписание при старте, смене языка, входе/выходе и возврате в
+  // приложение (после прошедшего дня рождения планируется следующий). Сам sync
+  // идемпотентен и ничего не бросает.
+  useEffect(() => {
+    void syncBirthdayNotifications(lang);
+    const sub = RNAppState.addEventListener('change', (s) => {
+      if (s === 'active') void syncBirthdayNotifications(lang);
+    });
+    return () => sub.remove();
+  }, [lang, isGuest]);
 
   const setLang = useCallback((newLang: Lang) => {
     setLangState(newLang);

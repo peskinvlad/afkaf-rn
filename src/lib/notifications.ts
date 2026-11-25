@@ -68,6 +68,7 @@ export const KIND_HOME = 'home_prompt'; // №2 «Уже дома?»
 export const KIND_HAZARD = 'hazard'; // №3 «Опасность рядом» (без кнопок)
 export const KIND_STILL = 'still_walking'; // №4 «Ты всё ещё гуляешь?»
 export const KIND_MARKER = 'marker_prompt'; // №5 «Метка ещё актуальна?»
+export const KIND_BIRTHDAY = 'birthday'; // «С днём рождения» собаки (вне прогулки)
 
 export const CAT_PARK = 'afkaf_park';
 export const CAT_HOME = 'afkaf_home';
@@ -152,6 +153,10 @@ function dispatchResponse(
   // Боевой сценарий: нажатие кнопки → зарегистрированный обработчик в активном
   // WalkScreen. Только живой слушатель во время прогулки (на холодном старте
   // прогулки уже нет). Тап по телу (DEFAULT) открывает приложение — не наше дело.
+  // День рождения — уведомление без кнопок: тап просто открывает приложение,
+  // ни обработчик, ни лог не нужны.
+  if (data?.kind === KIND_BIRTHDAY) return;
+
   if (data?.kind) {
     const handler = actionHandlers.get(data.kind);
     if (source === 'listener' && handler) {
@@ -396,6 +401,56 @@ export async function cancelScheduledNotification(id: string): Promise<void> {
     await N.cancelScheduledNotificationAsync(id);
   } catch {
     // уже сработало / уже отменено — не важно
+  }
+}
+
+// ── Уведомления на дату (вне прогулки) ───────────────────────────────────────
+// Локальное уведомление на конкретный момент со СТАБИЛЬНЫМ identifier: повторное
+// планирование с тем же id заменяет прежнее (так «С днём рождения» не дублируется
+// при каждом открытии приложения). Разрешение не запрашиваем — нет, значит нет.
+export async function scheduleDatedNotif(input: {
+  identifier: string;
+  kind: string;
+  sound: SoundCategory;
+  title: string;
+  body: string;
+  date: Date;
+}): Promise<boolean> {
+  const N = lib();
+  if (!N) return false;
+  const perm = await N.getPermissionsAsync();
+  if (!perm.granted) return false;
+  if (input.date.getTime() <= Date.now()) return false;
+  await N.scheduleNotificationAsync({
+    identifier: input.identifier,
+    content: {
+      title: input.title,
+      body: input.body,
+      data: { kind: input.kind },
+      ...alertContent(N, input.sound),
+    },
+    trigger: {
+      type: N.SchedulableTriggerInputTypes.DATE,
+      date: input.date,
+      channelId: SOUND[input.sound].channelId,
+    },
+  });
+  return true;
+}
+
+// Снять все запланированные уведомления с данным префиксом id, кроме keep.
+export async function cancelScheduledByPrefix(prefix: string, keep: string[] = []): Promise<void> {
+  const N = lib();
+  if (!N) return;
+  try {
+    const all = await N.getAllScheduledNotificationsAsync();
+    for (const n of all) {
+      if (n.identifier.startsWith(prefix) && !keep.includes(n.identifier)) {
+        await N.cancelScheduledNotificationAsync(n.identifier).catch(() => {});
+      }
+    }
+  } catch {
+    // best-effort
   }
 }
 

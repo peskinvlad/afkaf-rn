@@ -15,6 +15,7 @@ import { useApp } from '../hooks/useApp';
 import { useTypography } from '../theme/fonts';
 import { LANGS } from '../i18n';
 import { NotifType, loadNotifEnabled, setNotifEnabled } from '../lib/notifPrefs';
+import { syncBirthdayNotifications } from '../lib/birthdayNotif';
 import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
 
 export type Visibility = 'everyone' | 'friends' | 'nobody';
@@ -110,6 +111,7 @@ export function SettingsScreen({ navigation }: any) {
     hazard: true,
     still: true,
     marker: true,
+    birthday: true,
   });
 
   // Load all persisted values when screen focuses
@@ -135,7 +137,10 @@ export function SettingsScreen({ navigation }: any) {
 
   function handleNotifTypeToggle(type: NotifType, value: boolean) {
     setNotifTypes((prev) => ({ ...prev, [type]: value }));
-    setNotifEnabled(type, value);
+    // День рождения планируется заранее — пересобрать расписание сразу после
+    // записи выключателя (выключили → снять, включили → запланировать).
+    const saved = setNotifEnabled(type, value);
+    if (type === 'birthday') void saved.then(() => syncBirthdayNotifications(lang));
   }
 
   const langLabel = (code: string) => code.toUpperCase();
@@ -237,7 +242,7 @@ export function SettingsScreen({ navigation }: any) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('settings.notifications.title')}</Text>
 
-          {/* Выключатель на каждый из пяти типов уведомлений на прогулке */}
+          {/* Выключатель на каждый тип уведомлений (пять на прогулке + день рождения) */}
           <View style={[styles.sectionCard, shadows.sm]}>
             {([
               { icon: '🐾', type: 'park' },
@@ -245,6 +250,7 @@ export function SettingsScreen({ navigation }: any) {
               { icon: '⚠️', type: 'hazard' },
               { icon: '⏱️', type: 'still' },
               { icon: '📍', type: 'marker' },
+              { icon: '🎂', type: 'birthday' },
             ] as const).map(({ icon, type }, idx, arr) => (
               <Row key={type} last={idx === arr.length - 1}>
                 <View style={styles.rowLeft}>

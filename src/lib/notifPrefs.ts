@@ -1,11 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Настройки показа боевых уведомлений: по одному выключателю на тип + тихие часы.
-// Все пять типов по умолчанию ВКЛючены (ключа нет → включено).
+// Все типы по умолчанию ВКЛючены (ключа нет → включено). 'birthday' — единственный
+// тип вне прогулки (см. lib/birthdayNotif.ts): приходит в 09:00, тихие часы его не касаются.
 
-export type NotifType = 'park' | 'home' | 'hazard' | 'still' | 'marker';
+export type NotifType = 'park' | 'home' | 'hazard' | 'still' | 'marker' | 'birthday';
 
-export const NOTIF_TYPES: NotifType[] = ['park', 'home', 'hazard', 'still', 'marker'];
+export const NOTIF_TYPES: NotifType[] = ['park', 'home', 'hazard', 'still', 'marker', 'birthday'];
 
 export const NOTIF_TYPE_KEY: Record<NotifType, string> = {
   park: 'notif_type_park',
@@ -13,6 +14,7 @@ export const NOTIF_TYPE_KEY: Record<NotifType, string> = {
   hazard: 'notif_type_hazard',
   still: 'notif_type_still',
   marker: 'notif_type_marker',
+  birthday: 'notif_type_birthday',
 };
 
 // Тихие часы 23:00–07:00. НЕ действуют на «забытую прогулку» (home/still) — их

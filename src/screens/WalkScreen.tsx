@@ -775,6 +775,7 @@ export function WalkScreen({ navigation }: Props) {
     hazard: true,
     still: true,
     marker: true,
+    birthday: true,
   });
   // Источник — ПОЛНЫЙ markers, НЕ filteredMarkers: фильтр карты (activeCategories/
   // радиус) скрывает только пины. Фолбэк автозавершения «около парка» не должен

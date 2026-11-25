@@ -28,6 +28,7 @@ import { resolveBreedLabel } from '../lib/breeds';
 import { BreedPickerModal } from '../components/BreedPickerModal';
 import { BirthDatePickerModal } from '../components/BirthDatePickerModal';
 import { approxDateFromAge, deriveLegacyAge, formatBirthField } from '../lib/birthDate';
+import { syncBirthdayNotifications } from '../lib/birthdayNotif';
 import { logEvent } from '../lib/analytics';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -308,6 +309,8 @@ export function DogProfileScreen({ navigation, route }: Props) {
       if (photoUploadErrorMsg) {
         Alert.alert(t('dogProfile.photoUploadFailed', { error: photoUploadErrorMsg }));
       }
+      // Дата рождения / кличка могли измениться — пересобрать поздравление.
+      void syncBirthdayNotifications(lang);
       navigation.goBack();
     } catch (e) {
       // Keep the screen open so the entered form data isn't lost. Always log the
