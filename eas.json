@@ -20,6 +20,20 @@
         "image": "macos-sequoia-15.6-xcode-26.0"
       }
     },
+    "development-mapbox": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "environment": "development",
+      "env": {
+        "APP_VARIANT": "dev"
+      },
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-26.0"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "preview": {
       "distribution": "internal",
       "environment": "preview",

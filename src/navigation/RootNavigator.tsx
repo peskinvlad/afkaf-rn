@@ -20,6 +20,7 @@ import { FriendsScreen } from '../screens/FriendsScreen';
 import { BlockedUsersScreen } from '../screens/BlockedUsersScreen';
 import { WalksScreen } from '../screens/WalksScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
+import { MapboxTestScreen } from '../screens/MapboxTestScreen';
 import { AddFriendSheet } from '../components/AddFriendSheet';
 import { WalkRecoveryModal } from '../components/WalkRecoveryModal';
 import { ReportSheetProvider } from '../components/ReportSheet';
@@ -90,6 +91,8 @@ export function RootNavigator() {
           <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
           <Stack.Screen name="PrivacyRadius" component={PrivacyRadiusScreen} />
+          {/* exp/mapbox, фаза 1: вход только из DevPanel */}
+          <Stack.Screen name="MapboxTest" component={MapboxTestScreen} />
         </Stack.Navigator>
       </NavigationContainer>
       </TermsConsentProvider>

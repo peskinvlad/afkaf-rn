@@ -7,12 +7,15 @@ import { stopWalkTracking } from './src/lib/walkTracking';
 // Registers the notification category + response listener — also at bundle load,
 // so a button tap is caught even if it arrives before any screen mounts.
 import { initNotifications } from './src/lib/notifications';
+import { initMapbox } from './src/lib/mapbox';
 
 // Before anything renders — see lockLayoutLTR for why this runs on every start.
 lockLayoutLTR();
 
 // No-op on builds without the native expo-notifications module (guarded inside).
 initNotifications();
+// Mapbox: токен + телеметрия выключена. В сборке без нативного модуля — no-op.
+initMapbox();
 
 // A walk never survives an app start (WalkScreen state isn't restored), so a
 // location session still running now was orphaned by a crash or a JS reload.

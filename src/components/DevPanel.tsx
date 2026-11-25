@@ -74,10 +74,21 @@ import {
   markerText,
 } from '../lib/notifText';
 import { useTypography } from '../theme/fonts';
-import { colors, radii, shadows } from '../theme/tokens';
+import { isMapboxAvailable, MAPBOX_TOKEN } from '../lib/mapbox';
+import {
+  DEFAULT_MAP_ENGINE,
+  canUseMapbox,
+  getMapEngineOverride,
+  setMapEngineOverride,
+  useMapEngine,
+  type MapEngine,
+} from '../lib/mapEngine';
+import { navigationRef } from '../lib/navigationRef';
+import { IS_DEV_VARIANT } from '../constants/appVariant';
+import { colors, radii, shadows, typography } from '../theme/tokens';
 
 // Панель только для DEV_USER_IDS (гейт — в AboutScreen, сюда без него не
-// попасть). Строки по-русски хардкодом — осознанное исключение из правила
+// попасть; в отдельном dev-приложении APP_VARIANT=dev гейт открыт всем). Строки по-русски хардкодом — осознанное исключение из правила
 // i18n: обычные пользователи этот экран не видят.
 
 const FIRST_WALK_TIP_KEY = 'first_walk_tip_shown';       // FirstWalkTipCard.tsx
@@ -456,6 +467,22 @@ export function DevPanel({ visible, onClose }: Props) {
           ? 'Нет разрешения на уведомления'
           : 'Модуль уведомлений не в этой сборке';
     showFlash('notif', msg);
+  }
+
+  // Панель — Modal поверх About: сначала закрываем её, потом открываем экран,
+  // иначе он окажется под модалкой.
+  // Переключатель карты: по умолчанию → Mapbox → старая → по умолчанию.
+  const mapEngine = useMapEngine();
+  const [mapOverride, setMapOverride] = useState<MapEngine | null>(getMapEngineOverride());
+  function cycleMapEngine() {
+    const next: MapEngine | null = mapOverride == null ? 'mapbox' : mapOverride === 'mapbox' ? 'apple' : null;
+    setMapOverride(next);
+    void setMapEngineOverride(next);
+  }
+
+  function openMapboxTest() {
+    onClose();
+    if (navigationRef.isReady()) navigationRef.navigate('MapboxTest' as never);
   }
 
   // Живой индикатор домашней зоны — та же формула, что в гейте active_walks
@@ -851,6 +878,47 @@ export function DevPanel({ visible, onClose }: Props) {
             <Text style={styles.note}>
               Диагностический оверлей карты (RC / PAD / ANIM / DATA) на Map и Walk.
               Меняется сразу, без перезапуска. Виден только dev-пользователю.
+            </Text>
+          </View>
+
+          {/* ── Mapbox (feat/mapbox) ── */}
+          <Text style={styles.sectionTitle}>Mapbox</Text>
+          <View style={styles.card}>
+            <InfoRow label="Приложение" value={IS_DEV_VARIANT ? 'afkaf dev (APP_VARIANT=dev)' : 'обычное'} />
+            <InfoRow
+              label="Нативный модуль Mapbox в сборке"
+              value={isMapboxAvailable ? 'ДА' : 'НЕТ'}
+              highlight={isMapboxAvailable}
+            />
+            <InfoRow label="EXPO_PUBLIC_MAPBOX_TOKEN" value={MAPBOX_TOKEN ? 'задан' : 'НЕ задан'} />
+            <InfoRow
+              label="Карта на экранах сейчас"
+              value={mapEngine === 'mapbox' ? 'Mapbox' : 'старая (Apple Maps)'}
+              highlight={mapEngine === 'mapbox'}
+            />
+            <InfoRow
+              label="Выбор в DevPanel"
+              value={mapOverride == null ? `как в сборке (${DEFAULT_MAP_ENGINE})` : mapOverride === 'mapbox' ? 'Mapbox' : 'старая'}
+            />
+            <TouchableOpacity
+              style={[styles.btnPrimary, !canUseMapbox && { opacity: 0.4 }]}
+              onPress={cycleMapEngine}
+              activeOpacity={0.8}
+              disabled={!canUseMapbox}
+            >
+              <Text style={styles.btnPrimaryTxt}>Переключить карту</Text>
+            </TouchableOpacity>
+            <Text style={styles.note}>
+              Действует сразу, только на этом телефоне. Пока ни один экран не перенесён —
+              переключатель ничего не меняет на вид. Недоступен, если в сборке нет Mapbox
+              или не задан токен.
+            </Text>
+            <TouchableOpacity style={styles.btnPrimary} onPress={openMapboxTest} activeOpacity={0.8}>
+              <Text style={styles.btnPrimaryTxt}>Открыть тестовый экран Mapbox</Text>
+            </TouchableOpacity>
+            <Text style={styles.note}>
+              Метки и вода одним слоем, кластеры, своя позиция, логотип. Остальные
+              экраны по-прежнему на react-native-maps.
             </Text>
           </View>
         </ScrollView>
