@@ -1,0 +1,6 @@
+-- Applied to the live DB on 2026-11-25 (Supabase migration
+-- markers_text_guard_autohide_trust_alltime). Three function replacements, no rows changed:
+--   1) markers_guard_insert — comment check (<=140 chars, no phones/links/contacts, PT422)
+--   2) get_map_markers      — auto-hide a user marker with open reports from 3+ people
+--   3) get_trust_status     — confirmed markers counted over all time (no 7-day window)
+-- Bodies: supabase/functions/{markers_guard_insert,get_map_markers,get_trust_status}.sql

@@ -11,6 +11,8 @@
 --      RAISE EXCEPTION 'PT403' (PostgREST → HTTP 403). Инфраструктурные типы
 --      ставит только куратор через service_role / SQL. Клиент их в селекторе
 --      не показывает, так что штатно PT403 не всплывает (спец. i18n не нужен).
+--   TEXT) комментарий: ≤140 символов, без телефонов/ссылок/контактов → 'PT422'
+--      (зеркало src/lib/markerText.ts; добавлено 25.11.2026);
 --   A) rate limit — не более 20 меток на auth.uid() за последний час,
 --      иначе RAISE EXCEPTION с SQLSTATE 'PT429' (PostgREST → HTTP 429;
 --      клиент ловит error.code === 'PT429' и показывает common.rate_limit);
@@ -42,6 +44,28 @@ BEGIN
             MESSAGE = 'markers_type_forbidden',
             DETAIL  = 'infrastructure marker types are curated-only',
             HINT    = 'Этот тип метки нельзя создавать вручную';
+  END IF;
+
+  -- Текст комментария (25.11.2026). Зеркало клиентского src/lib/markerText.ts:
+  -- до 140 символов, без телефонов (9+ цифр с разделителями), ссылок и контактов.
+  -- Пустая строка → NULL. SQLSTATE 'PT422' (PostgREST → HTTP 422).
+  NEW.description := nullif(btrim(NEW.description), '');
+  IF NEW.description IS NOT NULL THEN
+    IF char_length(NEW.description) > 140 THEN
+      RAISE EXCEPTION
+        USING ERRCODE = 'PT422',
+              MESSAGE = 'markers_text_too_long',
+              DETAIL  = 'marker comment is limited to 140 characters',
+              HINT    = 'Комментарий к метке — до 140 символов';
+    END IF;
+    IF NEW.description ~ '([0-9][ ()+./-]{0,2}){9,}'
+       OR NEW.description ~* '(https?://|www\.|t\.me/|wa\.me/|@[a-z0-9_.]{3,}|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\m[a-z0-9-]+\.(com|co\.il|net|org|ru|io|me)\M)' THEN
+      RAISE EXCEPTION
+        USING ERRCODE = 'PT422',
+              MESSAGE = 'markers_text_contact',
+              DETAIL  = 'marker comment contains a phone number, link or contact handle',
+              HINT    = 'В комментарии нельзя оставлять телефоны, ссылки и контакты';
+    END IF;
   END IF;
 
   SELECT count(*) INTO recent_count
