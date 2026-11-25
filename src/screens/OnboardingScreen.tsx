@@ -1,9 +1,10 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
+import { logEvent } from '../lib/analytics';
 
 const { width: W } = Dimensions.get('window');
 
@@ -26,17 +27,25 @@ export function OnboardingScreen({ navigation }: Props) {
   const [current, setCurrent] = useState(0);
   const listRef = useRef<FlatList>(null);
 
+  // Воронка: какой слайд увидели (1-based). Листать можно только кнопкой
+  // (scrollEnabled=false), так что current — единственный источник.
+  useEffect(() => {
+    logEvent('onboarding_step', { step: current + 1, of: SLIDES.length });
+  }, [current]);
+
   function next() {
     if (current < SLIDES.length - 1) {
       const next = current + 1;
       listRef.current?.scrollToIndex({ index: next, animated: true });
       setCurrent(next);
     } else {
+      logEvent('onboarding_done', { skipped: false, step: current + 1 });
       navigation.replace('Main');
     }
   }
 
   function skip() {
+    logEvent('onboarding_done', { skipped: true, step: current + 1 });
     navigation.replace('Main');
   }
 

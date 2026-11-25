@@ -29,6 +29,7 @@ import { MapMarker, MARKER_CONFIG } from '../lib/markerConfig';
 import { ADD_MARKER_CAMERA_ZOOM_RANGE } from '../lib/mapConfig';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
+import { logEvent } from '../lib/analytics';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type MarkerType = 'hazard' | 'aggressive_dog' | 'forbidden' | 'danger';
@@ -287,6 +288,7 @@ export function AddMarkerScreen({ navigation }: Props) {
         .select(MARKER_COLUMNS)
         .single();
       if (error) throw error;
+      logEvent('marker_created', { type: selectedType, has_text: description.trim().length > 0 });
       // RETURNING своей строки не содержит user_id (MARKER_COLUMNS без него) —
       // это заведомо моя метка, поэтому is_mine = true добавляем вручную.
       if (data) addLocalMarker({ ...(data as object), is_mine: true } as MapMarker);

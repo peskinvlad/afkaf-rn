@@ -14,6 +14,7 @@ import { navigationRef } from '../lib/navigationRef';
 import { UserModMenuButton } from './UserModMenuButton';
 import { colors, radii, shadows, spacing } from '../theme/tokens';
 import { useTypography } from '../theme/fonts';
+import { logEvent } from '../lib/analytics';
 
 type FriendshipRpcStatus = 'friends' | 'pending_sent' | 'pending_received' | 'none';
 type ViewState = 'loading' | FriendshipRpcStatus | 'sent' | 'guest';
@@ -104,6 +105,7 @@ export function AddFriendSheet({ visible, friendId, onClose }: Props) {
       console.warn('[AddFriendSheet] insert error:', error.message);
       return;
     }
+    logEvent('friend_request_sent', { via: 'link' });
     setState('sent');
     setTimeout(onClose, 1500);
   }

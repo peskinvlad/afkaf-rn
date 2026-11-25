@@ -295,3 +295,30 @@ CREATE TABLE public.app_pings (
 --   CREATE INDEX app_pings_day_idx  ON (day);
 --   CREATE INDEX app_pings_user_idx ON (user_id) WHERE user_id IS NOT NULL;
 --   regex-валидация app_version ^[0-9A-Za-z.-]+$ — в функции log_app_open, не в таблице.
+
+-- ============================================================
+-- app_events  (feat/app-events, применено 2026-11-23)
+-- Продуктовые события для воронки: device_id (как в app_pings), user_id из
+-- auth.uid() (NULL у гостя), имя события и короткие props. Пишет только RPC
+-- log_event (SECURITY DEFINER); клиент прав не имеет.
+-- ============================================================
+CREATE TABLE public.app_events (
+  id          bigint      GENERATED ALWAYS AS IDENTITY,
+  device_id   uuid        NOT NULL,
+  user_id     uuid        NULL,
+  name        text        NOT NULL,
+  props       jsonb       NOT NULL DEFAULT '{}'::jsonb,
+  platform    text        NOT NULL,
+  app_version text        NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT app_events_pkey PRIMARY KEY (id),
+  CONSTRAINT app_events_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL,
+  CONSTRAINT app_events_name_check CHECK (name ~ '^[a-z][a-z0-9_]{1,39}$'),
+  CONSTRAINT app_events_platform_check CHECK (platform = ANY (ARRAY['ios'::text, 'android'::text])),
+  CONSTRAINT app_events_app_version_check CHECK (char_length(app_version) >= 1 AND char_length(app_version) <= 20),
+  CONSTRAINT app_events_props_check CHECK (jsonb_typeof(props) = 'object' AND pg_column_size(props) <= 1024)
+);
+-- NB: индексы:
+--   CREATE INDEX app_events_device_time_idx ON (device_id, created_at);
+--   CREATE INDEX app_events_name_time_idx   ON (name, created_at);
+--   CREATE INDEX app_events_user_idx        ON (user_id) WHERE user_id IS NOT NULL;

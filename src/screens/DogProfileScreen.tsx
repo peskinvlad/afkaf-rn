@@ -28,6 +28,7 @@ import { resolveBreedLabel } from '../lib/breeds';
 import { BreedPickerModal } from '../components/BreedPickerModal';
 import { BirthDatePickerModal } from '../components/BirthDatePickerModal';
 import { approxDateFromAge, deriveLegacyAge, formatBirthField } from '../lib/birthDate';
+import { logEvent } from '../lib/analytics';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const DOG_ICONS = ['🐕', '🐩', '🐶', '🦮', '🐕‍🦺', '🐾', '🦴', '🐺'];
@@ -299,6 +300,7 @@ export function DogProfileScreen({ navigation, route }: Props) {
           .from('dogs')
           .insert(payload);
         if (error) throw error;
+        logEvent('dog_added');
       }
       // Dog saved fine; only the photo failed. Tell the user (don't block the
       // save) and surface the raw storage message — temporary, for diagnosing

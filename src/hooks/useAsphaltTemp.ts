@@ -21,6 +21,8 @@ export type HourlyPoint = {
   surfaceTempC: number;
   status: HeatStatus;
   icon: string;
+  // Вероятность осадков слота, 0..1 (OWM /forecast `pop`); нет поля → 0.
+  pop: number;
 };
 
 // Florentin, Tel Aviv — used if location permission is denied/unavailable
@@ -42,6 +44,8 @@ interface AsphaltTempResult {
   weatherDescription: string | null;
   weatherIcon: string | null;
   hourlyForecast: HourlyPoint[];
+  // Закат сегодня, epoch-секунды (OWM /weather sys.sunset); null если не пришёл.
+  sunsetEpoch: number | null;
   isFallbackLocation: boolean;
   // Диагностика dev-оверрайда (DevPanel → Info). Для не-dev пользователей
   // overrideActive всегда false: гейт стоит в constants/dev.ts.
@@ -55,6 +59,7 @@ interface CurrentWeather {
   description: string;
   icon: string;
   clouds: number | null; // % облачности (clouds.all); null если API не прислал
+  sunset: number | null; // epoch-секунды заката (sys.sunset); null если API не прислал
 }
 
 async function fetchCurrentWeather(lat: number, lon: number, lang: Lang): Promise<CurrentWeather | null> {
@@ -70,6 +75,7 @@ async function fetchCurrentWeather(lat: number, lon: number, lang: Lang): Promis
     description: data.weather?.[0]?.description ?? '',
     icon: data.weather?.[0]?.icon ?? '01d',
     clouds: typeof data.clouds?.all === 'number' ? data.clouds.all : null,
+    sunset: typeof data.sys?.sunset === 'number' ? data.sys.sunset : null,
   };
 }
 
@@ -92,6 +98,7 @@ async function fetchForecast(lat: number, lon: number, lang: Lang): Promise<Hour
       surfaceTempC,
       status: statusFor(surfaceTempC),
       icon: entry.weather?.[0]?.icon ?? '01d',
+      pop: typeof entry.pop === 'number' ? Math.min(Math.max(entry.pop, 0), 1) : 0,
     };
   });
 }
@@ -103,6 +110,7 @@ export function useAsphaltTemp(lang: Lang): AsphaltTempResult {
   const [weatherDescription, setWeatherDescription] = useState<string | null>(null);
   const [weatherIcon, setWeatherIcon] = useState<string | null>(null);
   const [hourlyForecast, setHourlyForecast] = useState<HourlyPoint[]>([]);
+  const [sunsetEpoch, setSunsetEpoch] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [isFallbackLocation, setIsFallbackLocation] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -177,6 +185,7 @@ export function useAsphaltTemp(lang: Lang): AsphaltTempResult {
           setFeelsLikeC(Math.round(current.feelsLike));
           setWeatherDescription(current.description);
           setWeatherIcon(current.icon);
+          setSunsetEpoch(current.sunset);
         }
         setLoading(false);
 
@@ -230,6 +239,7 @@ export function useAsphaltTemp(lang: Lang): AsphaltTempResult {
     weatherDescription,
     weatherIcon,
     hourlyForecast,
+    sunsetEpoch,
     isFallbackLocation,
     overrideActive: effective.overrideActive,
     realSurfaceTempC: effective.realSurfaceTempC,

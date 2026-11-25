@@ -70,6 +70,7 @@ export interface AppState {
   weatherDescription: string | null;
   weatherIcon: string | null;
   hourlyForecast: HourlyPoint[];
+  sunsetEpoch: number | null;
   isFallbackLocation: boolean;
   // Диагностика dev-оверрайда температуры (читает только DevPanel).
   heatOverrideActive: boolean;
@@ -189,7 +190,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ── Live asphalt temperature (real OpenWeatherMap data, see useAsphaltTemp) ─
   const {
     surfaceTempC, airTempC, status: heatStatus, loading: isHeatLoading,
-    feelsLikeC, weatherDescription, weatherIcon, hourlyForecast, isFallbackLocation,
+    feelsLikeC, weatherDescription, weatherIcon, hourlyForecast, sunsetEpoch, isFallbackLocation,
     overrideActive: heatOverrideActive, realSurfaceTempC,
   } = useAsphaltTemp(lang);
   const heatData: HeatData = {
@@ -334,6 +335,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         weatherDescription,
         weatherIcon,
         hourlyForecast,
+        sunsetEpoch,
         isFallbackLocation,
         heatOverrideActive,
         realSurfaceTempC,

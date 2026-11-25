@@ -54,6 +54,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PrivacyChoiceSheet } from '../components/PrivacyChoiceSheet';
 import { useTermsConsent } from '../hooks/useTermsConsent';
 import type { Visibility } from './SettingsScreen';
+import { logEvent } from '../lib/analytics';
 
 // Стартовая позиция карты — Бат-Ям (см. START_COORD/START_DELTA в lib/geo).
 // До первого GPS-фикса карта показывает этот регион; на первом фиксе один раз
@@ -495,8 +496,10 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     }
 
     if (heatData.status === 'danger') {
+      logEvent('heat_warning_shown');
       navigation.navigate('HeatWarning');
     } else {
+      logEvent('walk_started', { heat: isHeatLoading ? 'unknown' : heatData.status, after_warning: false });
       setIsWalking(true);
       navigation.navigate('WalkActive');
     }

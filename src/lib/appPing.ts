@@ -40,12 +40,24 @@ function jerusalemDay(): string {
 // Случайный UUID устройства: создаётся один раз и переживает перезапуски. Не
 // привязан к пользователю и не содержит ничего личного — просто чтобы считать
 // уникальные устройства и возвращаемость.
-async function getOrCreateDeviceId(): Promise<string> {
-  const existing = await AsyncStorage.getItem(DEVICE_ID_KEY);
-  if (existing) return existing;
-  const id = uuidv4();
-  await AsyncStorage.setItem(DEVICE_ID_KEY, id);
-  return id;
+// Общий промис: пинг и события могут попросить id одновременно на первом
+// запуске — без него каждый сгенерировал бы свой UUID.
+let deviceIdPromise: Promise<string> | null = null;
+
+export function getOrCreateDeviceId(): Promise<string> {
+  if (!deviceIdPromise) {
+    deviceIdPromise = (async () => {
+      const existing = await AsyncStorage.getItem(DEVICE_ID_KEY);
+      if (existing) return existing;
+      const id = uuidv4();
+      await AsyncStorage.setItem(DEVICE_ID_KEY, id);
+      return id;
+    })().catch((e) => {
+      deviceIdPromise = null; // дать шанс повторить при следующем вызове
+      throw e;
+    });
+  }
+  return deviceIdPromise;
 }
 
 // Вызывать при холодном старте и при возвращении приложения на передний план.
