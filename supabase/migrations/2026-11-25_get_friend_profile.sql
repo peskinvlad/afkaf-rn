@@ -1,9 +1,7 @@
 -- 2026-11-25 — get_friend_profile: страница друга (имя + ВСЕ его собаки с породой,
 -- возрастом, полом, характером, фото).
--- STATUS: NOT APPLIED YET — ждёт «ок» Влада. Только НОВАЯ функция: существующие
--- таблицы, политики и get_user_previews не меняются, ничего не удаляется.
--- Клиент (feat/friend-profile) переживает её отсутствие: шторка показывает то, что
--- уже есть в списке друзей, без подробностей.
+-- STATUS: APPLIED 2026-11-25 (Supabase MCP, после «Применяй» Влада). Проверено:
+-- SECURITY DEFINER, anon — нет доступа, authenticated — есть, без сессии возвращает NULL.
 --
 -- Кому отдаёт: ТОЛЬКО принятому другу (friendships.status = 'accepted' в любую
 -- сторону) и только если нет блокировки ни в одну сторону. Всем остальным — NULL.
@@ -52,4 +50,3 @@ REVOKE ALL ON FUNCTION public.get_friend_profile(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.get_friend_profile(uuid) FROM anon;
 GRANT EXECUTE ON FUNCTION public.get_friend_profile(uuid) TO authenticated;
 
--- После применения: положить снимок в supabase/functions/get_friend_profile.sql.
