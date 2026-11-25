@@ -32,13 +32,16 @@ import { colors, radii, shadows } from '../theme/tokens';
 import { logEvent } from '../lib/analytics';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type MarkerType = 'hazard' | 'aggressive_dog' | 'forbidden' | 'danger';
+type MarkerType = 'hazard' | 'food' | 'glass' | 'aggressive_dog' | 'jackal' | 'forbidden' | 'danger';
 
 // Icons and the active-chip fill come from MARKER_CONFIG — same visual
 // language as the pins on the map.
 const MARKER_TYPES: { id: MarkerType; labelKey: string }[] = [
   { id: 'hazard',         labelKey: 'addMarker.type.hazard' },
+  { id: 'food',           labelKey: 'addMarker.type.food' },
+  { id: 'glass',          labelKey: 'addMarker.type.glass' },
   { id: 'aggressive_dog', labelKey: 'addMarker.type.aggressiveDog' },
+  { id: 'jackal',         labelKey: 'addMarker.type.jackal' },
   { id: 'forbidden',      labelKey: 'addMarker.type.noDogs' },
   { id: 'danger',         labelKey: 'addMarker.type.other' },
 ];
@@ -402,7 +405,8 @@ export function AddMarkerScreen({ navigation }: Props) {
 
       {/* ── Form — no vertical scroll: everything fits on one screen ── */}
       <View style={styles.form}>
-        {/* Type chips — 2×2 grid, all four visible at once (no scroll).
+        {/* Type chips — two per row, all seven visible at once (no scroll); the
+            last one («Другое») takes a full row.
             Icons/colors from MARKER_CONFIG. */}
         <Text style={styles.sectionLabel}>{t('addMarker.typeLabel')}</Text>
         <View style={styles.typeGrid}>

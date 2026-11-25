@@ -160,7 +160,7 @@ const STILL_MAX_STEPS = 300;
 
 // Сценарий №3 «Опасность рядом» и №5 «Метка ещё актуальна?»: пороги сближения с
 // меткой. Dev-переключатель «радиус 150 м» увеличивает оба для теста.
-const HAZARD_TYPES = ['danger', 'hazard', 'aggressive_dog'];
+const HAZARD_TYPES = ['danger', 'hazard', 'aggressive_dog', 'food', 'glass', 'jackal'];
 const HAZARD_RADIUS_M = 50;
 const MARKER_RADIUS_M = 30;
 const PROXIMITY_TEST_RADIUS_M = 150;

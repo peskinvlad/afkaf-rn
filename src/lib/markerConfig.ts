@@ -6,6 +6,9 @@ export const MARKER_CONFIG: Record<string, { emoji: string; pinColor: string }> 
   hazard:         { emoji: '☠️', pinColor: '#9b1c1c' },
   aggressive_dog: { emoji: '🐕', pinColor: '#9b1c1c' },
   forbidden:      { emoji: '🚫', pinColor: '#92580a' },
+  food:           { emoji: '🍖', pinColor: '#92580a' }, // еда / кости на земле
+  glass:          { emoji: '🗑️', pinColor: '#92580a' }, // стекло / мусор
+  jackal:         { emoji: '🐺', pinColor: '#9b1c1c' }, // шакалы
 };
 
 // Постоянная инфраструктура из OSM-импорта Гуш-Дана. Эти типы создаёт только

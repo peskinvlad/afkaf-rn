@@ -78,7 +78,7 @@ CREATE TABLE public.markers (
   CONSTRAINT markers_pkey PRIMARY KEY (id),
   CONSTRAINT markers_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE,
   CONSTRAINT markers_description_len CHECK (description IS NULL OR length(description) <= 500),
-  CONSTRAINT markers_type_check CHECK (type = ANY (ARRAY['park'::text, 'water'::text, 'danger'::text, 'hazard'::text, 'aggressive_dog'::text, 'forbidden'::text, 'dog_park'::text, 'food'::text]))
+  CONSTRAINT markers_type_check CHECK (type = ANY (ARRAY['park'::text, 'water'::text, 'danger'::text, 'hazard'::text, 'aggressive_dog'::text, 'forbidden'::text, 'dog_park'::text, 'food'::text, 'glass'::text, 'jackal'::text]))
 );
 
 -- ============================================================
