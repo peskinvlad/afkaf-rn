@@ -80,6 +80,7 @@ export interface AppState {
 
 const DEFAULT_CATEGORIES: Record<string, boolean> = {
   park: true, dog_park: true, water: true, danger: true, hazard: true, aggressive_dog: true, forbidden: true,
+  food: true, glass: true, jackal: true,
 };
 
 // Marker filter (radius + per-category toggles) is persisted so it survives a

@@ -7,9 +7,8 @@ import { MUNICIPAL_106 } from '../config/municipal106';
 import { resolveMunicipality, type CityId } from './municipality';
 
 // Типы, для которых показываем кнопку. forbidden — нет (это не мэрийный вопрос).
-// food в MARKER_CONFIG пока нет; когда появится — добавить сюда.
 export const REPORT106_TYPES: string[] = [
-  'danger', 'hazard', 'aggressive_dog', 'water', 'park', 'dog_park',
+  'danger', 'hazard', 'aggressive_dog', 'food', 'glass', 'jackal', 'water', 'park', 'dog_park',
 ];
 
 // Для этих типов всегда показываем шторку (подсказка про полицию).
@@ -26,7 +25,9 @@ const HE_TYPE_NAMES: Record<string, string> = {
   water: 'ברזייה / מים לכלבים',
   park: 'פארק',
   dog_park: 'גינת כלבים',
-  food: 'שאריות אוכל על הקרקע',
+  food: 'שאריות אוכל / עצמות על הקרקע',
+  glass: 'שברי זכוכית / פסולת',
+  jackal: 'תנים משוטטים',
 };
 
 // Без имени/id пользователя и без его собственных координат — только метка.
