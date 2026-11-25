@@ -5,6 +5,7 @@ import {
   ChipSeasonPref,
   next24hMaxSurface,
   resolveSeason,
+  isCalendarWinter,
 } from '../lib/heat';
 import { HourlyPoint } from './useAsphaltTemp';
 import { getDevChipSeason, onDevSettingsChange } from '../constants/dev';
@@ -75,5 +76,9 @@ export function useChipSeason(
     }
   }, [hydrated, surfaceTempC, hourlyForecast]);
 
-  return pref === 'auto' ? auto : pref;
+  // Dev-оверрайд перебивает всё. Иначе в декабре–феврале режим зимний по
+  // календарю (lib/heat: isCalendarWinter); гистерезис при этом продолжает
+  // считаться и сохраняться в фоне, чтобы 1 марта стартовать с актуального.
+  if (pref !== 'auto') return pref;
+  return isCalendarWinter(Date.now()) ? 'winter' : auto;
 }
