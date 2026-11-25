@@ -1,9 +1,6 @@
 -- 2026-11-25 — dog trait tags (multi-select "метки характера")
--- STATUS: NOT APPLIED YET — waits for Vlad's «ок». Additive only: one new column
--- with a default, so builds that don't know about it keep inserting/updating fine.
--- The client on feat/dog-traits selects and writes dogs.traits, so this must be
--- applied BEFORE that branch reaches main / OTA.
--- After applying: add the column + constraint to supabase/tables.sql (dogs).
+-- STATUS: APPLIED 2026-11-25 (Supabase MCP, после «Применяй» Влада). Проверено: 18 собак,
+-- у всех traits = '{}', ограничение dogs_traits_check на месте. Снимок — supabase/tables.sql.
 
 ALTER TABLE public.dogs
   ADD COLUMN traits text[] NOT NULL DEFAULT '{}';

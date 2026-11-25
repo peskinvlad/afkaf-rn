@@ -51,12 +51,14 @@ CREATE TABLE public.dogs (
   owner_name   text        NULL,
   birth_date        date    NULL,                 -- дата рождения; при approx=true значащие только год+месяц (день=1)
   birth_date_approx boolean NOT NULL DEFAULT false, -- true = «примерно» (месяц+год); false = точная дата
+  traits       text[]      NOT NULL DEFAULT '{}',  -- метки характера (до 5 ключей из lib/dogTraits.ts), применено 2026-11-25
   CONSTRAINT dogs_pkey PRIMARY KEY (id),
   CONSTRAINT dogs_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.profiles(id) ON DELETE CASCADE,
   CONSTRAINT dogs_name_len CHECK (name IS NULL OR length(name) <= 50),
   CONSTRAINT dogs_breed_len CHECK (breed IS NULL OR length(breed) <= 50),
   CONSTRAINT dogs_owner_name_len CHECK (owner_name IS NULL OR length(owner_name) <= 50),
-  CONSTRAINT dogs_sociability_check CHECK (sociability = ANY (ARRAY['friendly'::text, 'neutral'::text, 'reactive'::text]))
+  CONSTRAINT dogs_sociability_check CHECK (sociability = ANY (ARRAY['friendly'::text, 'neutral'::text, 'reactive'::text])),
+  CONSTRAINT dogs_traits_check CHECK (cardinality(traits) <= 5 AND traits <@ ARRAY['playful'::text, 'calm'::text, 'energetic'::text, 'cuddly'::text, 'shy'::text, 'loves_ball'::text, 'loves_water'::text, 'loves_running'::text, 'wary_big_dogs'::text, 'wary_small_dogs'::text, 'careful_kids'::text, 'puppy'::text])
 );
 
 -- ============================================================
