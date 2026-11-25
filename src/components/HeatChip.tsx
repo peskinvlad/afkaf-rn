@@ -48,7 +48,7 @@ export function HeatChip({ isLoading, season, heatData, weatherIcon, summerColor
   }
 
   // Текущий статус caution/danger → всегда лето, даже если season='winter'.
-  if (effectiveChipSeason(season, heatData.status) === 'winter') {
+  if (effectiveChipSeason(season, heatData.status, heatData.surface_est_c) === 'winter') {
     // Погода СЕЙЧАС: значок + температура воздуха + подпись по типу погоды.
     const Icon = iconToLucide(weatherIcon ?? '');
     return (
@@ -82,7 +82,7 @@ export function heatChipA11yLabel(
   t: (key: string, vars?: Record<string, string | number>) => string,
 ): string | undefined {
   if (isLoading || !heatData.has_data) return undefined;
-  if (effectiveChipSeason(season, heatData.status) !== 'winter') return undefined;
+  if (effectiveChipSeason(season, heatData.status, heatData.surface_est_c) !== 'winter') return undefined;
   return `${t(`weather.${weatherKind(weatherIcon)}`)}, ${heatData.air_temp_c}°`;
 }
 

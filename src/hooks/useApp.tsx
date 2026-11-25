@@ -14,6 +14,7 @@ import { loadAutoFinished, clearAutoFinished, finalizeAutoFinished } from '../li
 import { closeParkCheckin } from '../lib/parkCheckin';
 import type { AutoFinishReason } from '../lib/autoFinish';
 import { emitDevSettingsChange } from '../constants/dev';
+import { syncBirthdayNotifications } from '../lib/birthdayNotif';
 
 export interface HeatData {
   status: HeatStatus;
@@ -79,6 +80,7 @@ export interface AppState {
 
 const DEFAULT_CATEGORIES: Record<string, boolean> = {
   park: true, dog_park: true, water: true, danger: true, hazard: true, aggressive_dog: true, forbidden: true,
+  food: true, glass: true, jackal: true,
 };
 
 // Marker filter (radius + per-category toggles) is persisted so it survives a
@@ -303,6 +305,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (key: string, vars?: Record<string, string | number>) => translate(key, lang, vars),
     [lang]
   );
+
+  // №6 «С днём рождения»: пересобрать расписание при старте, при входе/выходе
+  // (гость → снять всё) и при смене языка (тексты зашиты в уведомление).
+  useEffect(() => {
+    void syncBirthdayNotifications(tFn);
+  }, [tFn, isGuest]);
 
   return (
     <AppContext.Provider
