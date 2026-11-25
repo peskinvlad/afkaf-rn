@@ -49,7 +49,10 @@ export async function checkAndAwardBadges(confirmedCount: number): Promise<Badge
   if (!userId) return [];
 
   const [{ data: walks }, { data: existing }] = await Promise.all([
-    supabase.from('walk_history').select('distance_km, started_at').eq('user_id', userId),
+    // Только засчитанные прогулки: невалидные (< 0.3 км / < 5 мин, в т.ч.
+    // забытый трек на машине) не должны накручивать км-бейджи, счёт и серию.
+    // Ср. getPreviousBestDistanceKm — там фильтр уже есть.
+    supabase.from('walk_history').select('distance_km, started_at').eq('user_id', userId).eq('is_valid', true),
     supabase.from('user_badges').select('badge_id').eq('user_id', userId),
   ]);
 

@@ -190,7 +190,7 @@
 - **`markers`: строки не удаляются, только фильтруются по `expires_at`** —
   история нужна для сводки района.
 - **Типы меток (`markers_type_check`):** `park`, `water`, `danger`, `hazard`,
-  `aggressive_dog`, `forbidden`, `dog_park`, `food`. Канон в клиенте —
+  `aggressive_dog`, `forbidden`, `dog_park`, `food`, `glass`, `jackal`. Канон в клиенте —
   `src/lib/markerConfig.ts` (`MARKER_CONFIG`). Тип не в `MARKER_CONFIG` рендерится
   нейтральным серым 📍 (fallback в Map/Walk/Callout/filter), краха нет.
   - **`water`/`park`/`dog_park` — инфраструктура (кураторские).** Ставит только
@@ -198,8 +198,10 @@
     куратора `e57637d6-7b83-465c-8263-6ca0fa822ab4`). Триггер
     `markers_guard_insert` блокирует их вставку обычным юзером (`auth.uid()` не
     NULL) через `RAISE EXCEPTION 'PT403'`. В селекторе клиента их нет.
-  - **`food`** — будущий пользовательский тип (пост-бета), в клиенте пока не
-    заведён; в триггере ограничений на него нет (общий путь: rate-limit + 24h).
+  - **`food` (еда / кости), `glass` (стекло / мусор), `jackal` (шакалы)** —
+    пользовательские опасные типы (с 25.11.2026): есть в селекторе, в
+    `HAZARD_TYPES` (предупреждение «опасность рядом») и в `REPORT106_TYPES`;
+    в триггере отдельных веток нет (общий путь: rate-limit + 24h).
   - **`water_sources`** дедуплицируется по `osm_id` (UNIQUE INDEX
     `water_sources_osm_id_key`) — импорт идёт `ON CONFLICT (osm_id) DO NOTHING`.
 

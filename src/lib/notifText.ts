@@ -107,3 +107,16 @@ export function markerText(t: TFn, type: string): NotifContent {
   const title = perType !== perTypeKey ? perType : t('marker.notif.title', { type: label });
   return { title, body: t('marker.notif.body') };
 }
+
+// №6 «С днём рождения» — раз в год в 10:00, вне прогулки. Кличка есть всегда
+// (dogs.name NOT NULL).
+// age — сколько исполняется (год показа минус год рождения); без него — текст без числа.
+export function birthdayText(t: TFn, dog: string, age?: number): NotifContent {
+  return {
+    title: t('birthday.notif.title', { dog }),
+    body:
+      age != null && age >= 1
+        ? t('birthday.notif.body_age', { dog, age })
+        : t('birthday.notif.body', { dog }),
+  };
+}
