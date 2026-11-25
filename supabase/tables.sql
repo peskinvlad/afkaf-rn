@@ -324,3 +324,15 @@ CREATE TABLE public.app_events (
 --   CREATE INDEX app_events_device_time_idx ON (device_id, created_at);
 --   CREATE INDEX app_events_name_time_idx   ON (name, created_at);
 --   CREATE INDEX app_events_user_idx        ON (user_id) WHERE user_id IS NOT NULL;
+
+-- ============================================================
+-- trusted_users — ручной значок «Надёжный» (25.11.2026). RLS включён, политик и
+-- грантов для anon/authenticated нет; читает только get_trust_status.
+-- ============================================================
+CREATE TABLE public.trusted_users (
+  user_id    uuid        NOT NULL,
+  granted_at timestamptz NOT NULL DEFAULT now(),
+  note       text,
+  CONSTRAINT trusted_users_pkey PRIMARY KEY (user_id),
+  CONSTRAINT trusted_users_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE
+);
