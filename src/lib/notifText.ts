@@ -110,9 +110,13 @@ export function markerText(t: TFn, type: string): NotifContent {
 
 // №6 «С днём рождения» — раз в год в 10:00, вне прогулки. Кличка есть всегда
 // (dogs.name NOT NULL).
-export function birthdayText(t: TFn, dog: string): NotifContent {
+// age — сколько исполняется (год показа минус год рождения); без него — текст без числа.
+export function birthdayText(t: TFn, dog: string, age?: number): NotifContent {
   return {
     title: t('birthday.notif.title', { dog }),
-    body: t('birthday.notif.body', { dog }),
+    body:
+      age != null && age >= 1
+        ? t('birthday.notif.body_age', { dog, age })
+        : t('birthday.notif.body', { dog }),
   };
 }
