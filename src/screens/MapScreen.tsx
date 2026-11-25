@@ -53,6 +53,9 @@ import { PrivacyChoiceSheet } from '../components/PrivacyChoiceSheet';
 import { useTermsConsent } from '../hooks/useTermsConsent';
 import type { Visibility } from './SettingsScreen';
 import { logEvent } from '../lib/analytics';
+import { getMapbox } from '../lib/mapbox';
+import { useMapEngine } from '../lib/mapEngine';
+import { MapboxMainMap, MainMapHandle } from '../components/mapbox/MapboxMainMap';
 
 // Стартовая позиция карты — Бат-Ям (см. START_COORD/START_DELTA в lib/geo).
 // До первого GPS-фикса карта показывает этот регион; на первом фиксе один раз
@@ -92,7 +95,7 @@ interface Props {
 export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   const insets = useSafeAreaInsets();
   const {
-    t, rtl, heatData, chipSeason, weatherIcon, isHeatLoading, setIsWalking, isGuest, isWalking,
+    t, lang, rtl, heatData, chipSeason, weatherIcon, isHeatLoading, setIsWalking, isGuest, isWalking,
     radius, setRadius, activeCategories, toggleCategory, userLocation, setUserLocation,
   } = useApp();
   const { ensureAccepted } = useTermsConsent();
@@ -166,6 +169,36 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   function markMapReadyIfDone() {
     if (mapReadyFiredRef.current && mapLaidOutRef.current) setMapReady(true);
   }
+
+  // ── Какая карта на экране: старая (Apple) или Mapbox (lib/mapEngine.ts) ──────
+  // Mapbox-версия живёт в MapboxMainMap. Вся логика экрана (пузырь метки, «найти
+  // меня», авто-центр на первом фиксе) общая: она ходит в карту через mapRef, а
+  // под Mapbox в mapRef лежит тонкий переходник с теми же двумя методами, что
+  // экран берёт у react-native-maps.
+  const mapEngine = useMapEngine();
+  const Mapbox = mapEngine === 'mapbox' ? getMapbox() : null;
+  const handleMapboxReady = useCallback((handle: MainMapHandle) => {
+    mapRef.current = {
+      pointForCoordinate: handle.pointFor,
+      animateToRegion: (region: { latitude: number; longitude: number }, duration?: number) =>
+        handle.centerOn(region, duration ?? 350),
+    } as unknown as MapView;
+    mapReadyFiredRef.current = true;
+    mapLaidOutRef.current = true;
+    setMapReady(true);
+  }, []);
+  // Карту переключили в DevPanel при открытом экране: новая ещё не готова —
+  // программно двигать камеру нельзя, пока она сама не сообщит о готовности.
+  const didMountEngineRef = useRef(false);
+  useEffect(() => {
+    if (!didMountEngineRef.current) {
+      didMountEngineRef.current = true;
+      return;
+    }
+    mapReadyFiredRef.current = false;
+    mapLaidOutRef.current = false;
+    setMapReady(false);
+  }, [mapEngine]);
 
   // Первый GPS-фикс за открытие экрана → один раз плавно центрируемся на
   // пользователе. didAutoCenter гасит повтор; userMovedMap отменяет авто-центр,
@@ -548,6 +581,37 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
     <View style={styles.container}>
 
       {/* ── Карта — занимает весь экран ── */}
+      {Mapbox ? (
+        <MapboxMainMap
+          Mapbox={Mapbox}
+          lang={lang}
+          startCenter={START_COORD}
+          markers={filteredMarkers}
+          waterSources={filteredWaterSources}
+          friends={friendWalkers}
+          userLocation={userLocation}
+          headingAnim={headingAnim}
+          accuracy={accuracy}
+          // Логотип Mapbox и «i» — строкой прямо над чипом температуры, константами
+          // (у Apple это делал mapPadding с замером чипа).
+          ornamentBottom={WIDGETS_BASE_BOTTOM + HEAT_CHIP_HEIGHT + 6}
+          ornamentLeft={MAP_CHIP.left}
+          onReady={handleMapboxReady}
+          onMarkerPress={(m) => { setSelectedFriendId(null); setDetailMarker(m); }}
+          onFriendPress={(userId) => { setDetailMarker(null); setSelectedFriendId(userId); }}
+          onMapPress={() => { setDetailMarker(null); setSelectedFriendId(null); }}
+          onCameraMove={(byGesture) => {
+            // Ручной жест до первого фикса отменяет авто-центр.
+            if (byGesture) userMovedMapRef.current = true;
+            refreshCalloutAnchor();
+            refreshFriendAnchor();
+          }}
+          onCameraIdle={() => {
+            refreshCalloutAnchor();
+            refreshFriendAnchor();
+          }}
+        />
+      ) : (
       <MapView
         ref={mapRef}
         style={StyleSheet.absoluteFill}
@@ -648,6 +712,7 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           />
         ))}
       </MapView>
+      )}
 
       {/* ── Hamburger — top-left ── */}
       {!drawerOpen && (

@@ -5,8 +5,17 @@ import * as Location from 'expo-location';
 import { useApp } from '../hooks/useApp';
 import { useMapMarkers } from '../hooks/useMapMarkers';
 import { INFRA_MARKER_TYPES } from '../lib/markerConfig';
-import { ANDROID_MARKER_IMAGES } from '../lib/markerImages';
 import { START_COORD, isValidCoord } from '../lib/geo';
+import {
+  INFRA_DOT_FILTER,
+  INFRA_DOT_STYLE,
+  INFRA_GREEN,
+  INFRA_ICON_STYLE,
+  INFRA_IMAGES,
+  InfraPointProps,
+  infraFeatureCollection,
+  SHRINK_FADE_FROM,
+} from '../lib/mapboxMarkers';
 import {
   getMapbox,
   mapLabelLayers,
@@ -21,7 +30,7 @@ import { colors, radii, shadows, typography } from '../theme/tokens';
 // нужном языке, ~1660 точек одним слоем на видеокарте, кластеры, тап, своя
 // позиция, логотип. Остальные экраны по-прежнему на react-native-maps.
 
-const BRAND_GREEN = '#2c5f25';
+const BRAND_GREEN = INFRA_GREEN;
 
 // Mapbox считает координаты как [долгота, широта] — обратно нашему LatLng.
 const START_CENTER: [number, number] = [START_COORD.longitude, START_COORD.latitude];
@@ -29,13 +38,6 @@ const START_CENTER: [number, number] = [START_COORD.longitude, START_COORD.latit
 const START_ZOOM = 14;
 // Стабильная ссылка — привычка из правил про MapView, здесь тоже не повредит.
 const CAMERA_DEFAULTS = { centerCoordinate: START_CENTER, zoomLevel: START_ZOOM };
-
-// Те же PNG, что рисует Android-ветка (assets/markers, scripts/gen-marker-pngs.ts).
-// Эмодзи слой Mapbox текстом не рисует — только картинками.
-const ICON_PREFIX = 'marker-';
-const MARKER_IMAGES: Record<string, number> = Object.fromEntries(
-  Object.entries(ANDROID_MARKER_IMAGES).map(([type, source]) => [ICON_PREFIX + type, source]),
-);
 
 const SOURCE_ID = 'afkaf-points';
 // Второй источник с теми же точками, но БЕЗ кластеризации — для режима «сжатие».
@@ -49,53 +51,16 @@ const FLAT_SOURCE_ID = 'afkaf-points-flat';
 //             приближении они вырастают в значки. Чисел нет.
 type ZoomMode = 'cluster' | 'shrink';
 
-const DOT_BLUE = '#3b82f6';
+// Пороги и стили «сжатия» — в lib/mapboxMarkers.ts (общие с главной картой).
 
-// Границы «сжатия» по зуму. Точка → значок: перекрёстное затухание между
-// SHRINK_FADE_FROM и SHRINK_FADE_TO; значок дорастает до полного размера к
-// SHRINK_FULL_ZOOM. Числа подобраны на глаз — крутить здесь.
-const SHRINK_FADE_FROM = 13;
-const SHRINK_FADE_TO = 13.8;
-const SHRINK_FULL_ZOOM = 16.5;
-
-// Прореживание издалека: на виде «весь Гуш-Дан» 1660 точек сливаются, поэтому
-// типы появляются по очереди. Собачьи площадки видны всегда (главные точки
-// назначения), парки — с DOTS_PARKS_FROM, вода — с DOTS_WATER_FROM.
-const DOTS_PARKS_FROM = 11;
-const DOTS_WATER_FROM = 12;
-const DOT_FADE = 0.3; // за сколько единиц зума новая группа точек проявляется
-
-// Непрозрачность точки по зуму и типу. ['zoom'] в Mapbox можно ставить только
-// входом верхнего interpolate/step, поэтому «появление по типу» и «угасание в
-// значок» собраны в ОДНУ шкалу, а различие по типу — в значениях её ступеней.
-const ONLY_DOG_PARKS = ['match', ['get', 'type'], 'dog_park', 1, 0];
-const PARKS_TOO = ['match', ['get', 'type'], 'water', 0, 1];
-const DOT_OPACITY = [
-  'interpolate', ['linear'], ['zoom'],
-  DOTS_PARKS_FROM, ONLY_DOG_PARKS,
-  DOTS_PARKS_FROM + DOT_FADE, PARKS_TOO,
-  DOTS_WATER_FROM, PARKS_TOO,
-  DOTS_WATER_FROM + DOT_FADE, 1,
-  SHRINK_FADE_FROM, 1,
-  SHRINK_FADE_TO, 0,
-];
-// Тот же порядок появления — фильтром, чтобы ещё невидимая точка не ловила тап.
-const DOT_FILTER = [
-  'step', ['zoom'],
-  ['==', ['get', 'type'], 'dog_park'],
-  DOTS_PARKS_FROM, ['!=', ['get', 'type'], 'water'],
-  DOTS_WATER_FROM, true,
-];
+// В режиме кластеров слои «сжатия» выключены целиком (стили — константы).
+const FLAT_DOT_HIDDEN = { ...(INFRA_DOT_STYLE as object), visibility: 'none' } as never;
+const FLAT_ICON_HIDDEN = { ...(INFRA_ICON_STYLE as object), visibility: 'none' } as never;
 
 type LayerVisibility = 'visible' | 'none';
 const vis = (on: boolean): LayerVisibility => (on ? 'visible' : 'none');
 
-type PointProps = {
-  kind: 'marker' | 'water';
-  type: string;
-  title: string;
-  icon: string;
-};
+type PointProps = InfraPointProps;
 
 interface Props {
   navigation: any;
@@ -154,38 +119,7 @@ function MapboxMap({ Mapbox }: { Mapbox: MapboxModule }) {
     [markers],
   );
 
-  const shape = useMemo<GeoJSON.FeatureCollection<GeoJSON.Point, PointProps>>(() => {
-    const features: GeoJSON.Feature<GeoJSON.Point, PointProps>[] = [];
-    for (const m of permanent) {
-      if (!isValidCoord({ latitude: m.lat, longitude: m.lng })) continue;
-      features.push({
-        type: 'Feature',
-        id: `m-${m.id}`,
-        geometry: { type: 'Point', coordinates: [m.lng, m.lat] },
-        properties: {
-          kind: 'marker',
-          type: m.type,
-          title: m.description?.trim() || m.type,
-          icon: ICON_PREFIX + (MARKER_IMAGES[ICON_PREFIX + m.type] ? m.type : 'park'),
-        },
-      });
-    }
-    for (const w of waterSources) {
-      if (!isValidCoord({ latitude: w.lat, longitude: w.lng })) continue;
-      features.push({
-        type: 'Feature',
-        id: `w-${w.id}`,
-        geometry: { type: 'Point', coordinates: [w.lng, w.lat] },
-        properties: {
-          kind: 'water',
-          type: 'water',
-          title: w.amenity ?? 'water',
-          icon: ICON_PREFIX + 'water',
-        },
-      });
-    }
-    return { type: 'FeatureCollection', features };
-  }, [permanent, waterSources]);
+  const shape = useMemo(() => infraFeatureCollection(permanent, waterSources), [permanent, waterSources]);
 
   // Своя позиция — из expo-location, как на остальных экранах. LocationPuck не
   // используем: у него утечка на Android (rnmapbox/maps#4225) и он идёт мимо
@@ -280,7 +214,7 @@ function MapboxMap({ Mapbox }: { Mapbox: MapboxModule }) {
         {/* Подписи: he/ru → иврит, en → английский (lib/mapbox.ts). */}
         {mapLabelLayers(Mapbox, lang)}
 
-        <Images images={MARKER_IMAGES} />
+        <Images images={INFRA_IMAGES} />
 
         {/* Все слои смонтированы всегда и под постоянными id — меняются только
             данные источника (rnmapbox/maps#3891: краш при частой вставке/удалении
@@ -335,28 +269,13 @@ function MapboxMap({ Mapbox }: { Mapbox: MapboxModule }) {
         <ShapeSource id={FLAT_SOURCE_ID} shape={shape} onPress={handlePointPress}>
           <CircleLayer
             id="afkaf-flat-dots"
-            filter={DOT_FILTER as never}
-            style={{
-              circleColor: ['match', ['get', 'type'], 'water', DOT_BLUE, BRAND_GREEN],
-              circleRadius: ['interpolate', ['linear'], ['zoom'], 9, 1.5, 12, 3, SHRINK_FADE_FROM, 5],
-              circleStrokeColor: '#ffffff',
-              circleStrokeWidth: ['interpolate', ['linear'], ['zoom'], 9, 0, 12, 1, SHRINK_FADE_FROM, 1.5],
-              circleOpacity: DOT_OPACITY as never,
-              circleStrokeOpacity: DOT_OPACITY as never,
-              visibility: vis(!clusterOn),
-            }}
+            filter={INFRA_DOT_FILTER}
+            style={clusterOn ? FLAT_DOT_HIDDEN : INFRA_DOT_STYLE}
           />
           <SymbolLayer
             id="afkaf-flat-icons"
             minZoomLevel={SHRINK_FADE_FROM}
-            style={{
-              iconImage: ['get', 'icon'],
-              iconSize: ['interpolate', ['linear'], ['zoom'], SHRINK_FADE_FROM, 0.45, 15, 0.75, SHRINK_FULL_ZOOM, 1],
-              iconOpacity: ['interpolate', ['linear'], ['zoom'], SHRINK_FADE_FROM, 0, SHRINK_FADE_TO, 1],
-              iconAllowOverlap: true,
-              iconIgnorePlacement: true,
-              visibility: vis(!clusterOn),
-            }}
+            style={clusterOn ? FLAT_ICON_HIDDEN : INFRA_ICON_STYLE}
           />
         </ShapeSource>
 
