@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { logEvent } from './analytics';
 
 // Friendship request actions shared by FriendsScreen and NotificationsScreen.
 // Each returns an error message, or null on success — callers decide how loud
@@ -10,6 +11,7 @@ export async function acceptRequest(friendshipId: string): Promise<string | null
     .from('friendships')
     .update({ status: 'accepted' })
     .eq('id', friendshipId);
+  if (!error) logEvent('friend_request_accepted');
   return error?.message ?? null;
 }
 
@@ -39,5 +41,6 @@ export async function sendFriendRequest(addresseeId: string): Promise<string | n
   const { error } = await supabase
     .from('friendships')
     .insert({ requester_id: user.id, addressee_id: addresseeId, status: 'pending' });
+  if (!error) logEvent('friend_request_sent', { via: 'nearby' });
   return error?.message ?? null;
 }

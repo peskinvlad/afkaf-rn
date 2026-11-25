@@ -4,6 +4,7 @@ import { checkAndAwardBadges } from './badges';
 import { saveWalkHistory, getPreviousBestDistanceKm, WalkPathPoint } from './walkHistory';
 import { HeatStatus } from './heat';
 import type { AutoFinishReason } from './autoFinish';
+import { logEvent } from './analytics';
 
 // A walk only "counts" (walk_history + badges) past a minimum bar, so an
 // accidental swipe doesn't pollute streaks/totals. Single source for every
@@ -28,6 +29,8 @@ export interface FinalizeWalkInput {
   confirmedCount: number;
   // «Личный рекорд» в итогах. Считается строго до вставки текущей прогулки.
   checkPersonalBest: boolean;
+  // Только для аналитики: прогулку завершил автодетектор (снимок), а не кнопка.
+  auto?: boolean;
 }
 
 export interface FinalizeWalkResult {
@@ -42,11 +45,22 @@ export interface FinalizeWalkResult {
 export async function finalizeWalk(input: FinalizeWalkInput): Promise<FinalizeWalkResult> {
   const valid = isValidWalk(input.distanceKm, input.durationS);
   const result: FinalizeWalkResult = { isValidWalk: valid, newBadgeIds: [], isPersonalBest: false };
-  if (!valid) return result;
+  // Воронка: и гостевые, и короткие прогулки — без координат, только округлённые
+  // цифры. Гость/аккаунт сервер видит сам (user_id из auth.uid()). Логируем
+  // ПОСЛЕ гарда дублей ниже, чтобы повторная финализация снимка не давала
+  // второе событие.
+  const logFinished = () =>
+    logEvent('walk_finished', {
+      valid,
+      auto: input.auto === true,
+      km: Math.round(input.distanceKm * 10) / 10,
+      min: Math.floor(input.durationS / 60),
+    });
+  if (!valid) { logFinished(); return result; }
 
   const { data: { session } } = await supabase.auth.getSession();
   const userId = session?.user?.id;
-  if (!userId) return result;
+  if (!userId) { logFinished(); return result; }
 
   // Защита от дубля: эта прогулка уже сохранена (например, iOS выгрузила
   // приложение между вставкой и удалением снимка автозавершения, и снимок
@@ -66,6 +80,7 @@ export async function finalizeWalk(input: FinalizeWalkInput): Promise<FinalizeWa
   } else if (existing) {
     return result;
   }
+  logFinished();
 
   let dogId = input.dogId;
   if (dogId === undefined) {
@@ -179,6 +194,7 @@ export async function finalizeAutoFinished(
       dogId: walk.dogResolved ? walk.dogId : undefined,
       confirmedCount,
       checkPersonalBest: false,
+      auto: true,
     });
     await clearAutoFinished();
     return result;

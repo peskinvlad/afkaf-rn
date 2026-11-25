@@ -19,6 +19,7 @@ import { supabase } from '../lib/supabase';
 import { isDevUser } from '../constants/dev';
 import { LINKS } from '../constants/links';
 import { colors, radii, shadows } from '../theme/tokens';
+import { logEvent } from '../lib/analytics';
 
 // Tells expo-web-browser to close itself when the auth session completes
 WebBrowser.maybeCompleteAuthSession();
@@ -54,7 +55,20 @@ export function AuthScreen({ navigation }: Props) {
   // На экране входа сессии обычно ещё нет → false, и обычный пользователь всегда
   // видит только дружелюбный текст. После успешного Apple-входа флаг обновляем,
   // чтобы возможная ошибка записи профиля ниже тоже была подробной для dev.
+  // Воронка: экран входа показан. route — Auth/Register/RegisterPrompt, from —
+  // экран, с которого пришли (карта, прогулка, друзья…). Один раз на показ.
+  useEffect(() => {
+    const state = navigation.getState?.();
+    const routes = state?.routes ?? [];
+    const idx = state?.index ?? routes.length - 1;
+    logEvent('auth_shown', {
+      route: routes[idx]?.name ?? null,
+      from: routes[idx - 1]?.name ?? null,
+    });
+  }, []);
+
   const isDevRef = useRef(false);
+  const signedInLoggedRef = useRef(false);
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       isDevRef.current = isDevUser(session?.user?.id);
@@ -65,6 +79,7 @@ export function AuthScreen({ navigation }: Props) {
   // видит только dev; обычный пользователь всегда видит текст из i18n. Отмену
   // входа (cancel/dismiss) сюда НЕ передаём — это не ошибка, Alert не показываем.
   function showAuthError(stage: string, detail?: string): void {
+    logEvent('auth_error', { stage });
     if (isDevRef.current) {
       Alert.alert(t('auth.error.title'), detail ? `${stage}\n\n${detail}` : stage);
     } else {
@@ -74,10 +89,19 @@ export function AuthScreen({ navigation }: Props) {
 
   // ── Session established → navigate ────────────────────────────────────────
   useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         setIsGuest(false);
         setLoadingProvider(null);
+        // Только настоящий вход и только один раз за показ экрана —
+        // TOKEN_REFRESHED/INITIAL_SESSION тоже несут сессию.
+        if (event === 'SIGNED_IN' && !signedInLoggedRef.current) {
+          signedInLoggedRef.current = true;
+          logEvent('signed_in', {
+            provider: String(session.user.app_metadata?.provider ?? 'unknown'),
+            is_new: isNewUser(session.user.created_at),
+          });
+        }
         if (isNewUser(session.user.created_at)) {
           navigation.replace('DogProfile');
         } else {
@@ -143,6 +167,7 @@ export function AuthScreen({ navigation }: Props) {
   // ── OAuth helper ────────────────────────────────────────────────────────────
   async function signInWith(provider: 'google' | 'apple') {
     if (loadingProvider) return;
+    logEvent('auth_tap', { provider });
     setLoadingProvider(provider);
     // Окно открывается только здесь — из обработчика нажатия.
     oauthDeadlineRef.current = Date.now() + OAUTH_ACCEPT_MS;
@@ -174,6 +199,7 @@ export function AuthScreen({ navigation }: Props) {
         // (Android-фолбэк через Linking может позже сам довести флоу — тогда
         // onAuthStateChange навигирует.)
         console.warn(`[Auth] WebBrowser closed without redirect (type: ${result.type})`);
+        logEvent('auth_cancel', { provider });
         setLoadingProvider(null);
       }
     } catch (e: any) {
@@ -193,6 +219,7 @@ export function AuthScreen({ navigation }: Props) {
   // и сбросит loadingProvider на успехе (как и для веб-флоу).
   async function signInWithApple() {
     if (loadingProvider) return;
+    logEvent('auth_tap', { provider: 'apple' });
     setLoadingProvider('apple');
     try {
       const credential = await AppleAuthentication.signInAsync({
@@ -248,6 +275,8 @@ export function AuthScreen({ navigation }: Props) {
       if (e?.code !== 'ERR_REQUEST_CANCELED') {
         console.warn('[Auth] Apple signIn exception:', e);
         showAuthError('signInAsync', String(e?.message ?? e));
+      } else {
+        logEvent('auth_cancel', { provider: 'apple' });
       }
       setLoadingProvider(null);
     }

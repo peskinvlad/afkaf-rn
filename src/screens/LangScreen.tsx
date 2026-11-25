@@ -5,6 +5,7 @@ import { useApp } from '../hooks/useApp';
 import { LANGS, Lang } from '../i18n';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows, spacing } from '../theme/tokens';
+import { logEvent } from '../lib/analytics';
 
 interface Props {
   navigation: any;
@@ -18,6 +19,7 @@ export function LangScreen({ navigation }: Props) {
 
   function selectLang(lang: Lang) {
     setLang(lang);
+    logEvent('lang_chosen', { lang });
     navigation.replace('Onboarding');
   }
 
