@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
 import { useTermsConsent } from '../hooks/useTermsConsent';
 import { containsProfanity } from '../lib/profanity';
+import { MARKER_TEXT_MAX, containsContactInfo } from '../lib/markerText';
 import { supabase } from '../lib/supabase';
 import { ensureLocationPermission } from '../lib/locationPermission';
 import { LocationRequiredCard } from '../components/LocationRequiredCard';
@@ -99,6 +100,7 @@ export function AddMarkerScreen({ navigation }: Props) {
   const [selectedType, setSelectedType] = useState<MarkerType>('hazard');
   const [description, setDescription]   = useState('');
   const [descProfane, setDescProfane]   = useState(false);
+  const [descContact, setDescContact]   = useState(false); // телефон / ссылка / контакт в тексте
   const [saving, setSaving]             = useState(false);
 
   const mountedRef = useRef(true);
@@ -262,6 +264,12 @@ export function AddMarkerScreen({ navigation }: Props) {
       setDescProfane(true);
       return;
     }
+    // Телефоны, ссылки и контакты в метке не публикуем (то же правило — на
+    // сервере, markers_guard_insert → PT422).
+    if (containsContactInfo(description)) {
+      setDescContact(true);
+      return;
+    }
     // Страховка Apple 1.2: без согласия с условиями метку не публикуем.
     if (!(await ensureAccepted())) return;
     setSaving(true);
@@ -302,7 +310,12 @@ export function AddMarkerScreen({ navigation }: Props) {
       // >= 20 markers in the last hour — show the rate-limit copy, not the
       // generic save error.
       const code = (e as { code?: string })?.code;
-      Alert.alert(t(code === 'PT429' ? 'common.rate_limit' : 'common.save_error'));
+      if (code === 'PT422') {
+        // Сервер отклонил текст (телефон/ссылка/длина) — ошибка под полем.
+        setDescContact(true);
+      } else {
+        Alert.alert(t(code === 'PT429' ? 'common.rate_limit' : 'common.save_error'));
+      }
     } finally {
       setSaving(false);
     }
@@ -444,13 +457,14 @@ export function AddMarkerScreen({ navigation }: Props) {
           placeholder={t('addMarker.commentPlaceholder')}
           placeholderTextColor={colors.textSoft}
           value={description}
-          onChangeText={(v) => { setDescription(v); setDescProfane(false); }}
+          onChangeText={(v) => { setDescription(v); setDescProfane(false); setDescContact(false); }}
           multiline
           numberOfLines={3}
-          maxLength={500}
+          maxLength={MARKER_TEXT_MAX}
           textAlignVertical="top"
         />
         {descProfane && <Text style={styles.fieldError}>{t('common.profanityError')}</Text>}
+        {descContact && <Text style={styles.fieldError}>{t('addMarker.contactError')}</Text>}
       </View>
 
       {/* Pushes the submit button to the bottom */}
