@@ -453,7 +453,7 @@ export function DevPanel({ visible, onClose }: Props) {
   // №6 «С днём рождения» — тот же текст/звук/канал, что и в расписании.
   const showNowBirthday = () =>
     showNow(() => {
-      const c = birthdayText(t, dogName ?? 'Rex');
+      const c = birthdayText(t, dogName ?? 'Rex', 3);
       return scheduleNotif({
         kind: KIND_BIRTHDAY,
         categoryId: CAT_BIRTHDAY,

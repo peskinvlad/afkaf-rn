@@ -8,7 +8,7 @@ import {
 } from './notifications';
 import { loadBirthdayEnabled } from './notifPrefs';
 import { birthdayText } from './notifText';
-import { nextBirthdays } from './birthDate';
+import { nextBirthdays, parseDate } from './birthDate';
 
 // Синхронизация №6 «С днём рождения»: снять все запланированные birthday-
 // уведомления и поставить заново по текущим собакам. Зовётся при старте
@@ -57,8 +57,10 @@ async function doSync(t: TFn): Promise<void> {
     for (const dog of dogs ?? []) {
       const name = (dog.name as string | null)?.trim();
       if (!name || !dog.birth_date || dog.birth_date_approx) continue;
-      const c = birthdayText(t, name);
+      const birthYear = parseDate(dog.birth_date as string)?.year;
       for (const at of nextBirthdays(dog.birth_date as string, OCCURRENCES_PER_DOG, BIRTHDAY_HOUR)) {
+        // Возраст свой у каждого запланированного года (ставим два дня рождения вперёд).
+        const c = birthdayText(t, name, birthYear ? at.getFullYear() - birthYear : undefined);
         items.push({ dogId: String(dog.id), at, title: c.title, body: c.body });
       }
     }
