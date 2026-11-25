@@ -58,6 +58,35 @@ const SHRINK_FADE_FROM = 13;
 const SHRINK_FADE_TO = 13.8;
 const SHRINK_FULL_ZOOM = 16.5;
 
+// Прореживание издалека: на виде «весь Гуш-Дан» 1660 точек сливаются, поэтому
+// типы появляются по очереди. Собачьи площадки видны всегда (главные точки
+// назначения), парки — с DOTS_PARKS_FROM, вода — с DOTS_WATER_FROM.
+const DOTS_PARKS_FROM = 11;
+const DOTS_WATER_FROM = 12;
+const DOT_FADE = 0.3; // за сколько единиц зума новая группа точек проявляется
+
+// Непрозрачность точки по зуму и типу. ['zoom'] в Mapbox можно ставить только
+// входом верхнего interpolate/step, поэтому «появление по типу» и «угасание в
+// значок» собраны в ОДНУ шкалу, а различие по типу — в значениях её ступеней.
+const ONLY_DOG_PARKS = ['match', ['get', 'type'], 'dog_park', 1, 0];
+const PARKS_TOO = ['match', ['get', 'type'], 'water', 0, 1];
+const DOT_OPACITY = [
+  'interpolate', ['linear'], ['zoom'],
+  DOTS_PARKS_FROM, ONLY_DOG_PARKS,
+  DOTS_PARKS_FROM + DOT_FADE, PARKS_TOO,
+  DOTS_WATER_FROM, PARKS_TOO,
+  DOTS_WATER_FROM + DOT_FADE, 1,
+  SHRINK_FADE_FROM, 1,
+  SHRINK_FADE_TO, 0,
+];
+// Тот же порядок появления — фильтром, чтобы ещё невидимая точка не ловила тап.
+const DOT_FILTER = [
+  'step', ['zoom'],
+  ['==', ['get', 'type'], 'dog_park'],
+  DOTS_PARKS_FROM, ['!=', ['get', 'type'], 'water'],
+  DOTS_WATER_FROM, true,
+];
+
 type LayerVisibility = 'visible' | 'none';
 const vis = (on: boolean): LayerVisibility => (on ? 'visible' : 'none');
 
@@ -306,13 +335,14 @@ function MapboxMap({ Mapbox }: { Mapbox: MapboxModule }) {
         <ShapeSource id={FLAT_SOURCE_ID} shape={shape} onPress={handlePointPress}>
           <CircleLayer
             id="afkaf-flat-dots"
+            filter={DOT_FILTER as never}
             style={{
               circleColor: ['match', ['get', 'type'], 'water', DOT_BLUE, BRAND_GREEN],
               circleRadius: ['interpolate', ['linear'], ['zoom'], 9, 1.5, 12, 3, SHRINK_FADE_FROM, 5],
               circleStrokeColor: '#ffffff',
               circleStrokeWidth: ['interpolate', ['linear'], ['zoom'], 9, 0, 12, 1, SHRINK_FADE_FROM, 1.5],
-              circleOpacity: ['interpolate', ['linear'], ['zoom'], SHRINK_FADE_FROM, 1, SHRINK_FADE_TO, 0],
-              circleStrokeOpacity: ['interpolate', ['linear'], ['zoom'], SHRINK_FADE_FROM, 1, SHRINK_FADE_TO, 0],
+              circleOpacity: DOT_OPACITY as never,
+              circleStrokeOpacity: DOT_OPACITY as never,
               visibility: vis(!clusterOn),
             }}
           />
