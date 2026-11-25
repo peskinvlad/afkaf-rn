@@ -3,6 +3,10 @@
 -- счётчики confirmations/denials. Фильтр shadow-ban ЕДИН для anon и authenticated
 -- (у прямого markers_select_anon фильтра нет — через эту функцию гость и вошедший
 -- равны). Те же условия TTL, что было у прямого чтения useMapMarkers.
+-- Автоскрытие (25.11.2026): пользовательская метка с ОТКРЫТЫМИ жалобами от 3+
+-- разных людей не отдаётся никому, кроме автора (он не узнаёт, что она скрыта).
+-- Кураторская инфраструктура (water/park/dog_park) так не скрывается. Жалобы
+-- закрыты куратором (reviewed/dismissed) → метка возвращается, если не истекла.
 -- Гранты: GRANT anon + authenticated.
 CREATE OR REPLACE FUNCTION public.get_map_markers()
  RETURNS TABLE(id uuid, type text, lat double precision, lng double precision,
@@ -18,6 +22,15 @@ AS $function$
     and (
       m.user_id = auth.uid()
       or not (select s.is_shadow_banned from get_shadow_status(m.user_id) s)
+    )
+    and (
+      m.user_id = auth.uid()
+      or m.type in ('water', 'park', 'dog_park')
+      or (select count(distinct r.reporter_id)
+          from reports r
+          where r.target_type = 'marker'
+            and r.target_id = m.id
+            and r.status = 'open') < 3
     );
 $function$;
 
