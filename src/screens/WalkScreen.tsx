@@ -10,6 +10,9 @@ import {
   Dimensions,
 } from 'react-native';
 import MapView, { PROVIDER_DEFAULT, Polyline, MarkerAnimated, MapPressEvent } from 'react-native-maps';
+import { getMapbox } from '../lib/mapbox';
+import { useMapEngine } from '../lib/mapEngine';
+import { MapboxMainMap, MainMapHandle, AnimatedCoord } from '../components/mapbox/MapboxMainMap';
 import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -213,7 +216,7 @@ interface Props {
 export function WalkScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const {
-    t, rtl, heatData, chipSeason, weatherIcon, isHeatLoading, isGuest, confirmedCount,
+    t, lang, rtl, heatData, chipSeason, weatherIcon, isHeatLoading, isGuest, confirmedCount,
     radius, setRadius, activeCategories, toggleCategory, userLocation, setUserLocation,
   } = useApp();
   const { font } = useTypography();
@@ -442,6 +445,26 @@ export function WalkScreen({ navigation }: Props) {
   function setFollow(next: boolean) {
     followUserRef.current = next;
   }
+  // ── Mapbox (этап 4 переезда, docs/MAPBOX-MIGRATION.md) ───────────────────────
+  // Карту рисует тот же MapboxMainMap, что и на главной, плюс линия трека. Экран
+  // по-прежнему ходит в карту через mapRef: под Mapbox там переходник с теми же
+  // двумя методами, что он берёт у react-native-maps, — поэтому follow, «найти
+  // меня», пузырь метки и карточка друга работают общим кодом.
+  const mapEngine = useMapEngine();
+  const Mapbox = mapEngine === 'mapbox' ? getMapbox() : null;
+  const handleMapboxReady = useCallback((handle: MainMapHandle) => {
+    mapRef.current = {
+      pointForCoordinate: handle.pointFor,
+      animateCamera: (camera: { center?: LatLng }, opts?: { duration?: number }) => {
+        if (camera.center) handle.panTo(camera.center, opts?.duration ?? 350);
+      },
+    } as unknown as MapView;
+    mapReadyFiredRef.current = true;
+    mapLaidOutRef.current = true;
+    mapReadyRef.current = true;
+    // Фикс мог прийти раньше, чем карта загрузилась, — догоняем сразу, не ждём следующего.
+    if (latestPos.current) followWith(latestPos.current);
+  }, []);
   function followWith(pt: LatLng) {
     // Hand panned away → don't yank the camera back on the next fix.
     if (!followUserRef.current) return;
@@ -1513,6 +1536,49 @@ export function WalkScreen({ navigation }: Props) {
 
       {/* ── Map (flex: 1, not absoluteFill) ── */}
       <View style={styles.mapContainer}>
+        {Mapbox ? (
+          <MapboxMainMap
+            Mapbox={Mapbox}
+            lang={lang}
+            startCenter={START_COORD}
+            markers={filteredMarkers}
+            waterSources={filteredWaterSources}
+            friends={friendWalkers}
+            route={route}
+            // AnimatedRegion: Animated-значения latitude/longitude есть в рантайме,
+            // в типах react-native-maps не объявлены.
+            userCoord={userCoord as unknown as AnimatedCoord}
+            hasUserFix={hasUserFix}
+            // Домашнюю зону на прогулке не показываем («глаз» — только на главной).
+            homeZone={null}
+            homeZoneVisible={false}
+            waterLabel={(amenity) =>
+              t(amenity === 'drinking_water' ? 'water.amenity.drinking_water' : 'water.amenity.default')
+            }
+            headingAnim={headingAnim}
+            accuracy={accuracy}
+            // Константы, не замер. Панель стоит на безопасной зоне, Mapbox считает
+            // отступ логотипа тоже от неё — поэтому insets.bottom тут не нужен.
+            ornamentBottom={WALK_PANEL_CONTENT + WALK_CHIP_GAP + HEAT_CHIP_HEIGHT + 6}
+            ornamentLeft={14}
+            // Центр follow — середина видимой части карты над нижней панелью.
+            bottomInset={WALK_PANEL_CONTENT + insets.bottom}
+            onReady={handleMapboxReady}
+            onMarkerPress={(m) => { setSelectedFriendId(null); setDetailMarker(m); }}
+            onFriendPress={(userId) => { setDetailMarker(null); setSelectedFriendId(userId); }}
+            onMapPress={() => { setDetailMarker(null); setSelectedFriendId(null); }}
+            onCameraMove={(byGesture) => {
+              // Повёл карту рукой — follow отпускает до кнопки «найти меня».
+              if (byGesture && followUserRef.current) setFollow(false);
+              refreshCalloutAnchor();
+              refreshFriendAnchor();
+            }}
+            onCameraIdle={() => {
+              refreshCalloutAnchor();
+              refreshFriendAnchor();
+            }}
+          />
+        ) : (
         <MapView
           ref={mapRef}
           style={StyleSheet.absoluteFill}
@@ -1614,6 +1680,7 @@ export function WalkScreen({ navigation }: Props) {
             />
           ))}
         </MapView>
+        )}
 
         {/* ── LIVE chip — top center ── */}
         <View style={[styles.liveChip, { top: insets.top + 12 }]}>

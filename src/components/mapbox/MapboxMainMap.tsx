@@ -3,7 +3,7 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Lang } from '../../i18n';
 import { LatLng, isValidCoord } from '../../lib/geo';
 import { MapboxModule, mapLabelLayers, MAPBOX_STYLE_URL } from '../../lib/mapbox';
-import { circlePolygon, toLngLat } from '../../lib/mapboxGeo';
+import { circlePolygon, toLngLat, trackLine } from '../../lib/mapboxGeo';
 import { mapDebug } from '../../lib/mapDebug';
 import type { HomeZone } from '../../lib/privacyZone';
 import {
@@ -32,6 +32,10 @@ import { FRIEND_PIN_STALE_MS } from '../FriendWalkerMarker';
 //   • точка воды из OSM по тапу показывает маленькую подпись (WaterBubble);
 //   • домашняя зона — круг, который виден только пока экран просит (кнопка-«глаз»).
 //
+// Этот же компонент рисует карту экрана прогулки (этап 4): туда добавляются линия
+// трека (`route`) и движение камеры без смены зума (`panTo`) для режима «карта
+// едет за мной».
+//
 // Экран общается с картой через MainMapHandle — тот же минимум, что он брал у
 // react-native-maps (подвинуть камеру, узнать точку экрана для координаты),
 // поэтому логика MapScreen (пузырь метки, «найти меня», авто-центр) общая для
@@ -40,6 +44,8 @@ import { FRIEND_PIN_STALE_MS } from '../FriendWalkerMarker';
 export type MainMapHandle = {
   // Плавно центрировать карту на точке с «квартальным» зумом.
   centerOn: (target: LatLng, durationMs: number) => void;
+  // Плавно подвинуть центр, НЕ меняя зум (follow на прогулке). durationMs 0 — прыжок.
+  panTo: (target: LatLng, durationMs: number) => void;
   // Где на экране (в точках, от левого верхнего угла карты) лежит координата.
   pointFor: (coord: LatLng) => Promise<{ x: number; y: number }>;
   // Попадает ли координата в видимую сейчас часть карты.
@@ -75,6 +81,8 @@ interface Props {
   // Домашняя зона (null — не настроена) и видна ли она сейчас.
   homeZone: HomeZone | null;
   homeZoneVisible: boolean;
+  // Трек прогулки (только экран прогулки). Не задан — линии нет.
+  route?: LatLng[];
   // Подпись для точки воды по её типу из OSM.
   waterLabel: (amenity: string) => string;
   headingAnim: Animated.Value;
@@ -96,7 +104,7 @@ interface Props {
 
 export function MapboxMainMap({
   Mapbox, lang, startCenter, markers, waterSources, friends, userCoord, hasUserFix, homeZone,
-  homeZoneVisible, waterLabel, headingAnim, accuracy, bottomInset, ornamentBottom, ornamentLeft, onReady, onMarkerPress, onFriendPress, onMapPress, onCameraMove, onCameraIdle,
+  homeZoneVisible, route, waterLabel, headingAnim, accuracy, bottomInset, ornamentBottom, ornamentLeft, onReady, onMarkerPress, onFriendPress, onMapPress, onCameraMove, onCameraIdle,
 }: Props) {
   const { MapView, Camera, ShapeSource, SymbolLayer, CircleLayer, FillLayer, LineLayer, Images, MarkerView } = Mapbox;
   const mapRef = useRef<InstanceType<MapboxModule['MapView']> | null>(null);
@@ -131,6 +139,11 @@ export function MapboxMainMap({
 
   // Круг зоны лежит в источнике всегда (слои не перемонтируются — rnmapbox#3891),
   // а показывается и гаснет прозрачностью.
+  // Трек: до двух точек линии нет — источник просто пустой (слой смонтирован всегда).
+  const routeShape = useMemo<GeoJSON.FeatureCollection>(() => {
+    const line = route ? trackLine(route) : null;
+    return { type: 'FeatureCollection', features: line ? [line] : [] };
+  }, [route]);
   const zoneShape = useMemo<GeoJSON.FeatureCollection>(
     () => ({ type: 'FeatureCollection', features: homeZone ? [circlePolygon(homeZone, homeZone.radiusM)] : [] }),
     [homeZone],
@@ -151,6 +164,15 @@ export function MapboxMainMap({
           padding: paddingRef.current,
           animationMode: 'easeTo',
           animationDuration: durationMs,
+        });
+      },
+      panTo: (target, durationMs) => {
+        if (!isValidCoord(target)) return;
+        cameraRef.current?.setCamera({
+          centerCoordinate: toLngLat(target),
+          padding: paddingRef.current,
+          animationMode: durationMs > 0 ? 'easeTo' : 'none',
+          animationDuration: Math.max(0, durationMs),
         });
       },
       pointFor: async (coord) => {
@@ -256,6 +278,11 @@ export function MapboxMainMap({
       {mapLabelLayers(Mapbox, lang)}
 
       <Images images={INFRA_IMAGES} />
+
+      {/* Трек прогулки — под зоной и значками. */}
+      <ShapeSource id="afkaf-main-route" shape={routeShape}>
+        <LineLayer id="afkaf-main-route-line" style={ROUTE_LINE_STYLE} />
+      </ShapeSource>
 
       {/* Домашняя зона — под значками. Слои смонтированы всегда; виден круг только
           пока экран держит homeZoneVisible (кнопка-«глаз»), гаснет плавно. */}
@@ -386,6 +413,9 @@ function readCoord(coord: AnimatedCoord): LatLng {
 
 const CENTER = { x: 0.5, y: 0.5 };
 const BOTTOM_CENTER = { x: 0.5, y: 1 };
+
+// Линия трека — как Polyline на старой карте (зелёная, 4 pt), со скруглёнными стыками.
+const ROUTE_LINE_STYLE = { lineColor: '#2c5f25', lineWidth: 4, lineCap: 'round', lineJoin: 'round' } as never;
 
 // Домашняя зона: зелёная полупрозрачная заливка с контуром; появляется и гаснет
 // за ZONE_FADE_MS. Стили — константы (стабильные ссылки).
