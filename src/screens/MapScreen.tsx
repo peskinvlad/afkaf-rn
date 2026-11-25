@@ -593,8 +593,10 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
           headingAnim={headingAnim}
           accuracy={accuracy}
           // Логотип Mapbox и «i» — строкой прямо над чипом температуры, константами
-          // (у Apple это делал mapPadding с замером чипа).
-          ornamentBottom={WIDGETS_BASE_BOTTOM + HEAT_CHIP_HEIGHT + 6}
+          // (у Apple это делал mapPadding с замером чипа). Mapbox отсчитывает
+          // отступ от безопасной зоны, а чип — от края экрана, поэтому вычитаем
+          // insets.bottom (без этого логотип висел на ~34 pt выше чипа).
+          ornamentBottom={WIDGETS_BASE_BOTTOM + HEAT_CHIP_HEIGHT + 6 - insets.bottom}
           ornamentLeft={MAP_CHIP.left}
           onReady={handleMapboxReady}
           onMarkerPress={(m) => { setSelectedFriendId(null); setDetailMarker(m); }}
