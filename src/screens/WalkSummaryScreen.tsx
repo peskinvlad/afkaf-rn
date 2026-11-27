@@ -135,6 +135,7 @@ export function WalkSummaryScreen({ navigation, route }: Props) {
           {/* Share button — bottom right */}
           <TouchableOpacity
             style={[styles.shareBtn, shadows.sm]}
+            hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
             onPress={handleShare}
             activeOpacity={0.8}
           >

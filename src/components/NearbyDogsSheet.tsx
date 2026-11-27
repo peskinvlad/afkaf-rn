@@ -174,7 +174,7 @@ export default function NearbyDogsSheet({
       onLayout={(e) => onHeightChange?.(e.nativeEvent.layout.height)}
       {...panResponder.panHandlers}
     >
-      <TouchableOpacity style={styles.handleWrap} onPress={onClose} activeOpacity={0.6}>
+      <TouchableOpacity style={styles.handleWrap} onPress={onClose} activeOpacity={0.6} accessibilityRole="button" accessibilityLabel={t('common.close')}>
         <View style={styles.handle} />
       </TouchableOpacity>
 

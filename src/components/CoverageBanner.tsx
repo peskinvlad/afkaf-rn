@@ -84,6 +84,8 @@ export function CoverageBanner() {
           <TouchableOpacity
             style={styles.closeBtn}
             onPress={dismiss}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.close')}
             hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
           >
             <X size={18} color="rgba(255,255,255,0.8)" />

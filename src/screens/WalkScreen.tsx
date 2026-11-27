@@ -1660,6 +1660,8 @@ export function WalkScreen({ navigation }: Props) {
           style={[styles.iconBtn, shadows.sm, { position: 'absolute', zIndex: 30, top: insets.top + 8, right: 14 }]}
           activeOpacity={0.8}
           hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('menu.alerts')}
         >
           <Bell size={20} color={colors.ink} />
         </TouchableOpacity>
@@ -1773,6 +1775,8 @@ export function WalkScreen({ navigation }: Props) {
           <LocateButton onPress={handleCenterOnMe} />
           <TouchableOpacity
             style={[styles.fab, shadows.lg]}
+            accessibilityRole="button"
+            accessibilityLabel={t('a11y.addMarker')}
             // Гость метку сохранить не может (нужна сессия) — как на MapScreen,
             // сразу ведём на вход, а не на экран метки с ошибкой в конце.
             onPress={() => navigation.navigate(isGuest ? 'RegisterPrompt' : 'MarkerCreate')}
