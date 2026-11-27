@@ -5,6 +5,7 @@ import { useApp } from '../hooks/useApp';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
 import { logEvent } from '../lib/analytics';
+import { markOnboarded } from '../lib/onboardingFlag';
 
 const { width: W } = Dimensions.get('window');
 
@@ -40,12 +41,14 @@ export function OnboardingScreen({ navigation }: Props) {
       setCurrent(next);
     } else {
       logEvent('onboarding_done', { skipped: false, step: current + 1 });
+      markOnboarded();
       navigation.replace('Main');
     }
   }
 
   function skip() {
     logEvent('onboarding_done', { skipped: true, step: current + 1 });
+    markOnboarded();
     navigation.replace('Main');
   }
 

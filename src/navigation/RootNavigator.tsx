@@ -27,6 +27,7 @@ import { Report106Provider } from '../components/Report106Sheet';
 import { ToastProvider } from '../components/Toast';
 import { TermsConsentProvider } from '../hooks/useTermsConsent';
 import { useDeepLink } from '../hooks/useDeepLink';
+import { hasOnboarded } from '../lib/onboardingFlag';
 import { colors } from '../theme/tokens';
 import { supabase } from '../lib/supabase';
 import { navigationRef } from '../lib/navigationRef';
@@ -48,9 +49,13 @@ export function RootNavigator() {
   const { pendingFriendId, clearPendingFriend } = useDeepLink();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setInitialRoute(session?.user ? 'Main' : 'Lang');
-    });
+    // Вошедший — сразу на Main. Гость, уже прошедший онбординг, — тоже на Main
+    // (иначе выбор языка и слайды показывались бы при каждом запуске).
+    Promise.all([supabase.auth.getSession(), hasOnboarded()])
+      .then(([{ data: { session } }, onboarded]) => {
+        setInitialRoute(session?.user || onboarded ? 'Main' : 'Lang');
+      })
+      .catch(() => setInitialRoute('Lang'));
   }, []);
 
   if (initialRoute === null) {
