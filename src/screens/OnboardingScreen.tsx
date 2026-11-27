@@ -28,8 +28,8 @@ export function OnboardingScreen({ navigation }: Props) {
   const [current, setCurrent] = useState(0);
   const listRef = useRef<FlatList>(null);
 
-  // Воронка: какой слайд увидели (1-based). Листать можно только кнопкой
-  // (scrollEnabled=false), так что current — единственный источник.
+  // Воронка: какой слайд увидели (1-based). Листать можно кнопкой и пальцем —
+  // оба пути обновляют current, так что он остаётся единственным источником.
   useEffect(() => {
     logEvent('onboarding_step', { step: current + 1, of: SLIDES.length });
   }, [current]);
@@ -64,7 +64,11 @@ export function OnboardingScreen({ navigation }: Props) {
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        scrollEnabled={false}
+        onMomentumScrollEnd={(e) => {
+          const i = Math.round(e.nativeEvent.contentOffset.x / W);
+          setCurrent(Math.max(0, Math.min(SLIDES.length - 1, i)));
+        }}
+        getItemLayout={(_, index) => ({ length: W, offset: W * index, index })}
         keyExtractor={(i) => i.key}
         renderItem={({ item }) => (
           <View style={styles.slide}>
