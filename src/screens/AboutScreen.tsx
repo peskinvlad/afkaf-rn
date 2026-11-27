@@ -432,7 +432,7 @@ const PRIMARY_MID = '#4a8a3f';
 const PRIMARY_LIGHT = '#e8f0e7';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MID = '#555';
-const TEXT_LIGHT = '#888';
+const TEXT_LIGHT = '#686C65'; // = colors.textMuted; было #888 — 3.5:1 на белом
 const BG = '#f7f9f7';
 const WHITE = '#ffffff';
 const BORDER = '#dde8dc';

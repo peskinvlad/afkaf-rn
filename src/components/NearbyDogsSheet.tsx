@@ -336,7 +336,7 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   cardBreed: {
     fontFamily: font.body,
     fontSize: 12,
-    color: '#888',
+    color: colors.textMuted,
     textAlign: 'center',
     marginTop: 2,
   },
@@ -347,7 +347,7 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   cardStatus: {
     fontFamily: font.body,
     fontSize: 11,
-    color: '#888',
+    color: colors.textMuted,
     textAlign: 'center',
   },
   addPill: {

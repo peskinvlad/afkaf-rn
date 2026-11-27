@@ -440,7 +440,7 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   legal: {
     fontSize: 12,
     fontFamily: font.body,
-    color: colors.textSoft,
+    color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 18,
     marginTop: 4,
