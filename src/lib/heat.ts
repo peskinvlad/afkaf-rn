@@ -168,17 +168,47 @@ export function solarSinElevation(latDeg: number, lonDeg: number, date: Date): n
     + Math.cos(latRad) * Math.cos(declRad) * Math.cos(hourAngleRad);
 }
 
+// ── Правило дождя ─────────────────────────────────────────────────────────────
+// Мокрый асфальт не раскаляется: вода, испаряясь, забирает тепло, и покрытие
+// держится около температуры воздуха. Без этого правила формула в дождливый
+// день с прорехами в облаках рисовала «осторожно» на мокрой дороге.
+//
+// «Мокро» считаем только по заметному дождю — правило ПОНИЖАЕТ температуру, а
+// ошибаться можно лишь в жаркую сторону: летняя морось на раскалённом асфальте
+// высыхает за минуты и лапы не спасает. Поэтому пороги по объёму осадков
+// (OWM: `rain.1h` у текущей погоды, `rain.3h` у слота прогноза, мм), а значок
+// погоды — только запасной вариант, когда объёма в ответе нет.
+export const WET_RAIN_MM_PER_H = 0.3;
+
+// rainMm — объём осадков за periodH часов (null/undefined — API не прислал).
+// icon — OWM-значок: 09 ливень, 10 дождь, 11 гроза.
+export function isWetWeather(
+  icon: string | null | undefined,
+  rainMm: number | null | undefined,
+  periodH: number,
+): boolean {
+  if (typeof rainMm === 'number' && Number.isFinite(rainMm) && periodH > 0) {
+    return rainMm / periodH >= WET_RAIN_MM_PER_H;
+  }
+  const kind = weatherKind(icon);
+  return kind === 'rain' || kind === 'storm';
+}
+
 // Оценка температуры покрытия: воздух + ночная база + солнечный нагрев,
 // приглушённый облачностью. Солнце берётся с тепловой задержкой (см. константы).
 // atMs — момент в мс (UTC-безопасно), lat/lon — точка запроса погоды,
 // cloudsPct — облачность 0–100 (нет данных → 0%, осторожная/жаркая сторона).
+// wet — идёт заметный дождь (isWetWeather): покрытие ≈ температура воздуха.
 export function surfaceFromWeather(
   airTempC: number,
   cloudsPct: number | null | undefined,
   atMs: number,
   latDeg: number,
   lonDeg: number,
+  wet: boolean = false,
 ): number {
+  if (wet) return Math.round(airTempC);
+
   const s1 = Math.max(0, solarSinElevation(latDeg, lonDeg, new Date(atMs - SUN_LAG_1H_MS)));
   const s3 = Math.max(0, solarSinElevation(latDeg, lonDeg, new Date(atMs - SUN_LAG_3H_MS)));
   const sun = SUN_LAG_1H_WEIGHT * s1 + SUN_LAG_3H_WEIGHT * s3;

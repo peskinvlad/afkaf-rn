@@ -11,7 +11,7 @@
  * здесь переводим в UTC вручную (сентябрь/июнь — UTC+3, декабрь — UTC+2), чтобы
  * расчёт высоты солнца не зависел от часового пояса машины.
  */
-import { surfaceFromWeather, solarSinElevation, statusFor } from '../src/lib/heat.ts';
+import { surfaceFromWeather, solarSinElevation, statusFor, isWetWeather } from '../src/lib/heat.ts';
 
 const LAT = 32.02;
 const LON = 34.75;
@@ -86,4 +86,30 @@ for (const r of ROWS) {
   const at3h = elevDeg(solarSinElevation(LAT, LON, new Date(ms - 3 * 60 * 60 * 1000)));
   const fmt = (x: number) => (x <= 0 ? `${x.toFixed(1)}° (ниже горизонта)` : `${x.toFixed(1)}°`);
   console.log(`  строка ${r.n} (${r.local}): сейчас ${fmt(at)} · час назад ${fmt(at1h)} · 3ч назад ${fmt(at3h)}`);
+}
+
+// ── Правило дождя: мокрый асфальт ≈ температура воздуха ───────────────────────
+console.log('\nПравило дождя (сентябрь, 15:00, воздух 30°, облачность 50%):');
+const rainMs = Date.UTC(2026, 8, 19, 12, 0, 0);
+const RAIN_CASES: { label: string; icon: string; mm: number | null; h: number; expectWet: boolean }[] = [
+  { label: 'сухо, значок «ясно»',            icon: '01d', mm: null, h: 1, expectWet: false },
+  { label: 'морось 0.1 мм/ч',                icon: '10d', mm: 0.1,  h: 1, expectWet: false },
+  { label: 'дождь 0.3 мм/ч',                 icon: '10d', mm: 0.3,  h: 1, expectWet: true },
+  { label: 'ливень 4 мм/ч',                  icon: '09d', mm: 4,    h: 1, expectWet: true },
+  { label: 'слот прогноза 0.6 мм за 3 ч',    icon: '10d', mm: 0.6,  h: 3, expectWet: false },
+  { label: 'слот прогноза 1.5 мм за 3 ч',    icon: '10d', mm: 1.5,  h: 3, expectWet: true },
+  { label: 'значок «дождь», объёма нет',     icon: '10n', mm: null, h: 1, expectWet: true },
+  { label: 'значок «гроза», объёма нет',     icon: '11d', mm: null, h: 1, expectWet: true },
+];
+let rainFailed = 0;
+for (const c of RAIN_CASES) {
+  const wet = isWetWeather(c.icon, c.mm, c.h);
+  const surface = surfaceFromWeather(30, 50, rainMs, LAT, LON, wet);
+  const ok = wet === c.expectWet && (wet ? surface === 30 : surface > 30);
+  if (!ok) rainFailed++;
+  console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${pad(c.label, 34)} мокро=${wet ? 'да ' : 'нет'} асфальт ${surface}° (${statusFor(surface)})`);
+}
+if (rainFailed > 0) {
+  console.log(`\nправило дождя: ${rainFailed} не сошлось`);
+  process.exit(1);
 }

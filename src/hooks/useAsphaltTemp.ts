@@ -4,7 +4,7 @@ import * as Location from 'expo-location';
 import { LatLng } from '../lib/geo';
 import { Lang } from '../i18n';
 import { getDevAsphaltOverride, onDevSettingsChange } from '../constants/dev';
-import { HeatStatus, statusFor, surfaceFromWeather, getEffectiveAsphaltTemp } from '../lib/heat';
+import { HeatStatus, statusFor, surfaceFromWeather, isWetWeather, getEffectiveAsphaltTemp } from '../lib/heat';
 
 // App language → OpenWeatherMap `lang` code. OWM happens to use the same codes
 // we do (he/en/ru), but map explicitly so a new app language can't silently
@@ -60,6 +60,7 @@ interface CurrentWeather {
   icon: string;
   clouds: number | null; // % облачности (clouds.all); null если API не прислал
   sunset: number | null; // epoch-секунды заката (sys.sunset); null если API не прислал
+  rain1h: number | null; // мм осадков за последний час (rain.1h); null если поля нет
 }
 
 async function fetchCurrentWeather(lat: number, lon: number, lang: Lang): Promise<CurrentWeather | null> {
@@ -76,6 +77,7 @@ async function fetchCurrentWeather(lat: number, lon: number, lang: Lang): Promis
     icon: data.weather?.[0]?.icon ?? '01d',
     clouds: typeof data.clouds?.all === 'number' ? data.clouds.all : null,
     sunset: typeof data.sys?.sunset === 'number' ? data.sys.sunset : null,
+    rain1h: typeof data.rain?.['1h'] === 'number' ? data.rain['1h'] : null,
   };
 }
 
@@ -91,13 +93,17 @@ async function fetchForecast(lat: number, lon: number, lang: Lang): Promise<Hour
     const airTempC = Math.round(entry.main.temp);
     const clouds = typeof entry.clouds?.all === 'number' ? entry.clouds.all : null;
     // entry.dt — UTC-секунды слота; модель учитывает высоту солнца в этот момент.
-    const surfaceTempC = surfaceFromWeather(entry.main.temp, clouds, entry.dt * 1000, lat, lon);
+    const icon: string = entry.weather?.[0]?.icon ?? '01d';
+    // Слот прогноза покрывает 3 часа: rain.3h — мм за весь слот.
+    const rain3h = typeof entry.rain?.['3h'] === 'number' ? entry.rain['3h'] : null;
+    const wet = isWetWeather(icon, rain3h, 3);
+    const surfaceTempC = surfaceFromWeather(entry.main.temp, clouds, entry.dt * 1000, lat, lon, wet);
     return {
       timeEpoch: entry.dt,
       airTempC,
       surfaceTempC,
       status: statusFor(surfaceTempC),
-      icon: entry.weather?.[0]?.icon ?? '01d',
+      icon,
       pop: typeof entry.pop === 'number' ? Math.min(Math.max(entry.pop, 0), 1) : 0,
     };
   });
@@ -180,7 +186,10 @@ export function useAsphaltTemp(lang: Lang): AsphaltTempResult {
           lastOkAt = Date.now();
           setAirTempC(Math.round(current.temp));
           setSurfaceTempC(
-            surfaceFromWeather(current.temp, current.clouds, Date.now(), qLat, qLon),
+            surfaceFromWeather(
+              current.temp, current.clouds, Date.now(), qLat, qLon,
+              isWetWeather(current.icon, current.rain1h, 1),
+            ),
           );
           setFeelsLikeC(Math.round(current.feelsLike));
           setWeatherDescription(current.description);
