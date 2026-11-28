@@ -695,7 +695,7 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   // Stale (>24h) freshness: muted, rendered as a nested Text on the meta line
   // so it keeps this color while the rest of the line stays default.
   freshnessStale: {
-    color: colors.textSoft,
+    color: colors.textMuted,
   },
 
   // Author comment as a quote: soft pastel fill, no borders

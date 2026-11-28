@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../hooks/useApp';
 import { useTermsConsent } from '../hooks/useTermsConsent';
 import { containsProfanity } from '../lib/profanity';
+import { MARKER_TEXT_MAX, containsContactInfo } from '../lib/markerText';
 import { supabase } from '../lib/supabase';
 import { ensureLocationPermission } from '../lib/locationPermission';
 import { LocationRequiredCard } from '../components/LocationRequiredCard';
@@ -32,13 +33,16 @@ import { colors, radii, shadows } from '../theme/tokens';
 import { logEvent } from '../lib/analytics';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type MarkerType = 'hazard' | 'aggressive_dog' | 'forbidden' | 'danger';
+type MarkerType = 'hazard' | 'food' | 'glass' | 'aggressive_dog' | 'jackal' | 'forbidden' | 'danger';
 
 // Icons and the active-chip fill come from MARKER_CONFIG — same visual
 // language as the pins on the map.
 const MARKER_TYPES: { id: MarkerType; labelKey: string }[] = [
   { id: 'hazard',         labelKey: 'addMarker.type.hazard' },
+  { id: 'food',           labelKey: 'addMarker.type.food' },
+  { id: 'glass',          labelKey: 'addMarker.type.glass' },
   { id: 'aggressive_dog', labelKey: 'addMarker.type.aggressiveDog' },
+  { id: 'jackal',         labelKey: 'addMarker.type.jackal' },
   { id: 'forbidden',      labelKey: 'addMarker.type.noDogs' },
   { id: 'danger',         labelKey: 'addMarker.type.other' },
 ];
@@ -96,6 +100,7 @@ export function AddMarkerScreen({ navigation }: Props) {
   const [selectedType, setSelectedType] = useState<MarkerType>('hazard');
   const [description, setDescription]   = useState('');
   const [descProfane, setDescProfane]   = useState(false);
+  const [descContact, setDescContact]   = useState(false); // телефон / ссылка / контакт в тексте
   const [saving, setSaving]             = useState(false);
 
   const mountedRef = useRef(true);
@@ -259,6 +264,12 @@ export function AddMarkerScreen({ navigation }: Props) {
       setDescProfane(true);
       return;
     }
+    // Телефоны, ссылки и контакты в метке не публикуем (то же правило — на
+    // сервере, markers_guard_insert → PT422).
+    if (containsContactInfo(description)) {
+      setDescContact(true);
+      return;
+    }
     // Страховка Apple 1.2: без согласия с условиями метку не публикуем.
     if (!(await ensureAccepted())) return;
     setSaving(true);
@@ -299,7 +310,12 @@ export function AddMarkerScreen({ navigation }: Props) {
       // >= 20 markers in the last hour — show the rate-limit copy, not the
       // generic save error.
       const code = (e as { code?: string })?.code;
-      Alert.alert(t(code === 'PT429' ? 'common.rate_limit' : 'common.save_error'));
+      if (code === 'PT422') {
+        // Сервер отклонил текст (телефон/ссылка/длина) — ошибка под полем.
+        setDescContact(true);
+      } else {
+        Alert.alert(t(code === 'PT429' ? 'common.rate_limit' : 'common.save_error'));
+      }
     } finally {
       setSaving(false);
     }
@@ -402,7 +418,8 @@ export function AddMarkerScreen({ navigation }: Props) {
 
       {/* ── Form — no vertical scroll: everything fits on one screen ── */}
       <View style={styles.form}>
-        {/* Type chips — 2×2 grid, all four visible at once (no scroll).
+        {/* Type chips — two per row, all seven visible at once (no scroll); the
+            last one («Другое») takes a full row.
             Icons/colors from MARKER_CONFIG. */}
         <Text style={styles.sectionLabel}>{t('addMarker.typeLabel')}</Text>
         <View style={styles.typeGrid}>
@@ -440,13 +457,14 @@ export function AddMarkerScreen({ navigation }: Props) {
           placeholder={t('addMarker.commentPlaceholder')}
           placeholderTextColor={colors.textSoft}
           value={description}
-          onChangeText={(v) => { setDescription(v); setDescProfane(false); }}
+          onChangeText={(v) => { setDescription(v); setDescProfane(false); setDescContact(false); }}
           multiline
           numberOfLines={3}
-          maxLength={500}
+          maxLength={MARKER_TEXT_MAX}
           textAlignVertical="top"
         />
         {descProfane && <Text style={styles.fieldError}>{t('common.profanityError')}</Text>}
+        {descContact && <Text style={styles.fieldError}>{t('addMarker.contactError')}</Text>}
       </View>
 
       {/* Pushes the submit button to the bottom */}

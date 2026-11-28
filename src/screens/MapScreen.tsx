@@ -94,7 +94,7 @@ interface Props {
 export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
   const insets = useSafeAreaInsets();
   const {
-    t, rtl, heatData, chipSeason, weatherIcon, isHeatLoading, setIsWalking, isGuest, isWalking, isTrusted,
+    t, rtl, heatData, chipSeason, weatherIcon, isHeatLoading, setIsWalking, isGuest, isWalking,
     radius, setRadius, activeCategories, toggleCategory, userLocation, setUserLocation,
   } = useApp();
   const { ensureAccepted } = useTermsConsent();
@@ -693,6 +693,9 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
       {!drawerOpen && (
         <TouchableOpacity
           onPress={handleMenuPress}
+          accessibilityRole="button"
+          accessibilityLabel={t('a11y.menu')}
+          hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
           style={[styles.iconBtn, shadows.sm, { position: 'absolute', zIndex: 30, top: insets.top + 8, left: 14 }]}
           activeOpacity={0.8}
         >
@@ -758,13 +761,17 @@ export function MapScreen({ navigation, onMenuPress, drawerOpen }: Props) {
         <LocateButton onPress={handleCenterOnMe} />
         <TouchableOpacity
           style={[styles.mapControlBtn, shadows.lg]}
+          accessibilityRole="button"
+          accessibilityLabel={t('a11y.addMarker')}
           onPress={() => {
             if (isGuest) {
               navigation.navigate('RegisterPrompt');
-            } else if (isTrusted || isWalking) {
-              navigation.navigate('MarkerCreate');
             } else {
-              Alert.alert(t('marker.gatedTitle'), t('marker.gatedBody'));
+              // Метку может поставить любой вошедший пользователь, с прогулкой
+              // или без (решение 25.11.2026: меток мало, а от спама защищает
+              // серверный лимит в markers_guard_insert). Статус «Надёжный»
+              // остался только как звание в профиле.
+              navigation.navigate('MarkerCreate');
             }
           }}
           activeOpacity={0.85}

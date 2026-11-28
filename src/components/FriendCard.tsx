@@ -35,6 +35,7 @@ export function FriendCard({
   onDecline,
   onRemove,
   onRevoke,
+  onOpen,
 }: {
   entry: FriendEntry;
   tab: FriendCardTab;
@@ -45,6 +46,8 @@ export function FriendCard({
   onDecline?: () => void;
   onRemove?: () => void;
   onRevoke?: () => void;
+  // Тап по аватару/имени — открыть страницу друга (только вкладка «Друзья»).
+  onOpen?: () => void;
 }) {
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
@@ -52,6 +55,13 @@ export function FriendCard({
 
   return (
     <View style={[styles.card, rtl && styles.rowReverse]}>
+      <TouchableOpacity
+        style={[styles.cardOpen, rtl && styles.rowReverse]}
+        onPress={onOpen}
+        disabled={!onOpen}
+        activeOpacity={0.7}
+        accessibilityRole={onOpen ? 'button' : undefined}
+      >
       <Avatar entry={entry} />
       <View style={styles.cardInfo}>
         {/* Исходящую заявку адресат не раскрывает до принятия → имени нет.
@@ -63,6 +73,7 @@ export function FriendCard({
           <Text style={styles.cardDog} numberOfLines={1}>{dogLine}</Text>
         )}
       </View>
+      </TouchableOpacity>
 
       <View style={[styles.cardActions, rtl && styles.rowReverse]}>
         <UserModMenuButton
@@ -80,10 +91,10 @@ export function FriendCard({
         )}
         {tab === 'incoming' && (
           <>
-            <TouchableOpacity style={styles.btnIconPrimary} onPress={onAccept} disabled={busy} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.btnIconPrimary} onPress={onAccept} disabled={busy} activeOpacity={0.7} hitSlop={{ top: 6, right: 3, bottom: 6, left: 6 }} accessibilityRole="button" accessibilityLabel={t('a11y.accept')}>
               <Check size={16} color={colors.white} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.btnIconGhost} onPress={onDecline} disabled={busy} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.btnIconGhost} onPress={onDecline} disabled={busy} activeOpacity={0.7} hitSlop={{ top: 6, right: 6, bottom: 6, left: 3 }} accessibilityRole="button" accessibilityLabel={t('a11y.decline')}>
               <X size={16} color={colors.danger} />
             </TouchableOpacity>
           </>
@@ -114,6 +125,7 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   avatarFallback: { backgroundColor: colors.primaryDark, alignItems: 'center', justifyContent: 'center' },
   avatarInitial: { fontSize: 18, fontFamily: ty.font.heading, color: colors.white },
 
+  cardOpen: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   cardInfo: { flex: 1, gap: 2 },
   cardName: { ...ty.variants.h3, color: colors.ink },
   cardDog: { ...ty.variants.sm, color: colors.textMuted },

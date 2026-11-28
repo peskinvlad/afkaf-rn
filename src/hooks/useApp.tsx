@@ -9,11 +9,13 @@ import { useAsphaltTemp, HeatStatus, HourlyPoint } from './useAsphaltTemp';
 import { useChipSeason } from './useChipSeason';
 import { ChipSeason } from '../lib/heat';
 import { checkAndAwardBadges } from '../lib/badges';
-import { flushPendingWalkHistory } from '../lib/walkHistory';
-import { loadAutoFinished, clearAutoFinished, finalizeAutoFinished } from '../lib/walkFinalize';
+import { flushPendingWalkHistory, WalkPathPoint } from '../lib/walkHistory';
+import { loadAutoFinished, clearAutoFinished, finalizeAutoFinished, isValidWalk } from '../lib/walkFinalize';
+import { loadLiveWalk, clearLiveWalk, liveWalkDurationS } from '../lib/walkLiveSnapshot';
 import { closeParkCheckin } from '../lib/parkCheckin';
 import type { AutoFinishReason } from '../lib/autoFinish';
 import { emitDevSettingsChange } from '../constants/dev';
+import { syncBirthdayNotifications } from '../lib/birthdayNotif';
 
 export interface HeatData {
   status: HeatStatus;
@@ -28,6 +30,13 @@ export interface AbandonedWalk {
   distanceKm: number;
   startedAt: string;
   updatedAt: string;
+  // Есть только у прогулки, восстановленной из живого снимка на телефоне
+  // (lib/walkLiveSnapshot): маршрут, шаги и собака. У восстановленной по строке
+  // active_walks их нет — сервер их не хранит.
+  steps?: number | null;
+  path?: WalkPathPoint[] | null;
+  dogResolved?: boolean;
+  dogId?: string | null;
 }
 
 // A walk auto-finished (lib/autoFinish) while the app was in the background
@@ -79,6 +88,7 @@ export interface AppState {
 
 const DEFAULT_CATEGORIES: Record<string, boolean> = {
   park: true, dog_park: true, water: true, danger: true, hazard: true, aggressive_dog: true, forbidden: true,
+  food: true, glass: true, jackal: true,
 };
 
 // Marker filter (radius + per-category toggles) is persisted so it survives a
@@ -138,7 +148,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     hasCheckedAbandonedWalk.current = true;
     // An auto-finished snapshot wins over a leftover active_walks row: it is
     // the same walk, already cut at T, with its real path and steps.
-    if (await finalizeAutoFinishedOnStart(userId)) return;
+    if (await finalizeAutoFinishedOnStart(userId)) {
+      await clearLiveWalk(); // та же прогулка, уже сохранена автозавершением
+      return;
+    }
+    // Живой снимок с телефона — главный источник: он есть и тогда, когда строки
+    // active_walks нет (домашняя зона, видимость «никто»), и несёт маршрут с шагами.
+    const live = await loadLiveWalk();
+    if (live) {
+      if (live.userId === userId && isValidWalk(live.distanceKm, liveWalkDurationS(live))) {
+        setAbandonedWalk({
+          distanceKm: live.distanceKm,
+          startedAt: live.startedAt,
+          updatedAt: live.updatedAt,
+          steps: live.steps,
+          path: live.path,
+          dogResolved: live.dogResolved,
+          dogId: live.dogId,
+        });
+        return;
+      }
+      // Чужой аккаунт или прогулка слишком короткая, чтобы засчитаться, —
+      // сохранять нечего. Дальше — прежняя проверка строки active_walks (её всё
+      // равно надо показать и снять, если осталась).
+      await clearLiveWalk();
+    }
     const { data } = await supabase
       .from('active_walks')
       .select('distance_km, started_at, updated_at')
@@ -303,6 +337,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (key: string, vars?: Record<string, string | number>) => translate(key, lang, vars),
     [lang]
   );
+
+  // №6 «С днём рождения»: пересобрать расписание при старте, при входе/выходе
+  // (гость → снять всё) и при смене языка (тексты зашиты в уведомление).
+  useEffect(() => {
+    void syncBirthdayNotifications(tFn);
+  }, [tFn, isGuest]);
 
   return (
     <AppContext.Provider

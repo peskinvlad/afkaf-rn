@@ -94,7 +94,7 @@ export function PavementTempScreen({ navigation }: any) {
   // Зимний вид — тот же источник правды, что у чипа на карте: chipSeason из
   // useApp (авто-логика + dev-оверрайд «Зима») через effectiveChipSeason, так что
   // caution/danger по асфальту всегда даёт летний экран. Без данных — летний.
-  const isWinter = heatData.has_data && effectiveChipSeason(chipSeason, status) === 'winter';
+  const isWinter = heatData.has_data && effectiveChipSeason(chipSeason, status, heatData.surface_est_c) === 'winter';
 
   const nowKind = weatherKind(weatherIcon);
   const dryWindow = useMemo(

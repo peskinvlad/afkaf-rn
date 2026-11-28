@@ -15,6 +15,7 @@ import { useTypography } from '../theme/fonts';
 import { useFriends, FriendEntry } from '../hooks/useFriends';
 import { ShareProfileSheet } from '../components/ShareProfileSheet';
 import { FriendCard } from '../components/FriendCard';
+import { FriendProfileSheet } from '../components/FriendProfileSheet';
 import { acceptRequest, declineRequest, removeFriendship } from '../lib/friendships';
 import { colors, radii, spacing, typography } from '../theme/tokens';
 
@@ -33,6 +34,7 @@ export function FriendsScreen({ navigation }: Props) {
   const [tab, setTab] = useState<Tab>('friends');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [shareVisible, setShareVisible] = useState(false);
+  const [openFriend, setOpenFriend] = useState<FriendEntry | null>(null);
 
   async function runAction(friendshipId: string, action: (id: string) => Promise<string | null>) {
     setBusyId(friendshipId);
@@ -82,6 +84,8 @@ export function FriendsScreen({ navigation }: Props) {
             onPress={() => setShareVisible(true)}
             style={styles.headerBtn}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('a11y.inviteFriend')}
           >
             <Share2 size={20} color={colors.ink} />
           </TouchableOpacity>
@@ -153,6 +157,7 @@ export function FriendsScreen({ navigation }: Props) {
                     onDecline={() => runAction(entry.friendship_id, declineRequest)}
                     onRemove={() => confirmRemove(entry.friendship_id)}
                     onRevoke={() => runAction(entry.friendship_id, removeFriendship)}
+                    onOpen={tab === 'friends' ? () => setOpenFriend(entry) : undefined}
                   />
                 ))
               )}
@@ -162,6 +167,7 @@ export function FriendsScreen({ navigation }: Props) {
       )}
 
       {!isGuest && <ShareProfileSheet visible={shareVisible} onClose={() => setShareVisible(false)} />}
+      {!isGuest && <FriendProfileSheet entry={openFriend} onClose={() => setOpenFriend(null)} />}
     </View>
   );
 }

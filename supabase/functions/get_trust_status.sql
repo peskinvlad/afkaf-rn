@@ -1,3 +1,7 @@
+-- Обновлено 25.11.2026 (вечер): окно «за 7 дней» убрано — считаются подтверждённые
+-- метки за всё время, заслуженный статус не сгорает.
+-- Обновлено 25.11.2026: ручной значок «Надёжный» — строка в trusted_users даёт
+-- is_trusted = true независимо от подсчёта (confirmed_count считается как раньше).
 -- Снимок от 16.11.2026 (markers privacy ШАГ 3, applied 2026-11-16). RPC Trust Level.
 -- Теперь SECURITY DEFINER и жёстко привязан к auth.uid(): параметр p_user_id
 -- в теле НЕ используется (оставлен в сигнатуре ради совместимости со старыми
@@ -9,11 +13,11 @@ CREATE OR REPLACE FUNCTION public.get_trust_status(p_user_id uuid, p_threshold i
  SET search_path TO 'public'
 AS $function$
   SELECT
-    count(*) >= p_threshold AS is_trusted,
+    (count(*) >= p_threshold
+      OR EXISTS (SELECT 1 FROM trusted_users tu WHERE tu.user_id = auth.uid())) AS is_trusted,
     count(*)::integer       AS confirmed_count
   FROM markers m
   WHERE m.user_id = auth.uid()
-    AND m.created_at >= now() - interval '7 days'
     AND (
       SELECT coalesce(count(*) FILTER (WHERE v.vote = 'still_there'), 0)
            - coalesce(count(*) FILTER (WHERE v.vote = 'gone'), 0)

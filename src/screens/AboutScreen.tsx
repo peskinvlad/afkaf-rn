@@ -68,8 +68,8 @@ const STRINGS = {
       {
         title: 'Метки', icon: '📍',
         items: [
-          { q: 'Как добавить метку?', a: 'Нажми + на карте, выбери тип метки и укажи место. Метки видят все пользователи.' },
-          { q: 'Какие типы меток можно добавить?', a: 'Опасность, агрессивная собака, вода, парк, запрещено для собак, опасный участок. Каждый тип отображается своим цветом и иконкой.' },
+          { q: 'Как добавить метку?', a: 'Нажми кнопку с булавкой и плюсом на карте, выбери тип метки и укажи место. Метки видят все пользователи.' },
+          { q: 'Какие типы меток можно добавить?', a: 'Опасность, угроза, агрессивная собака, запрещено, еда / кости, стекло / мусор, шакалы. Воду, парки и собачьи площадки добавляет команда afkaf. Каждый тип отображается своим цветом и иконкой.' },
           { q: 'Как исправить неверную метку?', a: 'Нажми на метку и используй кнопку голосования. Метки с низким рейтингом скрываются автоматически.' },
           { q: 'Метка устарела — что делать?', a: 'Нажми на метку и проголосуй против. Если несколько пользователей отметят её как неактуальную — она скроется автоматически.' },
         ],
@@ -87,14 +87,14 @@ const STRINGS = {
           { q: 'Кто видит меня на карте?', a: 'По умолчанию — только друзья. Ты можешь изменить это в Настройки → Приватность. Варианты: все пользователи, только друзья, никто.' },
           { q: 'Что такое домашний радиус?', a: 'Зона вокруг твоего дома, внутри которой твоя геопозиция скрыта от других. Например, при радиусе 200м соседи не увидят из какого подъезда ты вышел. Настраивается в Настройки → Домашняя зона.' },
           { q: 'Как скрыть своё местоположение?', a: 'Открой Настройки → Приватность → Видимость и выбери "Никто". Ты будешь видеть других, но тебя не увидит никто.' },
-          { q: 'Что такое режим "Никто" и какие у него ограничения?', a: 'В этом режиме ты не отображаешься на карте. Метки можно добавлять только во время активной прогулки, не чаще одной в 4 часа. Если хочешь добавить кого-то в друзья — получатель увидит твой профиль перед тем как принять решение.' },
+          { q: 'Что такое режим "Никто" и какие у него ограничения?', a: 'В этом режиме ты не отображаешься на карте. Метки добавлять можно как обычно, а отметиться на собачьей площадке нельзя. Если хочешь добавить кого-то в друзья — получатель увидит твой профиль перед тем как принять решение.' },
         ],
       },
       {
         title: 'Аккаунт', icon: '👤',
         items: [
           { q: 'Почему нужна регистрация?', a: 'Чтобы добавлять метки и участвовать в жизни карты. Смотреть карту можно и без аккаунта.' },
-          { q: 'Что такое Trust Level?', a: 'Чем больше твоих меток подтверждают другие — тем выше уровень доверия. Высокий уровень открывает больше возможностей на карте.' },
+          { q: 'Что такое Trust Level?', a: 'Когда три твои метки подтвердят другие пользователи, ты получаешь значок «Надёжный». Он остаётся навсегда.' },
           { q: 'Хранятся ли мои данные?', a: 'Метки и профиль хранятся на сервере. Настройки приложения (язык, уведомления, домашняя зона) хранятся только на твоём устройстве и не передаются.' },
         ],
       },
@@ -128,8 +128,8 @@ const STRINGS = {
       {
         title: 'Markers', icon: '📍',
         items: [
-          { q: 'How do I add a marker?', a: 'Tap + on the map, choose a marker type and place it. All users can see your markers.' },
-          { q: 'What marker types are available?', a: 'Hazard, aggressive dog, water, park, no dogs allowed, dangerous area. Each type has its own color and icon.' },
+          { q: 'How do I add a marker?', a: 'Tap the pin-with-a-plus button on the map, choose a marker type and place it. All users can see your markers.' },
+          { q: 'What marker types are available?', a: 'Danger, hazard, aggressive dog, forbidden, food / bones, glass / trash, jackals. Water, parks and dog parks are added by the afkaf team. Each type has its own color and icon.' },
           { q: 'How do I fix an incorrect marker?', a: 'Tap the marker and use the voting button. Low-rated markers are hidden automatically.' },
           { q: 'What if a marker is outdated?', a: 'Tap it and vote against it. If enough users flag it as outdated, it will be hidden automatically.' },
         ],
@@ -147,14 +147,14 @@ const STRINGS = {
           { q: 'Who can see me on the map?', a: 'Friends only by default. You can change this in Settings → Privacy. Options: everyone, friends only, nobody.' },
           { q: 'What is the home radius?', a: "A zone around your home where your location is hidden from others. For example, with a 200m radius your neighbors won't see which entrance you left from. Set it in Settings → Home zone." },
           { q: 'How do I hide my location?', a: 'Go to Settings → Privacy → Visibility and choose "Nobody". You will still see others, but no one will see you.' },
-          { q: 'What is "Nobody" mode and what are its limits?', a: 'In this mode you don\'t appear on the map. You can only add markers during an active walk, no more than once every 4 hours. If you want to add a friend, the recipient will see your profile before deciding.' },
+          { q: 'What is "Nobody" mode and what are its limits?', a: 'In this mode you don\'t appear on the map. You can add markers as usual, but you can\'t check in at a dog park. If you want to add a friend, the recipient will see your profile before deciding.' },
         ],
       },
       {
         title: 'Account', icon: '👤',
         items: [
           { q: 'Why do I need to register?', a: 'To add markers and participate in the community. You can browse the map without an account.' },
-          { q: 'What is Trust Level?', a: 'The more your markers are confirmed by others, the higher your trust level. Higher levels unlock more features.' },
+          { q: 'What is Trust Level?', a: 'Once three of your markers are confirmed by other users, you get the “Trusted” badge. It is yours to keep.' },
           { q: 'Is my data stored?', a: 'Markers and your profile are stored on the server. App settings (language, notifications, home zone) are stored only on your device and are not shared.' },
         ],
       },
@@ -188,8 +188,8 @@ const STRINGS = {
       {
         title: 'סימונים', icon: '📍',
         items: [
-          { q: 'איך מוסיפים סימון?', a: 'לחץ על + במפה, בחר סוג סימון ומקם אותו. כל המשתמשים יראו את הסימונים שלך.' },
-          { q: 'אילו סוגי סימונים קיימים?', a: 'סכנה, כלב תוקפני, מים, פארק, אסור לכלבים, אזור מסוכן. כל סוג מוצג בצבע ואייקון משלו.' },
+          { q: 'איך מוסיפים סימון?', a: 'לחץ על כפתור הסיכה עם הפלוס במפה, בחר סוג סימון ומקם אותו. כל המשתמשים יראו את הסימונים שלך.' },
+          { q: 'אילו סוגי סימונים קיימים?', a: 'סכנה, מפגע, כלב תוקפני, אסור, אוכל / עצמות, זכוכית / פסולת, תנים. מים, פארקים וגינות כלבים מוסיף צוות afkaf. כל סוג מוצג בצבע ואייקון משלו.' },
           { q: 'איך מתקנים סימון שגוי?', a: 'לחץ על הסימון והשתמש בכפתור ההצבעה. סימונים עם דירוג נמוך מוסתרים אוטומטית.' },
           { q: 'מה עושים עם סימון מיושן?', a: 'לחץ עליו והצבע נגד. אם מספיק משתמשים יסמנו אותו כלא רלוונטי — הוא יוסתר אוטומטית.' },
         ],
@@ -207,14 +207,14 @@ const STRINGS = {
           { q: 'מי רואה אותי במפה?', a: 'רק חברים כברירת מחדל. ניתן לשנות בהגדרות → פרטיות. אפשרויות: כולם, רק חברים, אף אחד.' },
           { q: 'מה זה רדיוס הבית?', a: 'אזור סביב הבית שבו המיקום שלך מוסתר מאחרים. לדוגמה, עם רדיוס של 200מ השכנים לא יראו מאיזה כניסה יצאת. מוגדר בהגדרות → אזור הבית.' },
           { q: 'איך מסתירים את המיקום?', a: 'פתח הגדרות → פרטיות → נראות ובחר "אף אחד". תמשיך לראות אחרים, אבל אף אחד לא יראה אותך.' },
-          { q: 'מה זה מצב "אף אחד" ומה מגבלותיו?', a: 'במצב זה אינך מופיע במפה. ניתן להוסיף סימונים רק במהלך טיול פעיל, לא יותר מאחד כל 4 שעות. אם תרצה להוסיף חבר — הנמען יראה את הפרופיל שלך לפני ההחלטה.' },
+          { q: 'מה זה מצב "אף אחד" ומה מגבלותיו?', a: 'במצב זה אינך מופיע במפה. אפשר להוסיף סימונים כרגיל, אבל אי אפשר לסמן «אני כאן» בגינת כלבים. אם תרצה להוסיף חבר — הנמען יראה את הפרופיל שלך לפני ההחלטה.' },
         ],
       },
       {
         title: 'חשבון', icon: '👤',
         items: [
           { q: 'למה צריך להירשם?', a: 'כדי להוסיף סימונים ולהשתתף בקהילה. ניתן לגלוש במפה גם ללא חשבון.' },
-          { q: 'מה זה Trust Level?', a: 'ככל שיותר משתמשים מאשרים את הסימונים שלך, כך רמת האמון שלך עולה. רמה גבוהה פותחת אפשרויות נוספות.' },
+          { q: 'מה זה Trust Level?', a: 'כששלושה סימונים שלך מאושרים על ידי משתמשים אחרים, אתה מקבל את התג «מהימן». הוא נשאר שלך לתמיד.' },
           { q: 'האם הנתונים שלי נשמרים?', a: 'סימונים ופרופיל נשמרים בשרת. הגדרות האפליקציה (שפה, התראות, אזור הבית) נשמרות רק במכשיר שלך ואינן מועברות.' },
         ],
       },
@@ -432,7 +432,7 @@ const PRIMARY_MID = '#4a8a3f';
 const PRIMARY_LIGHT = '#e8f0e7';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MID = '#555';
-const TEXT_LIGHT = '#888';
+const TEXT_LIGHT = '#686C65'; // = colors.textMuted; было #888 — 3.5:1 на белом
 const BG = '#f7f9f7';
 const WHITE = '#ffffff';
 const BORDER = '#dde8dc';

@@ -19,10 +19,12 @@ import { useFriends } from '../hooks/useFriends';
 import { BADGES } from '../constants/badges';
 import { supabase } from '../lib/supabase';
 import { resolveBreedLabel } from '../lib/breeds';
+import { formatDogAgeDisplay } from '../lib/dogAge';
 import { clearLocalUserData } from '../lib/localReset';
 import { useToast } from '../components/Toast';
 import { useTypography } from '../theme/fonts';
 import { colors, radii, shadows } from '../theme/tokens';
+import { sanitizeDogTraits } from '../lib/dogTraits';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Profile {
@@ -47,6 +49,7 @@ interface Dog {
   photo_url: string | null;
   neutered: boolean | null;
   sociability: string | null;
+  traits: string[] | null;
 }
 
 interface Walk {
@@ -70,116 +73,6 @@ const DATE_LOCALE: Record<Lang, string> = { he: 'he-IL', en: 'en-US', ru: 'ru-RU
 
 function formatMonthYear(iso: string, lang: Lang): string {
   return new Date(iso).toLocaleDateString(DATE_LOCALE[lang], { month: 'long', year: 'numeric' });
-}
-
-// Russian year word for a whole number: 1 → «год», 2–4 → «года», 5–20 → «лет»,
-// then by the last digit (11–14 stay «лет»). Matches spoken Russian so "2.5 г."
-// (which reads like grams) becomes "2,5 года", "5 лет", "11 лет".
-function ruYearWord(n: number): string {
-  const lastTwo = n % 100;
-  const last = n % 10;
-  if (lastTwo >= 11 && lastTwo <= 14) return 'лет';
-  if (last === 1) return 'год';
-  if (last >= 2 && last <= 4) return 'года';
-  return 'лет';
-}
-
-// Russian month word: 1 → «месяц», 2–4 → «месяца», else «месяцев» (11–14 stay
-// «месяцев»). Same shape as ruYearWord.
-function ruMonthWord(n: number): string {
-  const lastTwo = n % 100;
-  const last = n % 10;
-  if (lastTwo >= 11 && lastTwo <= 14) return 'месяцев';
-  if (last === 1) return 'месяц';
-  if (last >= 2 && last <= 4) return 'месяца';
-  return 'месяцев';
-}
-
-type AgeParts = { years: number; months: number };
-
-// Whole years + remaining months between a 'YYYY-MM-DD' birth date and today.
-// Parsed field-by-field to avoid the UTC shift of `new Date('YYYY-MM-DD')`.
-// A future date (or unparseable) → null, so the caller can fall back.
-function ageParts(birthDate: string): AgeParts | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate.trim());
-  if (!m) return null;
-  const by = +m[1], bm = +m[2], bd = +m[3];
-  const now = new Date();
-  let months = (now.getFullYear() - by) * 12 + (now.getMonth() + 1 - bm);
-  if (now.getDate() < bd) months -= 1; // day-of-month not reached this month
-  if (months < 0) return null;
-  return { years: Math.floor(months / 12), months: months % 12 };
-}
-
-// Format whole years/months per language. Under a year → months only; the second
-// year → «1 год [и N месяцев]»; from two years → years only. Russian uses
-// declension helpers; HE/EN use the dictated i18n templates.
-function formatAgeFromParts(
-  { years, months }: AgeParts,
-  lang: Lang,
-  t: (k: string, vars?: Record<string, string | number>) => string,
-): string {
-  if (years === 0) {
-    if (months === 0) {
-      return lang === 'ru' ? 'меньше месяца' : t('profile.dog.ageUnderMonth');
-    }
-    return lang === 'ru'
-      ? `${months} ${ruMonthWord(months)}`
-      : t('profile.dog.ageMonths', { n: months });
-  }
-  if (years === 1) {
-    if (months === 0) {
-      return lang === 'ru' ? '1 год' : t('profile.dog.ageYear');
-    }
-    return lang === 'ru'
-      ? `1 год и ${months} ${ruMonthWord(months)}`
-      : t('profile.dog.ageYearMonths', { m: months });
-  }
-  return lang === 'ru'
-    ? `${years} ${ruYearWord(years)}`
-    : t('profile.dog.ageYears', { n: years });
-}
-
-// Legacy free-text age (numeric string the owner typed), used only when a dog has
-// no birth_date. English "{n} yrs" / Hebrew "גיל {n}" keep the existing string;
-// Russian declines: under a year → "N мес.", whole number declines, a fractional
-// value takes «года» ("2,5 года"). Unparseable Russian text is shown as-is.
-function formatLegacyAge(
-  raw: string,
-  lang: Lang,
-  t: (k: string, vars?: Record<string, string | number>) => string,
-): string {
-  if (lang !== 'ru') return t('profile.dog.age', { n: raw });
-
-  const value = parseFloat(raw.trim().replace(',', '.'));
-  if (!isFinite(value) || value <= 0) return raw.trim();
-
-  if (value < 1) {
-    const months = Math.round(value * 12);
-    if (months >= 12) return '1 год';
-    return `${Math.max(1, months)} мес.`;
-  }
-  if (!Number.isInteger(value)) {
-    return `${String(value).replace('.', ',')} года`;
-  }
-  return `${value} ${ruYearWord(value)}`;
-}
-
-// Age shown on a dog card: from birth_date when set (approx → «~» prefix),
-// otherwise the legacy free-text age. null when neither is known.
-function formatDogAgeDisplay(
-  dog: Pick<Dog, 'birth_date' | 'birth_date_approx' | 'age'>,
-  lang: Lang,
-  t: (k: string, vars?: Record<string, string | number>) => string,
-): string | null {
-  if (dog.birth_date) {
-    const parts = ageParts(dog.birth_date);
-    if (parts) {
-      const label = formatAgeFromParts(parts, lang, t);
-      return dog.birth_date_approx ? `~${label}` : label;
-    }
-  }
-  return dog.age ? formatLegacyAge(dog.age, lang, t) : null;
 }
 
 function formatDate(iso: string, lang: Lang): string {
@@ -249,7 +142,7 @@ export function ProfileScreen({ navigation }: Props) {
     // Dogs
     const { data: dogsData } = await supabase
       .from('dogs')
-      .select('id, name, breed, age, birth_date, birth_date_approx, weight, gender, icon, photo_url, neutered, sociability')
+      .select('id, name, breed, age, birth_date, birth_date_approx, weight, gender, icon, photo_url, neutered, sociability, traits')
       .eq('owner_id', userId);
     setDogs((dogsData ?? []) as Dog[]);
 
@@ -268,10 +161,13 @@ export function ProfileScreen({ navigation }: Props) {
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId);
 
+    // Сумма км — только по засчитанным прогулкам (как км-бейджи, см. lib/badges):
+    // невалидные (< 0.3 км / < 5 мин) в общий километраж профиля не идут.
     const { data: kmData } = await supabase
       .from('walk_history')
       .select('distance_km')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .eq('is_valid', true);
     const totalKm = (kmData ?? []).reduce((s, r) => s + (r.distance_km ?? 0), 0);
 
     // Marker count
@@ -588,6 +484,7 @@ function DogCard({ dog, onEdit, t, lang }: { dog: Dog; onEdit: () => void; t: (k
   const ty = useTypography();
   const styles = useMemo(() => makeStyles(ty), [ty]);
   const hasPhoto = !!dog.photo_url;
+  const traitKeys = sanitizeDogTraits(dog.traits);
   const details  = [
     resolveBreedLabel(dog.breed, lang),
     formatDogAgeDisplay(dog, lang, t),
@@ -607,7 +504,7 @@ function DogCard({ dog, onEdit, t, lang }: { dog: Dog; onEdit: () => void; t: (k
           <Text style={styles.dogName}>{dog.name ?? t('profile.dog.unnamed')}</Text>
           {!!details && <Text style={styles.dogDetails}>{details}</Text>}
         </View>
-        <TouchableOpacity style={styles.dogEditBtn} onPress={onEdit} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.dogEditBtn} onPress={onEdit} activeOpacity={0.8} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }} accessibilityRole="button" accessibilityLabel={t('a11y.editDog')}>
           <Pencil size={16} color={colors.textMuted} />
         </TouchableOpacity>
       </View>
@@ -618,6 +515,17 @@ function DogCard({ dog, onEdit, t, lang }: { dog: Dog; onEdit: () => void; t: (k
         <DogTrait label={t('profile.dog.neutered')}  value={dog.neutered == null ? '—' : dog.neutered ? t('common.yes') : t('common.no')} />
         <DogTrait label={t('profile.dog.character')} value={dog.sociability ? t('dogProfile.sociability.' + dog.sociability) : '—'} />
       </View>
+
+      {/* Trait tags (only when the owner picked some) */}
+      {traitKeys.length > 0 && (
+        <View style={styles.dogTagsRow}>
+          {traitKeys.map((k) => (
+            <View key={k} style={styles.dogTag}>
+              <Text style={styles.dogTagTxt} numberOfLines={1}>{t(`dogProfile.trait.${k}`)}</Text>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -799,6 +707,9 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   dogTrait: { flex: 1, alignItems: 'center', gap: 3 },
   dogTraitLabel: { fontSize: 10, fontFamily: ty.font.heading, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
   dogTraitValue: { fontSize: 13, fontFamily: ty.font.bodyBold, color: colors.ink },
+  dogTagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12, justifyContent: 'center' },
+  dogTag: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: radii.full, backgroundColor: colors.primaryLight },
+  dogTagTxt: { fontSize: 12, fontFamily: ty.font.bodyBold, color: colors.primary },
 
   // Achievements grid
   badgesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
