@@ -55,7 +55,7 @@ export function MarkerFilterSheet({
         {/* ── Header ── */}
         <View style={styles.header}>
           <Text style={styles.title}>{t('mapFilter.title')}</Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.8}>
+          <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.8} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }} accessibilityRole="button" accessibilityLabel={t('common.close')}>
             <X size={16} color={colors.textMuted} />
           </TouchableOpacity>
         </View>

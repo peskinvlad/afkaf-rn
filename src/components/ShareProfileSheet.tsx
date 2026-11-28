@@ -77,7 +77,7 @@ export function ShareProfileSheet({ visible, onClose }: Props) {
       >
         <View style={[styles.header, rtl && styles.rowReverse]}>
           <Text style={styles.title}>{t('friends.share_title')}</Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.8}>
+          <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.8} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }} accessibilityRole="button" accessibilityLabel={t('common.close')}>
             <X size={16} color={colors.textMuted} />
           </TouchableOpacity>
         </View>

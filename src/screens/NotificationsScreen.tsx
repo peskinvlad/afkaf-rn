@@ -148,6 +148,8 @@ export function NotificationsScreen({ navigation }: Props) {
           <View style={[styles.headerActions, rtl && styles.rowReverse]}>
             <TouchableOpacity
               onPress={() => setShareVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel={t('a11y.inviteFriend')}
               style={styles.headerBtn}
               hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
             >
@@ -155,6 +157,8 @@ export function NotificationsScreen({ navigation }: Props) {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => navigation.navigate('Friends')}
+              accessibilityRole="button"
+              accessibilityLabel={t('menu.friends')}
               style={styles.headerBtn}
               hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
             >

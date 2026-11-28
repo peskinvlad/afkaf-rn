@@ -139,6 +139,12 @@ export function WalkSlider({ asphaltTemp, onWalkStart, onSwipeStart }: Props) {
     <View
       style={[styles.pill, { backgroundColor: bg }, shadows.md]}
       {...panResponder.panHandlers}
+      // Свайп недоступен экранному диктору: для него это обычная кнопка,
+      // двойной тап запускает прогулку тем же путём, что и протяжка.
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={t('a11y.startWalk')}
+      onAccessibilityTap={() => onWalkStartRef.current()}
     >
 
       {/* ── Progress fill — own overflow:hidden to clip paws ── */}
