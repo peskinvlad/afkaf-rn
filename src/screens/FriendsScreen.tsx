@@ -84,6 +84,8 @@ export function FriendsScreen({ navigation }: Props) {
             onPress={() => setShareVisible(true)}
             style={styles.headerBtn}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('a11y.inviteFriend')}
           >
             <Share2 size={20} color={colors.ink} />
           </TouchableOpacity>

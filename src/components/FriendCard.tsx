@@ -91,10 +91,10 @@ export function FriendCard({
         )}
         {tab === 'incoming' && (
           <>
-            <TouchableOpacity style={styles.btnIconPrimary} onPress={onAccept} disabled={busy} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.btnIconPrimary} onPress={onAccept} disabled={busy} activeOpacity={0.7} hitSlop={{ top: 6, right: 3, bottom: 6, left: 6 }} accessibilityRole="button" accessibilityLabel={t('a11y.accept')}>
               <Check size={16} color={colors.white} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.btnIconGhost} onPress={onDecline} disabled={busy} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.btnIconGhost} onPress={onDecline} disabled={busy} activeOpacity={0.7} hitSlop={{ top: 6, right: 6, bottom: 6, left: 3 }} accessibilityRole="button" accessibilityLabel={t('a11y.decline')}>
               <X size={16} color={colors.danger} />
             </TouchableOpacity>
           </>
