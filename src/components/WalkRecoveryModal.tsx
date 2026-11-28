@@ -73,7 +73,11 @@ export function WalkRecoveryModal() {
         <View style={[styles.card, shadows.lg]}>
           <Text style={styles.emoji}>🐾</Text>
           <Text style={styles.title}>{t('walkRecovery.title')}</Text>
-          <Text style={styles.message}>{t('walkRecovery.message')}</Text>
+          {/* Слишком короткую прогулку сохранить нельзя — не спрашиваем «оставить?»,
+              а честно говорим почему, и кнопка одна: «Готово». */}
+          <Text style={styles.message}>
+            {isValid ? t('walkRecovery.message') : t('walkAuto.tooShort')}
+          </Text>
 
           <View style={styles.statsRow}>
             <View style={styles.statCol}>
@@ -102,7 +106,9 @@ export function WalkRecoveryModal() {
               onPress={discard}
               activeOpacity={0.85}
             >
-              <Text style={styles.btnSecondaryTxt}>{t('walkRecovery.discard')}</Text>
+              <Text style={styles.btnSecondaryTxt}>
+                {isValid ? t('walkRecovery.discard') : t('common.done')}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
