@@ -230,7 +230,7 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
 
   factsRow: { flexDirection: 'row' },
   fact: { flex: 1, alignItems: 'center', gap: 3 },
-  factLabel: { fontSize: 10, fontFamily: ty.font.heading, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  factLabel: { fontSize: 11, fontFamily: ty.font.heading, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
   factValue: { fontSize: 13, fontFamily: ty.font.bodyBold, color: colors.ink },
   // Как dogTagsRow / dogTag в ProfileScreen — карточка друга и своя выглядят одинаково.
   tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12, justifyContent: 'center' },

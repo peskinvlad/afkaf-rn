@@ -250,7 +250,7 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) =>
     },
     cardEmoji: { fontSize: 20 },
     cardDesc: {
-      fontSize: 13.5,
+      fontSize: 14,
       lineHeight: 19,
       color: colors.textSecondary,
       fontFamily: ty.font.body,

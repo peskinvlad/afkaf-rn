@@ -705,7 +705,7 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   },
   dogTraitsRow: { flexDirection: 'row' },
   dogTrait: { flex: 1, alignItems: 'center', gap: 3 },
-  dogTraitLabel: { fontSize: 10, fontFamily: ty.font.heading, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  dogTraitLabel: { fontSize: 11, fontFamily: ty.font.heading, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
   dogTraitValue: { fontSize: 13, fontFamily: ty.font.bodyBold, color: colors.ink },
   dogTagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12, justifyContent: 'center' },
   dogTag: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: radii.full, backgroundColor: colors.primaryLight },
@@ -723,7 +723,7 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   badgeCellLocked: { opacity: 0.35 },
   badgeCellEmoji: { fontSize: 26 },
   badgeCellLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: ty.font.bodyBold,
     color: colors.ink,
     textAlign: 'center',
@@ -759,7 +759,7 @@ const makeStyles = (ty: ReturnType<typeof useTypography>) => StyleSheet.create({
   walkStats: { flex: 1, flexDirection: 'row', justifyContent: 'flex-end', gap: 16 },
   walkStatCol: { alignItems: 'center', gap: 2 },
   walkStatValue: { fontSize: 14, fontFamily: ty.font.heading, color: colors.ink },
-  walkStatLabel: { fontSize: 10, fontFamily: ty.font.bodyBold, color: colors.textMuted, textTransform: 'uppercase' },
+  walkStatLabel: { fontSize: 11, fontFamily: ty.font.bodyBold, color: colors.textMuted, textTransform: 'uppercase' },
 
   // Avatar modal
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
