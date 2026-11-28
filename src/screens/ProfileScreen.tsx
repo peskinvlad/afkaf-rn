@@ -504,7 +504,7 @@ function DogCard({ dog, onEdit, t, lang }: { dog: Dog; onEdit: () => void; t: (k
           <Text style={styles.dogName}>{dog.name ?? t('profile.dog.unnamed')}</Text>
           {!!details && <Text style={styles.dogDetails}>{details}</Text>}
         </View>
-        <TouchableOpacity style={styles.dogEditBtn} onPress={onEdit} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.dogEditBtn} onPress={onEdit} activeOpacity={0.8} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }} accessibilityRole="button" accessibilityLabel={t('a11y.editDog')}>
           <Pencil size={16} color={colors.textMuted} />
         </TouchableOpacity>
       </View>

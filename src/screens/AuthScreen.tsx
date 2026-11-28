@@ -289,6 +289,8 @@ export function AuthScreen({ navigation }: Props) {
         style={[styles.closeBtn, { top: insets.top + 8 }]}
         onPress={() => navigation.goBack()}
         hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel={t('common.close')}
       >
         <X size={22} color={colors.textMuted} />
       </TouchableOpacity>
@@ -440,7 +442,7 @@ const makeStyles = (font: Record<FontRole, string>) => StyleSheet.create({
   legal: {
     fontSize: 12,
     fontFamily: font.body,
-    color: colors.textSoft,
+    color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 18,
     marginTop: 4,

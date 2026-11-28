@@ -8,8 +8,11 @@ export const colors = {
   cardWarm: '#FDFAF3',
   ink: '#1C1D1A',
   textSecondary: '#4F524D',
-  textMuted: '#797D76',
-  textSoft: '#A8ABA3',
+  // Контраст ≥ 4.5:1 на surface/card/primaryLight (WCAG AA для мелкого текста);
+  // прежний #797D76 давал 3.75 на surface.
+  textMuted: '#686C65',
+  // Только для плейсхолдеров и неактивных элементов (≥ 3:1), НЕ для читаемого текста.
+  textSoft: '#878B83',
   border: 'rgba(31,33,28,0.07)',
   borderStrong: 'rgba(31,33,28,0.13)',
 
@@ -24,7 +27,7 @@ export const colors = {
   // Safety semantics
   danger: '#C0392B',
   dangerBg: '#FDECEB',
-  caution: '#C25B08',
+  caution: '#B05207', // 4.5:1 на cautionBg (было #C25B08 — 3.8)
   cautionBg: '#FDEED6',
   cautionMid: '#FBBF24',
   safe: '#3A7D32',
